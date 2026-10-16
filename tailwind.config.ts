@@ -48,6 +48,36 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Cores de status dedicadas (ADR-06): theme-aware via classe .dark,
+        // consumidas por bg-status-* / text-status-*-foreground no StatusBadge.
+        "status-pendente": {
+          DEFAULT: "hsl(var(--status-pendente))",
+          foreground: "hsl(var(--status-pendente-fg))",
+        },
+        "status-confirmado": {
+          DEFAULT: "hsl(var(--status-confirmado))",
+          foreground: "hsl(var(--status-confirmado-fg))",
+        },
+        "status-em-atendimento": {
+          DEFAULT: "hsl(var(--status-em-atendimento))",
+          foreground: "hsl(var(--status-em-atendimento-fg))",
+        },
+        "status-concluido": {
+          DEFAULT: "hsl(var(--status-concluido))",
+          foreground: "hsl(var(--status-concluido-fg))",
+        },
+        "status-cancelado": {
+          DEFAULT: "hsl(var(--status-cancelado))",
+          foreground: "hsl(var(--status-cancelado-fg))",
+        },
+        "status-nao-compareceu": {
+          DEFAULT: "hsl(var(--status-nao-compareceu))",
+          foreground: "hsl(var(--status-nao-compareceu-fg))",
+        },
+        "status-sub-cancelado": {
+          DEFAULT: "hsl(var(--status-sub-cancelado))",
+          foreground: "hsl(var(--status-sub-cancelado-fg))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
