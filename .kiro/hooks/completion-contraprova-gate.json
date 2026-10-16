@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Completion contraprova gate (GATE-03)",
+      "trigger": "PreToolUse",
+      "description": "Porta GATE-03 do harness: quando o agente escreve qa-review.json com verdict approved, re-executa suiteFull e nega se a suíte não passar (verificador != executor). Sem selo sha256 (desce pra CI). exit 2 bloqueia. HARNESS_GATES=off desliga.",
+      "matcher": "fs_write|str_replace",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/completion-contraprova-gate.mjs",
+        "timeout": 960
+      }
+    }
+  ]
+}

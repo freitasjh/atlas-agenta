@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "PICCO gate on delegation (GATE-02)",
+      "trigger": "PreToolUse",
+      "matcher": "run_workflow",
+      "description": "Porta GATE-02 do harness: nega delegação via run_workflow sem bloco PICCO (tag <open_questions> ausente ou não-vazia em tool_input.inputs.task). exit 2 bloqueia. HARNESS_GATES=off desliga. Lógica em .kiro/harness/lib/gate-lib.mjs.",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/picco-gate.mjs"
+      }
+    }
+  ]
+}

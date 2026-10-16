@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Route changes to dev-pipeline",
+      "trigger": "UserPromptSubmit",
+      "description": "Reforça a cada mensagem que demanda de mudança de código do projeto atlas-agenda deve rodar via workflow dev-pipeline; consulta de leitura é isenta.",
+      "action": {
+        "type": "agent",
+        "prompt": "Regra de roteamento (ver .kiro/steering/workflow-routing.md): se esta mensagem for uma demanda de MUDANÇA de código de aplicação (feature, bugfix, refactor, melhoria no backend ou nas apps frontend), NÃO implemente direto. Rode o workflow .kiro/workflows/dev-pipeline.workflow.json via run_workflow, com inputs.task = a demanda (use o bloco PICCO re-encoded pelo prompt-optimizer quando houver) e inputs.workdir = /home/joao/fusionlf/wsProjeto/atlas-agenda. Se for consulta de leitura (pergunta, explicação, status), responda direto, sem workflow. Edições mecânicas da infra do próprio Kiro (steering, hooks, config de workflow, mcp.json) podem ser feitas inline."
+      }
+    }
+  ]
+}

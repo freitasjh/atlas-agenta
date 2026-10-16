@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Protected path write gate (GATE-05)",
+      "trigger": "PreToolUse",
+      "matcher": "fs_write|str_replace|fs_append",
+      "description": "Porta GATE-05 do harness: nega escrita direta (fs_write/str_replace/fs_append) em path protegido (.kiro/**, pom.xml, migrations Flyway, etc.). Path absoluto do Kiro é rebaixado a relativo via cwd. exit 2 bloqueia. HARNESS_GATES=off desliga. Regras por-agente NÃO são aplicadas aqui (payload sem identidade de agente — port-map I11); descem para workflow/CI.",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/protected-path-gate.mjs"
+      }
+    }
+  ]
+}

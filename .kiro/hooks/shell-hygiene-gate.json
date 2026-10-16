@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Shell hygiene gate (GATE-05)",
+      "trigger": "PreToolUse",
+      "matcher": "execute_bash|bash|shell",
+      "description": "Porta GATE-05 do harness para o Kiro: nega `pkill -f` e escrita via redirect/tee em path protegido antes do comando rodar. exit 2 bloqueia. HARNESS_GATES=off desliga. Lógica em .kiro/harness/lib/gate-lib.mjs, config em .kiro/harness/harness.config.json.",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/shell-hygiene-gate.mjs"
+      }
+    }
+  ]
+}

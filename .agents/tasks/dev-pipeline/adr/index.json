@@ -1,0 +1,42 @@
+{
+  "adrs": [
+    {
+      "id": "adr-01",
+      "file": "adr-01-build-foundation.md",
+      "title": "Fundação de build: Vite + React + TS estrito, Tailwind, árvore de pastas",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-02",
+      "file": "adr-02-design-system.md",
+      "title": "Design system: tokens, tema dark-default, fontes, shadcn/ui e componentes compartilhados",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-03",
+      "file": "adr-03-providers-lib.md",
+      "title": "Núcleo de dados: cliente Supabase (anon key + zod), QueryClient e padrões de lib/hooks",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-04",
+      "file": "adr-04-routing-shell.md",
+      "title": "Casca de roteamento: React Router data router, layouts, providers na raiz e stubs de guard",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-05",
+      "file": "adr-05-placeholder-content.md",
+      "title": "Conteúdo das telas-casca: placeholders pt-BR das quatro áreas e aceite visual consolidado",
+      "scope": "frontend",
+      "status": "pending"
+    }
+  ],
+  "current": "adr-01",
+  "allApproved": false,
+  "qaPending": []
+}

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "project": "atlas-agenda",
+  "_note": "Config do harness para o enforcement nativo do Kiro no projeto Atlas Agenda. Stack: SPA React + Vite + TypeScript + Tailwind + shadcn/ui na raiz (src/, package.json na raiz do workspace) + Supabase (migrations em supabase/migrations, Edge Functions em supabase/functions). Durante a Fase 1 (scaffold greenfield) package.json e configs de build NAO estao em protectedPaths porque a criacao da topologia de build E a entrega desta fase; reavaliar apos o scaffold consolidar. Lida pelos scripts de hook em .kiro/harness/hooks/*.mjs.",
+  "commands": {
+    "suiteFull": "npm run build",
+    "unit": "npm run test -- --run",
+    "frontendBuild": "npm run build",
+    "frontendTest": "npm run test -- --run"
+  },
+  "protectedPaths": [
+    ".kiro/hooks/**",
+    ".kiro/harness/**",
+    ".kiro/steering/**",
+    ".kiro/workflows/**",
+    ".kiro/settings/**",
+    ".kiro/agents/**",
+    ".github/workflows/**",
+    "AGENTS.md"
+  ],
+  "riskPaths": [
+    "src/lib/supabase/**",
+    "src/auth/**",
+    "supabase/migrations/**",
+    "supabase/functions/**",
+    "**/*[Gg]uard*",
+    "**/*[Rr][Ll][Ss]*"
+  ],
+  "gates": {
+    "shellHygiene": "enforce",
+    "protectedPath": "enforce",
+    "picco": "enforce",
+    "hitlBatch": "enforce",
+    "contraprova": "enforce"
+  },
+  "contraproveTimeoutMs": 900000
+}

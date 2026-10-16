@@ -1,0 +1,115 @@
+{
+  "name": "dev-pipeline",
+  "description": "Pipeline de desenvolvimento do projeto Atlas Agenda (SPA React + Vite + TypeScript + Tailwind + shadcn/ui em {{workdir}}/src; backend BaaS Supabase — Postgres + Auth + RLS + Edge Functions — em {{workdir}}/supabase). Fases: (1) análise paralela (dados/segurança Supabase + frontend React) sintetizada num PRD; (2) GATE HUMANO de aprovação do PRD; (3) planejamento que quebra a demanda em ADRs numeradas; (4) codificação+review por ADR num loop; (5) QA por ADR (testar agora via Chrome DevTools ou adiar); (6) branch nova + PR. Inputs: task, workdir.",
+  "inputs": {
+    "task": "prompt",
+    "workdir": "string"
+  },
+  "steps": [
+    {
+      "type": "parallel",
+      "id": "analysis",
+      "joinPolicy": "all",
+      "branches": [
+        {
+          "type": "step",
+          "id": "analyze-data",
+          "agent": "wf-design",
+          "prompt": "Você é o ANALISADOR DE DADOS E SEGURANÇA do pipeline do projeto Atlas Agenda — micro-SaaS multi-tenant de agenda + cobrança via WhatsApp/PIX. Stack: Supabase (PostgreSQL + Auth + RLS + Edge Functions) como backend BaaS; não há servidor dedicado. ATIVE via disclose_context, ANTES de qualquer outra coisa, a skill \"supabase-multitenant\"; e, se a demanda tocar agenda/agendamentos, também \"agenda-scheduling\"; se tocar cobrança PIX, \"asaas-pix\"; se tocar disparo WhatsApp, \"whatsapp-evolution\". Leia .kiro/steering/ em {{workdir}} (produto.md, dominio.md, stack.md, seguranca-multitenant.md, convencoes-codigo.md) como fonte da verdade. Rode brain_search (MCP, project \"atlas-agenda\") pelo assunto da demanda para recuperar contexto antes de analisar.\n\nProduza requisitos verificáveis, valor de negócio, critérios de aceite testáveis e o modelo de dados: tabelas (inglês, snake_case, plural), colunas, tipos (dinheiro em *_cents inteiro; tempo em timestamptz UTC), migrations em supabase/migrations (SQL versionado, nunca alterar migration já aplicada), e as políticas RLS. Enquadre a demanda no roadmap do produto.\n\nTAREFA DO USUÁRIO:\n{{task}}\n\nProjeto em {{workdir}}. Investigue o código necessário e produza a análise de dados/segurança em {{workdir}}/.agents/tasks/dev-pipeline/analysis-data.md: requisitos e critérios de aceite testáveis, modelo de dados e migrations, e enquadramento no roadmap. Respeite as fronteiras invioláveis: RLS habilitado em TODA tabela de domínio; tenant_id vem do JWT/profiles, NUNCA de parâmetro do cliente; super admin cross-tenant só por Edge Function com service role ou política super_admin auditada; RBAC admin/professional/receptionist (recepção não lê charges/dados financeiros); prevenção de conflito de agendamento no banco (constraint de exclusão tstzrange) e na app; webhooks idempotentes (gateway_charge_id + id do evento) e com verificação de autenticidade; segredos (service role, chave Asaas, token Evolution) só em Edge Functions/env, nunca no bundle do cliente. Se a demanda não tocar dados/segurança, registre isso e produza um documento mínimo dizendo-o. Nunca descarte um ponto levantado pelo usuário. Não escreva código de aplicação."
+        },
+        {
+          "type": "step",
+          "id": "analyze-frontend",
+          "agent": "wf-design",
+          "prompt": "Você é o DESIGNER DEDICADO de frontend do pipeline do projeto Atlas Agenda — o papel que garante um frontend maduro e de qualidade, não telas simples. Stack: SPA React + Vite + TypeScript + Tailwind + shadcn/ui, React Router, TanStack Query (estado de servidor), react-hook-form + zod (formulários). ATIVE via disclose_context, ANTES de qualquer outra coisa, as skills \"ui-frontend\" (estrutura de rotas marketing/auth/app/admin, guards de RBAC e status de assinatura, dados com TanStack Query, formulários com react-hook-form+zod) e \"frontend-design\" (direção visual intencional, tipografia, não parecer template). Leia .kiro/steering/ (produto.md, dominio.md, stack.md, seguranca-multitenant.md, convencoes-codigo.md) como fonte da verdade.\n\nTAREFA DO USUÁRIO:\n{{task}}\n\nProjeto em {{workdir}} — SPA única com áreas por diretório de rota: src/marketing (público: /, /precos, /termos), src/auth (/login, /cadastro, /recuperar-senha), src/app (tenant: /app|/dashboard — agenda, clientes, cobranças, config), src/admin (super admin: /admin). UI pt-BR, mobile-first, 100% responsivo (RNF02), carregamento da agenda < 1,5s (RNF01), dark mode. Se a demanda NÃO tocar tela, registre isso e produza um documento mínimo dizendo-o — não invente trabalho de frontend. Se tocar, produza um DESIGN DOC de frontend em {{workdir}}/.agents/tasks/dev-pipeline/analysis-frontend.md cobrindo: (1) telas/componentes/rotas e guards (auth + role RBAC + status de assinatura: bloqueado redireciona para quitação); (2) direção visual e design system — tokens de cor/tipografia/espaçamento/raios via Tailwind, componentes shadcn/ui reutilizados de src/components (nunca recriar), estados visuais, badges de status; (3) acessibilidade (contraste WCAG calculado, foco visível, teclado, labels associados); (4) arquitetura React — componentes vs hooks vs estado de servidor; dados SEMPRE via TanStack Query (nada de fetch solto em useEffect); cliente Supabase do navegador usa anon key + sessão (RLS isola); formulários com react-hook-form + resolver zod; (5) critério de aceite visual verificável (o QA por ADR vai conferir via Chrome DevTools). Respeite: nunca enviar tenant_id do cliente para contornar RLS; service role nunca no cliente; textos de usuário em pt-BR. Sinalize tabelas/políticas/Edge Functions ausentes como dependência de dados. Não escreva código de aplicação."
+        }
+      ]
+    },
+    {
+      "type": "step",
+      "id": "synthesize-prd",
+      "agent": "wf-planner",
+      "prompt": "Você é o SINTETIZADOR DO PRD do pipeline do projeto Atlas Agenda. Projeto em {{workdir}}. Leia as duas análises: {{workdir}}/.agents/tasks/dev-pipeline/analysis-data.md e analysis-frontend.md, e as steerings .kiro/steering/ (produto.md, dominio.md, stack.md, seguranca-multitenant.md, convencoes-codigo.md).\n\nTAREFA DO USUÁRIO:\n{{task}}\n\nConsolide tudo num ÚNICO documento de produto em {{workdir}}/.agents/tasks/dev-pipeline/prd.md. O PRD é o CONTRATO da demanda — descreve O QUE precisa existir e COMO se prova que ficou pronto, NÃO a solução técnica detalhada (isso vem nas ADRs no planejamento). Seções obrigatórias:\n\n1. **Problema e valor de negócio** — o que muda para a empresa/usuário quando estiver pronto.\n2. **Escopo** — o que é dados/Supabase, o que é frontend, o que está fora de escopo.\n3. **Requisitos e critérios de aceite testáveis** — cada requisito com entrada→saída observável.\n4. **Regras de fronteira que a demanda arrisca** — isolamento multi-tenant por RLS (tenant_id do JWT, nunca do cliente), RBAC admin/professional/receptionist, status de assinatura, idempotência e autenticidade de webhook, segredos fora do cliente, LGPD (whatsapp_opt_in, PII mínima em log).\n5. **Perfis de acesso** — quem executa cada ação (super_admin / admin / professional / receptionist).\n6. **Enquadramento no roadmap** (produto.md) e dependências anteriores. Respeitar o fora-de-escopo do MVP (autoagendamento público, taxa de reserva antecipada e métricas consolidadas são Fase 3).\n7. **Pontos levantados pelo usuário** — NUNCA descarte um ponto; registre cada um como decisão tomada ou pergunta em aberto.\n8. **Critério de aceite visual** (se houver frontend) — verificável via Chrome DevTools.\n\nEscreva também o veredito-máquina inicial em {{workdir}}/.agents/tasks/dev-pipeline/prd-approval.json com o conteúdo EXATO: {\"verdict\": \"pending\"}. Não escreva código de aplicação. Não quebre em ADRs ainda — isso é do planejamento, após a aprovação humana do PRD."
+    },
+    {
+      "type": "repeat",
+      "id": "prd-human-gate",
+      "maxIterations": 10,
+      "onMaxIterations": "pause",
+      "stopCondition": {
+        "fileCheck": {
+          "path": "{{workdir}}/.agents/tasks/dev-pipeline/prd-approval.json",
+          "jsonPath": "verdict",
+          "value": "approved"
+        }
+      },
+      "steps": [
+        {
+          "type": "step",
+          "id": "prd-gate-wait",
+          "agent": "wf-planner",
+          "prompt": "Você é o GATE HUMANO DE APROVAÇÃO DO PRD do pipeline do projeto Atlas Agenda. Projeto em {{workdir}}. O PRD está em {{workdir}}/.agents/tasks/dev-pipeline/prd.md e o veredito humano em {{workdir}}/.agents/tasks/dev-pipeline/prd-approval.json.\n\nREGRA DO GATE: este pipeline NÃO avança para o planejamento/ADRs enquanto o humano não aprovar o PRD. O humano aprova escrevendo em prd-approval.json {\"verdict\": \"approved\"}; devolve com melhorias escrevendo {\"verdict\": \"changes_requested\", \"feedback\": \"...\"}.\n\nLeia prd-approval.json AGORA:\n- Se verdict == \"approved\": nada a fazer, apenas confirme que o PRD foi aprovado e encerre com sucesso (o loop vai parar e seguir para o planejamento).\n- Se verdict == \"changes_requested\": leia o feedback, REVISE o {{workdir}}/.agents/tasks/dev-pipeline/prd.md incorporando exatamente o que foi pedido, e depois reescreva prd-approval.json para {\"verdict\": \"pending\"} aguardando nova avaliação humana. Em seguida PAUSE pedindo a reavaliação humana do PRD revisado.\n- Se verdict == \"pending\": o PRD aguarda avaliação humana. Use send_message (severity \"warning\") para avisar o orquestrador/usuário que o PRD em prd.md está pronto para revisão e o pipeline está pausado esperando a decisão (aprovar ou devolver com feedback em prd-approval.json). NÃO avance.\n\nNão escreva código de aplicação. Não quebre em ADRs — isso só acontece após a aprovação."
+        }
+      ]
+    },
+    {
+      "type": "step",
+      "id": "plan-adrs",
+      "agent": "wf-planner",
+      "prompt": "Você é o PLANEJADOR do pipeline do projeto Atlas Agenda. O PRD foi APROVADO pelo humano (verdict \"approved\" em {{workdir}}/.agents/tasks/dev-pipeline/prd-approval.json). Projeto em {{workdir}}. Leia o {{workdir}}/.agents/tasks/dev-pipeline/prd.md aprovado, as análises (analysis-data.md, analysis-frontend.md) e as steerings .kiro/steering/.\n\nQuebre a demanda em ADRs (Architecture Decision Records) numeradas — cada uma uma UNIDADE DE TRABALHO PEQUENA E CODIFICÁVEL ISOLADAMENTE, que constrói sobre a anterior. O objetivo é evitar a codificação num bloco único: cada ADR deve ter escopo próprio, fechado, revisável e testável sozinho. Via de regra: migrations/RLS (dados) antes das telas que as consomem; cliente/infra antes da feature.\n\nCrie a pasta {{workdir}}/.agents/tasks/dev-pipeline/adr/ e escreva:\n1. Um arquivo por ADR: adr-01-<assunto>.md, adr-02-<assunto>.md, ... no FORMATO: **Status** (proposto), **Contexto**, **Decisão**, **Consequências**. Some em cada ADR: escopo (dados/frontend/ambos), arquivos/pastas afetados (src/**, supabase/migrations/**, supabase/functions/**), critérios de aceite testáveis daquela ADR, e dependência da ADR anterior.\n2. Um índice {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json com a lista ordenada: {\"adrs\": [{\"id\": \"adr-01\", \"file\": \"adr-01-<assunto>.md\", \"title\": \"...\", \"scope\": \"dados|frontend|ambos\", \"status\": \"pending\"}, ...], \"current\": \"adr-01\"}.\n\nRespeite as fronteiras em cada ADR: RLS em toda tabela de domínio (tenant_id do JWT, nunca do cliente, policy USING + WITH CHECK); RBAC admin/professional/receptionist; migrations versionadas em supabase/migrations (nova migration nunca edita aplicada); dinheiro em *_cents, tempo em timestamptz UTC; idempotência + autenticidade de webhook; segredos só em Edge Functions/env. ADRs de arquitetura duráveis podem depois ser promovidas para {{workdir}}/docs/ — anote na ADR quando couber, mas não copie para docs/ agora. Não escreva código de aplicação."
+    },
+    {
+      "type": "repeat",
+      "id": "adr-build-loop",
+      "maxIterations": 30,
+      "onMaxIterations": "pause",
+      "stopCondition": {
+        "fileCheck": {
+          "path": "{{workdir}}/.agents/tasks/dev-pipeline/adr/index.json",
+          "jsonPath": "allApproved",
+          "value": true
+        }
+      },
+      "steps": [
+        {
+          "type": "step",
+          "id": "code-adr",
+          "agent": "wf-coder",
+          "prompt": "Você é o CODIFICADOR do pipeline do projeto Atlas Agenda, trabalhando UMA ADR POR VEZ. Projeto em {{workdir}}. Leia {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json e identifique a ADR corrente: a PRIMEIRA cujo status NÃO seja \"approved\" (o campo \"current\" aponta para ela; se divergir, confie na primeira não-approved). Leia o arquivo dessa ADR em {{workdir}}/.agents/tasks/dev-pipeline/adr/<file>, mais o PRD (prd.md) e as análises (analysis-data.md, analysis-frontend.md) para contexto. ATIVE via disclose_context as skills pertinentes ao escopo da ADR: \"supabase-multitenant\" (schema/RLS/migrations), \"agenda-scheduling\" (agenda), \"asaas-pix\" (cobrança), \"whatsapp-evolution\" (disparo), \"ui-frontend\" e \"frontend-design\" (telas).\n\nImplemente SOMENTE o escopo da ADR corrente — não adiante trabalho de ADRs futuras. Respeite as fronteiras: RLS em toda tabela de domínio (tenant_id do JWT/profiles, nunca do cliente; policy USING + WITH CHECK); RBAC admin/professional/receptionist (recepção sem dados financeiros); prevenção de conflito de agendamento no banco (constraint de exclusão tstzrange) e na app; dinheiro em *_cents inteiro, tempo em timestamptz UTC; migrations em supabase/migrations (SQL versionado, nunca alterar aplicada); idempotência (gateway_charge_id + id do evento) e autenticidade de webhook; segredos (service role, Asaas, Evolution) só em Edge Functions/env, nunca no bundle do cliente. No frontend: TypeScript estrito (sem any implícito); dados via TanStack Query (nada de fetch solto em useEffect); formulários com react-hook-form + zod; UI com shadcn/ui + Tailwind reaproveitando src/components; cliente Supabase do navegador com anon key + sessão; mensagens de usuário em pt-BR; mobile-first e acessível.\n\nSe existir {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.review.json com verdict \"changes_requested\", corrija EXATAMENTE os problemas listados em issues (reiteração da MESMA ADR).\n\nVerifique seu trabalho antes de concluir: rode na raiz do projeto `npm install` (se necessário) e `npm run build` e, se houver typecheck/lint/test configurados no package.json, rode-os (ex.: `npm run typecheck`, `npm run lint`, `npm run test -- --run`). Se a ADR mexeu em migrations e houver Supabase CLI local disponível, valide o SQL (ex.: `supabase db reset` num ambiente local/efêmero) — se não houver CLI/Docker, registre que a validação de migration ficou pendente para o QA. Corrija erros antes de passar adiante. NÃO escreva o veredito de review nem de QA."
+        },
+        {
+          "type": "parallel",
+          "id": "adr-independent-reviews",
+          "joinPolicy": "all",
+          "branches": [
+            {
+              "type": "step",
+              "id": "adr-review-model-a",
+              "agent": "semantic_reviewer",
+              "modelId": "claude-haiku-4.5",
+              "prompt": "Você é o REVISOR INDEPENDENTE A do pipeline do projeto Atlas Agenda, revisando a ADR CORRENTE. Você NÃO escreveu este código. Projeto em {{workdir}}. Leia {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json para saber a ADR corrente (primeira não-approved), leia o arquivo dessa ADR e as análises (analysis-data.md, analysis-frontend.md). Revise o diff correspondente ao escopo dessa ADR procurando defeitos. Critério: aderência aos critérios de aceite da ADR; fronteiras (RLS em toda tabela de domínio com tenant_id do JWT nunca do cliente + USING/WITH CHECK; RBAC admin/professional/receptionist; prevenção de conflito tstzrange; dinheiro em *_cents, tempo timestamptz UTC; migrations novas nunca editando aplicada; idempotência + autenticidade de webhook; segredos fora do cliente; LGPD opt-in); no frontend, aderência ao design doc (React/TypeScript estrito, TanStack Query sem fetch em useEffect, react-hook-form+zod, shadcn/ui reaproveitado, pt-BR, acessibilidade, mobile-first). Rode a contraprova: `npm run build` e os scripts de qualidade existentes (`npm run typecheck`/`lint`/`test -- --run`). Escreva seu parecer em {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.review-a.md com issues acionáveis (ou declarando aprovação). Não escreva o veredito agregado nem toque no index.json."
+            },
+            {
+              "type": "step",
+              "id": "adr-review-model-b",
+              "agent": "semantic_reviewer",
+              "prompt": "Você é o REVISOR INDEPENDENTE B do pipeline do projeto Atlas Agenda, revisando a ADR CORRENTE num modelo diferente do revisor A para diversidade de análise. Você NÃO escreveu este código e NÃO vê o parecer do revisor A. Projeto em {{workdir}}. Leia {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json para a ADR corrente (primeira não-approved), o arquivo dessa ADR e as análises. Revise o diff do escopo dessa ADR. Critério igual ao do revisor A (aderência à ADR + fronteiras multi-tenant/RLS/RBAC/idempotência/segredos/LGPD + design doc React). Escreva seu parecer em {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.review-b.md com issues acionáveis (ou aprovação). Rode a contraprova (`npm run build` + scripts de qualidade existentes). NÃO suba dev server aqui — a verificação visual via Chrome DevTools é decisão do QA (step seguinte). Não escreva o veredito agregado nem toque no index.json."
+            }
+          ]
+        },
+        {
+          "type": "step",
+          "id": "adr-aggregate-and-qa",
+          "agent": "wf-review-aggregator",
+          "prompt": "Você é o AGREGADOR DE REVIEW + QA da ADR CORRENTE do pipeline do projeto Atlas Agenda. Sua decisão define se o loop avança para a próxima ADR ou volta a codificar a mesma. Projeto em {{workdir}}. Leia {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json para identificar a ADR corrente (primeira não-approved) e seu <adr-id>, leia os dois pareceres {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.review-a.md e <adr-id>.review-b.md, e o arquivo da ADR.\n\nPASSO 1 — AGREGAR REVIEW. Consolide os pareceres: a união das issues vale (se QUALQUER revisor apontou um defeito real, conta). Em divergência, prevalece o mais rigoroso (changes_requested vence approved). Reexecute a contraprova (`npm run build` + scripts de qualidade existentes). Escreva o veredito-máquina da ADR em {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.review.json: {\"verdict\": \"approved\"} ou {\"verdict\": \"changes_requested\", \"issues\": [\"...\"]}.\n\n- Se changes_requested: atualize index.json mantendo o status da ADR como \"pending\" e \"current\" nela, garanta que allApproved não seja true, e ENCERRE (o loop volta ao codificador para a mesma ADR).\n\nPASSO 2 — QA (só se a ADR foi aprovada no passo 1). Decida se VALE testar esta ADR agora no sistema real ou adiar para uma verificação consolidada. Escreva {{workdir}}/.agents/tasks/dev-pipeline/adr/<adr-id>.qa.json: {\"test\": \"now\"|\"deferred\", \"reason\": \"...\"}. Teste AGORA (\"now\") quando a ADR entrega comportamento verificável de ponta a ponta (ex.: uma tela utilizável, um fluxo completo). Adie (\"deferred\") quando a ADR é fundação sem superfície testável ainda (ex.: migration isolada, cliente sem tela, scaffolding). Quando \"now\" E houver frontend: suba a app em background (`cd {{workdir}} && npm run dev`), aguarde subir, use o MCP chrome-devtools para navegar à tela afetada, tire screenshot, inspecione DOM, cheque console e as requisições de rede ao Supabase, confirme o critério de aceite visual do design doc (tokens, dark mode, guards de RBAC/assinatura, responsividade, badges) e ausência de erro no console; pare o dev server ao terminar. Registre a evidência no <adr-id>.qa.json (campo \"evidence\").\n\nPASSO 3 — AVANÇAR. Com a ADR aprovada (e QA registrado), atualize {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json: marque o status desta ADR como \"approved\", aponte \"current\" para a PRÓXIMA ADR pending (ou mantenha na última se não houver), e defina \"allApproved\": true SOMENTE quando TODAS as ADRs estiverem \"approved\". Quando adiar o QA (\"deferred\"), acrescente a ADR à lista {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json campo \"qaPending\": [\"<adr-id>\", ...] para a verificação consolidada antes do PR."
+        }
+      ]
+    },
+    {
+      "type": "step",
+      "id": "commit-pr",
+      "agent": "wf-pr-submitter",
+      "prompt": "Você é o estágio de ENTREGA do pipeline do projeto Atlas Agenda. Projeto/repo em {{workdir}}. Todas as ADRs foram aprovadas (allApproved true em {{workdir}}/.agents/tasks/dev-pipeline/adr/index.json).\n\nTAREFA DO USUÁRIO:\n{{task}}\n\nANTES DO PR — QA PENDENTE: leia o campo \"qaPending\" do index.json. Para cada ADR adiada com superfície testável, faça agora a verificação consolidada: suba a app em background (`cd {{workdir}} && npm run dev`), use o MCP chrome-devtools para confirmar o critério de aceite visual e a ausência de erro no console, e pare o dev server. Se tudo passar, esvazie qaPending; se algo falhar, NÃO abra o PR — registre o defeito e sinalize (send_message severity \"error\") que uma ADR precisa voltar ao loop.\n\nENTREGA: se {{workdir}} ainda não for repositório git, inicialize-o (git init, branch inicial) antes de ramificar. Crie uma branch nova com nome descritivo derivado da tarefa (nunca commite direto em main/master), faça o commit das alterações com mensagem clara, dê push com -u, e abra um Pull Request. Título conciso (< 70 caracteres); descrição com: resumo das mudanças, a LISTA DE ADRs entregues (id + título), o que foi testado (incluindo a verificação via Chrome DevTools, por ADR, quando houve frontend) e itens pendentes. Antes de commitar, sinalize arquivos que pareçam conter segredos (ex.: .env, chaves Asaas/Evolution, service role) e não os inclua — só .env.example entra no git."
+    }
+  ]
+}

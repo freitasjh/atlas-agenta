@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "HITL batch pause gate (GATE-04)",
+      "trigger": "PreToolUse",
+      "matcher": "run_workflow",
+      "description": "Porta GATE-04 do harness: nega a 3ª delegação (run_workflow) consecutiva sem turno humano no meio. Contador persistido por sessão em .kiro/harness/.state/hitl.json (cada hook é processo novo). O reset por turno humano é o hook hitl-reset (UserPromptSubmit). exit 2 bloqueia. HARNESS_GATES=off desliga.",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/hitl-gate.mjs"
+      }
+    }
+  ]
+}

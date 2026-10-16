@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "HITL counter reset on human turn (GATE-04)",
+      "trigger": "UserPromptSubmit",
+      "description": "Par do HITL gate: proxy do chat.message do opencode. Quando o humano manda mensagem, zera o contador de delegações consecutivas da sessão. Nunca bloqueia.",
+      "action": {
+        "type": "command",
+        "command": "node .kiro/harness/hooks/hitl-reset.mjs"
+      }
+    }
+  ]
+}
