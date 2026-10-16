@@ -18,6 +18,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Supabase — artefatos locais do CLI (não versionar). config.toml e migrations SÃO versionados.
+supabase/.branches
+supabase/.temp
+
 # Editor / SO
 .DS_Store
 .idea

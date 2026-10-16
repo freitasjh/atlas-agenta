@@ -1,0 +1,107 @@
+# Configuração do projeto Supabase local do Atlas Agenda (CLI).
+#
+# Arquivo versionado. NÃO contém segredos — só configuração pública do projeto local.
+# Service role key, chave do Asaas e token da Evolution vivem em variáveis de ambiente /
+# secrets do Supabase (Edge Functions), nunca aqui.
+#
+# Nota de ambiente: este repo foi inicializado SEM a Supabase CLI instalada, então este
+# config.toml foi escrito à mão no formato padrão do `supabase init`. Ao rodar `supabase init`
+# localmente num ambiente com a CLI, o arquivo pode ser regenerado/ajustado sem perda.
+
+# A string que identifica o projeto. Default: nome do diretório de trabalho ao rodar
+# `supabase init`.
+project_id = "atlas-agenda"
+
+[api]
+enabled = true
+# Porta usada pela API REST do PostgREST local.
+port = 54321
+# Schemas expostos na API. `public` e `graphql_public`. Nunca expor schemas internos.
+schemas = ["public", "graphql_public"]
+# Schemas adicionais no search_path das requisições.
+extra_search_path = ["public", "extensions"]
+# Máximo de linhas retornadas de uma view, tabela ou função. Limita o tamanho da resposta.
+max_rows = 1000
+
+[db]
+# Porta do banco Postgres local.
+port = 54322
+# Porta usada por `db diff` com um banco shadow.
+shadow_port = 54320
+# Versão principal do Postgres. Deve casar com a do projeto remoto.
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1"
+
+# Captura de e-mails em desenvolvimento (Inbucket): e-mails de auth não saem de verdade,
+# ficam retidos para inspeção local.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# Tamanho máximo de upload de arquivo.
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# URL base da app. Redirect padrão quando `redirectTo` não é informado no código.
+# Vite serve o frontend em 5173 por padrão neste projeto.
+site_url = "http://localhost:5173"
+# Lista de URLs *exatas* permitidas como destino de redirect pós-autenticação.
+# Inclui a rota de redefinição de senha (fluxo "recuperar senha" -> link do e-mail).
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://localhost:5173/redefinir-senha",
+]
+# Tempo de vida do JWT em segundos (1 hora).
+jwt_expiry = 3600
+# Permite emitir/trocar refresh tokens que ainda não expiraram.
+enable_refresh_token_rotation = true
+# Janela em segundos para reutilizar um refresh token após a rotação.
+refresh_token_reuse_interval = 10
+# Permite que novos usuários se cadastrem.
+enable_signup = true
+
+[auth.email]
+# Permite login/cadastro por e-mail + senha.
+enable_signup = true
+# Permite trocar o e-mail sem reconfirmar (duplo-opt-in desligado).
+double_confirm_changes = true
+# Q2 (decisão de produto, MVP): confirmação de e-mail DESLIGADA. O cadastro já abre sessão
+# e cai em /app, sem tela de "verifique seu e-mail". O código do frontend permanece tolerante
+# caso esta config seja religada no futuro.
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+# Provedores externos de OAuth ficam desligados no MVP.
+[auth.external.apple]
+enabled = false
+
+[auth.external.google]
+enabled = false
+
+[analytics]
+enabled = false
+
+[edge_runtime]
+enabled = true
+# Política de inspeção para depuração de Edge Functions.
+inspector_port = 8083
