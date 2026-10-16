@@ -1,5 +1,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { PlaceholderPanel } from "@/components/PlaceholderPanel";
+import { StatusBadge } from "@/components/StatusBadge";
+import { SUBSCRIPTION_STATUSES } from "@/types/domain";
 
 /**
  * Páginas-casca do painel do super admin (`/admin`). Mínimas e em pt-BR;
@@ -30,8 +32,14 @@ export function EmpresasPage() {
       />
       <PlaceholderPanel
         titulo="Empresas assinantes"
-        descricao="A lista de empresas, o status de assinatura e os limites de uso vêm nas próximas fases."
-      />
+        descricao="A lista de empresas e os limites de uso vêm nas próximas fases. Abaixo, os status de assinatura:"
+      >
+        <div className="flex flex-wrap gap-2">
+          {SUBSCRIPTION_STATUSES.map((status) => (
+            <StatusBadge key={status} subscriptionStatus={status} />
+          ))}
+        </div>
+      </PlaceholderPanel>
     </div>
   );
 }
