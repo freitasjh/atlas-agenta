@@ -7,7 +7,12 @@ import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { LandingPage, PrecosPage, TermosPage } from "@/marketing/pages";
 
 import { AuthLayout } from "@/auth/AuthLayout";
-import { CadastroPage, LoginPage, RecuperarSenhaPage } from "@/auth/pages";
+import {
+  CadastroPage,
+  LoginPage,
+  RecuperarSenhaPage,
+  RedefinirSenhaPage,
+} from "@/auth/pages";
 
 import { AppLayout } from "@/app/AppLayout";
 import {
@@ -49,6 +54,7 @@ export const router = createBrowserRouter([
           { path: "login", element: <LoginPage /> },
           { path: "cadastro", element: <CadastroPage /> },
           { path: "recuperar-senha", element: <RecuperarSenhaPage /> },
+          { path: "redefinir-senha", element: <RedefinirSenhaPage /> },
         ],
       },
       // App do tenant (autenticado — guards são stubs nesta fase)
