@@ -35,3 +35,24 @@ export const ROLES = [
 ] as const;
 
 export type Role = (typeof ROLES)[number];
+
+/**
+ * Projeção do `profiles` do usuário logado lida pelos hooks de identidade.
+ * `tenant_id` é `null` para `super_admin` (invariante garantida no banco).
+ */
+export interface CurrentProfile {
+  id: string;
+  role: Role;
+  tenant_id: string | null;
+}
+
+/**
+ * Projeção do `tenants` do profile lida pelos hooks de identidade.
+ * Só os campos que o chrome/guards consomem nesta fase.
+ */
+export interface CurrentTenant {
+  id: string;
+  trade_name: string | null;
+  subscription_status: SubscriptionStatus;
+  timezone: string;
+}
