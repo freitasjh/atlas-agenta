@@ -1,3 +1,103 @@
+/* Fontes auto-hospedadas (@fontsource) — sem request externo em runtime (RNF01). */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* Tema claro de cortesia (a app inicia em dark — ver ThemeProvider). */
+  :root {
+    --background: 210 30% 99%;
+    --foreground: 222 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+
+    --primary: 160 64% 38%;
+    --primary-foreground: 160 40% 98%;
+
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 222 30% 18%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 210 24% 92%;
+    --accent-foreground: 222 30% 18%;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 86%;
+    --input: 214 20% 86%;
+    --ring: 160 64% 42%;
+
+    --radius: 0.75rem;
+  }
+
+  /* Tema padrão: "painel de operação calmo" — ardósia/azul-noite + acento jade. */
+  .dark {
+    --background: 222 24% 9%;
+    --foreground: 210 20% 96%;
+
+    --card: 222 20% 13%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 222 20% 13%;
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 160 64% 45%;
+    --primary-foreground: 160 40% 8%;
+
+    --secondary: 222 18% 18%;
+    --secondary-foreground: 210 20% 96%;
+
+    --muted: 222 18% 18%;
+    --muted-foreground: 215 14% 66%;
+
+    --accent: 222 18% 18%;
+    --accent-foreground: 210 20% 96%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
+    --ring: 160 64% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    /* Horários e valores R$ alinhados. */
+    font-feature-settings: "tnum" 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Respeitar quem prefere menos movimento. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
