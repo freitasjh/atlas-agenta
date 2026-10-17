@@ -1,5 +1,8 @@
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import { AccessDenied } from "@/components/AccessDenied";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { Role } from "@/types/domain";
 
 interface RequireRoleProps {
@@ -7,17 +10,54 @@ interface RequireRoleProps {
   roles: Role[];
 }
 
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen flex-col gap-4 p-6" aria-hidden="true">
+      <Skeleton className="h-10 w-40" />
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
+
 /**
- * Stub de guard de RBAC (passthrough).
+ * Guard de RBAC. O `role` vem SEMPRE de `useCurrentUser` (profile do servidor,
+ * sob RLS) — nunca de parâmetro do cliente; nenhum `tenant_id` é lido aqui.
  *
- * Contrato futuro (fase de auth): deriva o `role` do usuário a partir de
- * `profiles` e nega/redireciona quem estiver fora de `roles`. O `role` vem
- * sempre do JWT/`profiles` — nunca de parâmetro do cliente; o `tenant_id`
- * jamais é lido ou enviado aqui (isolamento é do RLS).
+ * - Carregando → fallback.
+ * - Sessão sem profile legível → não autorizado: manda para `/login`
+ *   (anti "fail-open"); não libera acesso em erro.
+ * - `role` fora de `roles` → tela 403 "Acesso restrito" (nomeada, sem redirect
+ *   silencioso), com link para a área do papel: `admin`/`professional`/
+ *   `receptionist` → `/app`; sem papel utilizável → `/`.
+ * - `role` no conjunto → `<Outlet />`.
  *
- * Hoje renderiza direto o `<Outlet/>`.
+ * Nota de fase futura: as telas de `cobrancas` (financeiro) deverão usar
+ * `RequireRole roles={["admin"]}` para excluir `receptionist`/`professional`.
  */
-export function RequireRole(_props: RequireRoleProps) {
-  // TODO(auth): derivar role de profiles e negar quem estiver fora de roles.
+export function RequireRole({ roles }: RequireRoleProps) {
+  const location = useLocation();
+  const { isLoadingAuth, isAuthenticated, hasProfileError, role } =
+    useCurrentUser();
+
+  if (isLoadingAuth) {
+    return <RouteFallback />;
+  }
+
+  if (!isAuthenticated || hasProfileError) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  if (!role || !roles.includes(role)) {
+    // Área de volta: papéis de tenant têm o app; super_admin/sem papel caem na
+    // raiz pública. A decisão usa só o `role` do servidor.
+    const backTo =
+      role === "admin" ||
+      role === "professional" ||
+      role === "receptionist"
+        ? "/app"
+        : "/";
+    return <AccessDenied backTo={backTo} backLabel="Voltar ao início" />;
+  }
+
   return <Outlet />;
 }

@@ -19,6 +19,12 @@ export interface CurrentUser {
   subscriptionStatus: SubscriptionStatus | null;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
+  /**
+   * True quando há sessão mas o profile não pôde ser lido (RLS nega, linha
+   * ausente ou falha de rede). Sinaliza aos guards (ADR-08) o logout defensivo:
+   * sessão sem profile legível é "não autorizado", nunca acesso liberado.
+   */
+  hasProfileError: boolean;
 }
 
 /**
@@ -46,6 +52,11 @@ export function useCurrentUser(): CurrentUser {
     (!!session && profileQuery.isLoading) ||
     (!!profile?.tenant_id && tenantQuery.isLoading);
 
+  // Sessão viva mas o profile não carregou (RLS nega / linha ausente / rede):
+  // não é usuário anônimo, é falha de autorização. Os guards reagem com logout
+  // defensivo em vez de liberar acesso (postura anti "fail-open").
+  const hasProfileError = !!session && profileQuery.isError;
+
   return {
     isLoadingAuth,
     session,
@@ -54,5 +65,6 @@ export function useCurrentUser(): CurrentUser {
     subscriptionStatus: tenant?.subscription_status ?? null,
     isAuthenticated: !!session,
     isSuperAdmin,
+    hasProfileError,
   };
 }
