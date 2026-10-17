@@ -1,32 +1,10 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { RouteFallback } from "@/components/RouteFallback";
-import { Logo } from "@/components/Logo";
 import { DefensiveLogout } from "@/app/guards/DefensiveLogout";
+import { ContaCanceladaPage } from "@/app/pages";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { SubscriptionStatus } from "@/types/domain";
-
-/**
- * Estado terminal mínimo para `cancelado`. A tela definitiva (arquivamento,
- * contato comercial) é materializada na ADR-09; aqui só garantimos que o acesso
- * operacional é barrado sem quebrar o build.
- */
-function AccountCancelled() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4 text-center text-foreground">
-      <Logo />
-      <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Conta cancelada
-        </h1>
-        <p className="mx-auto max-w-md text-sm text-muted-foreground">
-          Esta conta foi cancelada e o acesso às operações está suspenso. Para
-          reativá-la, fale com o nosso time.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Guard de status de assinatura. O `subscription_status` chega pronto de
@@ -45,7 +23,7 @@ function AccountCancelled() {
  * - `trial`/`ativo`/`pendente` → acesso normal (sem gating inventado para
  *   `pendente`).
  * - `bloqueado` → redireciona para a tela de quitação (`/app/quitacao`).
- * - `cancelado` → estado terminal "Conta cancelada".
+ * - `cancelado` → estado terminal "Conta cancelada" (`ContaCanceladaPage`).
  */
 export function RequireActiveSubscription() {
   const location = useLocation();
@@ -89,7 +67,7 @@ export function RequireActiveSubscription() {
     case "bloqueado":
       return <Navigate to="/app/quitacao" replace />;
     case "cancelado":
-      return <AccountCancelled />;
+      return <ContaCanceladaPage />;
     default: {
       // Exaustividade: se um status novo entrar em `SubscriptionStatus` sem
       // tratamento, o `tsc` estrito acusa aqui (nunca "fail-open" silencioso).

@@ -1,5 +1,7 @@
+import { BillingGateLayout } from "@/app/BillingGateLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { PlaceholderPanel } from "@/components/PlaceholderPanel";
+import { SignOutButton } from "@/components/SignOutButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { APPOINTMENT_STATUSES } from "@/types/domain";
 
@@ -77,23 +79,70 @@ export function CobrancasPage() {
 /**
  * Tela de quitação (`/app/quitacao`), destino do redirect de tenant
  * `bloqueado` em `RequireActiveSubscription`. Fica FORA do guard de assinatura
- * (irmã do bloco `/app`) para o redirect não entrar em loop. Stub mínimo: a
- * tela definitiva (resumo do débito, cobrança PIX de regularização) é
- * materializada na ADR-09.
+ * (irmã do bloco `/app`) para o redirect não entrar em loop.
+ *
+ * CTA é um placeholder honesto: o fluxo real de regularização (cobrança PIX via
+ * Asaas) é de uma fase financeira posterior e NÃO é implementado aqui — nada de
+ * `charges`/Asaas nesta fase. O botão "Sair" usa `useSignOut` (via
+ * `SignOutButton`) e dá ao usuário bloqueado uma saída real.
  */
 export function QuitacaoPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4 text-center text-foreground">
-      <div className="space-y-2">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Assinatura bloqueada
-        </h1>
-        <p className="mx-auto max-w-md text-sm text-muted-foreground">
-          O acesso à operação está suspenso por pendência de pagamento. A tela de
-          regularização está em construção e chega em breve.
-        </p>
+    <BillingGateLayout>
+      <div className="space-y-6 text-center">
+        <div className="flex justify-center">
+          <StatusBadge subscriptionStatus="bloqueado" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Sua assinatura está bloqueada
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            O acesso aos módulos está suspenso até a regularização do pagamento.
+            Assim que a pendência for quitada, sua operação volta ao normal.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {/*
+            Placeholder: o botão "Regularizar pagamento" real liga no módulo de
+            cobrança (PIX/Asaas) da fase financeira seguinte. Aqui orientamos o
+            contato, sem fingir um fluxo que ainda não existe.
+          */}
+          <p className="text-sm text-muted-foreground">
+            Para regularizar, fale com o nosso time de suporte.
+          </p>
+          <SignOutButton variant="outline" className="w-full" />
+        </div>
       </div>
-    </div>
+    </BillingGateLayout>
+  );
+}
+
+/**
+ * Estado terminal "Conta cancelada" (destino de `cancelado` em
+ * `RequireActiveSubscription`). Mesmo layout enxuto da quitação, copy terminal e
+ * SEM CTA de pagamento — cancelado ≠ débito a quitar. Só orientação de
+ * reativação/contato e a ação de sair.
+ */
+export function ContaCanceladaPage() {
+  return (
+    <BillingGateLayout>
+      <div className="space-y-6 text-center">
+        <div className="flex justify-center">
+          <StatusBadge subscriptionStatus="cancelado" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Esta conta foi cancelada
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            O acesso às operações está suspenso. Para reativar a conta, fale com
+            o nosso time.
+          </p>
+        </div>
+        <SignOutButton variant="outline" className="w-full" />
+      </div>
+    </BillingGateLayout>
   );
 }
 

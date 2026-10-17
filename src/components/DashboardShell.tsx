@@ -5,6 +5,7 @@ import { Outlet } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/UserMenu";
 import {
   Sheet,
   SheetContent,
@@ -77,7 +78,10 @@ export function DashboardShell({ sidebar, areaLabel }: DashboardShellProps) {
               <Logo iconOnly />
             </span>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <UserMenu />
+          </div>
         </header>
 
         <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6">

@@ -1,6 +1,7 @@
 import { Building2, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
+import { SignOutButton } from "@/components/SignOutButton";
 import { SidebarNav, type SidebarNavItem } from "@/components/SidebarNav";
 
 const ADMIN_NAV_ITEMS: SidebarNavItem[] = [
@@ -23,6 +24,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
         <Logo />
       </div>
       <SidebarNav items={ADMIN_NAV_ITEMS} onNavigate={onNavigate} />
+      <SignOutButton className="mt-auto w-full justify-start" />
     </div>
   );
 }

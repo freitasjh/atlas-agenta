@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
+import { SignOutButton } from "@/components/SignOutButton";
 import { SidebarNav, type SidebarNavItem } from "@/components/SidebarNav";
 
 const APP_NAV_ITEMS: SidebarNavItem[] = [
@@ -33,6 +34,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
         <Logo />
       </div>
       <SidebarNav items={APP_NAV_ITEMS} onNavigate={onNavigate} />
+      <SignOutButton className="mt-auto w-full justify-start" />
     </div>
   );
 }
