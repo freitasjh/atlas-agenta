@@ -74,6 +74,29 @@ export function CobrancasPage() {
   );
 }
 
+/**
+ * Tela de quitação (`/app/quitacao`), destino do redirect de tenant
+ * `bloqueado` em `RequireActiveSubscription`. Fica FORA do guard de assinatura
+ * (irmã do bloco `/app`) para o redirect não entrar em loop. Stub mínimo: a
+ * tela definitiva (resumo do débito, cobrança PIX de regularização) é
+ * materializada na ADR-09.
+ */
+export function QuitacaoPage() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4 text-center text-foreground">
+      <div className="space-y-2">
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Assinatura bloqueada
+        </h1>
+        <p className="mx-auto max-w-md text-sm text-muted-foreground">
+          O acesso à operação está suspenso por pendência de pagamento. A tela de
+          regularização está em construção e chega em breve.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function ConfigPage() {
   return (
     <div className="space-y-6">

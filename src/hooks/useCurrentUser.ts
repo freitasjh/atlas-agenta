@@ -25,6 +25,14 @@ export interface CurrentUser {
    * sessão sem profile legível é "não autorizado", nunca acesso liberado.
    */
   hasProfileError: boolean;
+  /**
+   * True quando o profile tem `tenant_id` mas a leitura do tenant falhou (RLS
+   * nega a linha ou falha de rede). Distingue "super_admin legítimo sem tenant"
+   * (tenant null por desenho) de "tenant-user cuja assinatura não pôde ser
+   * lida". Sem este flag, o segundo caso cairia em `subscriptionStatus === null`
+   * e o guard liberaria acesso — exatamente o "fail-open" que a ADR proíbe.
+   */
+  hasTenantError: boolean;
 }
 
 /**
@@ -57,6 +65,12 @@ export function useCurrentUser(): CurrentUser {
   // defensivo em vez de liberar acesso (postura anti "fail-open").
   const hasProfileError = !!session && profileQuery.isError;
 
+  // Profile legível COM `tenant_id`, mas o tenant não carregou: a assinatura é
+  // ilegível. Não pode virar `subscriptionStatus === null` e liberar acesso —
+  // um tenant `bloqueado`/`cancelado` cuja leitura falhe ganharia o app. Os
+  // guards tratam como falha de autorização (logout defensivo).
+  const hasTenantError = !!profile?.tenant_id && tenantQuery.isError;
+
   return {
     isLoadingAuth,
     session,
@@ -66,5 +80,6 @@ export function useCurrentUser(): CurrentUser {
     isAuthenticated: !!session,
     isSuperAdmin,
     hasProfileError,
+    hasTenantError,
   };
 }

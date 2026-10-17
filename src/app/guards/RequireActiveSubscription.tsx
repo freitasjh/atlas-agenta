@@ -1,18 +1,10 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { RouteFallback } from "@/components/RouteFallback";
 import { Logo } from "@/components/Logo";
+import { DefensiveLogout } from "@/app/guards/DefensiveLogout";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { SubscriptionStatus } from "@/types/domain";
-
-function RouteFallback() {
-  return (
-    <div className="flex min-h-screen flex-col gap-4 p-6" aria-hidden="true">
-      <Skeleton className="h-10 w-40" />
-      <Skeleton className="h-64 w-full" />
-    </div>
-  );
-}
 
 /**
  * Estado terminal mínimo para `cancelado`. A tela definitiva (arquivamento,
@@ -43,13 +35,16 @@ function AccountCancelled() {
  * se um status novo não for tratado.
  *
  * - Carregando → fallback.
- * - Sessão sem profile legível → não autorizado: `/login` (anti "fail-open").
- * - `super_admin` (sem tenant) → passa (defensivo: não quebra com `tenant`
- *   null).
+ * - Sessão com profile ilegível → logout defensivo + `/login`.
+ * - Tenant-user com tenant ilegível (`hasTenantError`) → logout defensivo, NUNCA
+ *   liberar: senão um tenant `bloqueado`/`cancelado` cuja leitura falhe ganharia
+ *   o app (anti "fail-open", CA-08.5).
+ * - `super_admin` (sem tenant por construção) → passa. O router nunca roteia
+ *   super_admin para `/app`; o acesso dele é decidido pelo RBAC de `/admin`.
+ *   Liberar aqui é defensivo e não quebra com `tenant` null.
  * - `trial`/`ativo`/`pendente` → acesso normal (sem gating inventado para
  *   `pendente`).
- * - `bloqueado` → redireciona para a tela de quitação (`/app/quitacao`,
- *   materializada na ADR-09).
+ * - `bloqueado` → redireciona para a tela de quitação (`/app/quitacao`).
  * - `cancelado` → estado terminal "Conta cancelada".
  */
 export function RequireActiveSubscription() {
@@ -58,6 +53,7 @@ export function RequireActiveSubscription() {
     isLoadingAuth,
     isAuthenticated,
     hasProfileError,
+    hasTenantError,
     isSuperAdmin,
     subscriptionStatus,
   } = useCurrentUser();
@@ -66,12 +62,20 @@ export function RequireActiveSubscription() {
     return <RouteFallback />;
   }
 
-  if (!isAuthenticated || hasProfileError) {
+  // Identidade ilegível (profile OU tenant): encerrar a sessão e sair. Cobrir o
+  // tenant aqui é o que fecha o "fail-open" — sem isto, `hasTenantError` viraria
+  // `subscriptionStatus === null` e cairia no ramo de super_admin abaixo.
+  if (isAuthenticated && (hasProfileError || hasTenantError)) {
+    return <DefensiveLogout />;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // super_admin não tem tenant: não há assinatura para avaliar. Liberar aqui é
-  // coerente (o RBAC de `/admin` é quem decide o acesso dele).
+  // super_admin não tem tenant: não há assinatura para avaliar. Só o super_admin
+  // legítimo chega com `subscriptionStatus` null (o tenant-user com leitura
+  // falha já foi barrado acima por `hasTenantError`).
   if (isSuperAdmin || subscriptionStatus === null) {
     return <Outlet />;
   }

@@ -21,6 +21,7 @@ import {
   CobrancasPage,
   ConfigPage,
   DashboardPage,
+  QuitacaoPage,
 } from "@/app/pages";
 import { RequireAuth } from "@/app/guards/RequireAuth";
 import { RequireRole } from "@/app/guards/RequireRole";
@@ -62,6 +63,9 @@ export const router = createBrowserRouter([
         path: "app",
         element: <RequireAuth />,
         children: [
+          // Quitação fica FORA do guard de assinatura (irmã do bloco operacional)
+          // para o redirect de `bloqueado` não voltar ao guard e entrar em loop.
+          { path: "quitacao", element: <QuitacaoPage /> },
           {
             element: <RequireActiveSubscription />,
             children: [
