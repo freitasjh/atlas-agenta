@@ -1,6 +1,10 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type Subscription,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 
-import { env } from "@/lib/env";
+import { env, isSupabaseConfigured } from "@/lib/env";
 
 /**
  * Cliente Supabase do navegador.
@@ -13,23 +17,82 @@ import { env } from "@/lib/env";
  * A service role key (e qualquer segredo privilegiado) JAMAIS entra no bundle do
  * cliente; operações privilegiadas rodam só em Edge Functions / env do Supabase.
  *
- * Construção preguiçosa (lazy) via Proxy: `createClient` NÃO roda no load do
- * módulo. Com `@supabase/supabase-js`, chamar `createClient` com URL vazia lança
- * `supabaseUrl is required` — se isso acontecesse no topo do módulo, derrubaria a
- * SPA inteira (tela branca) mesmo nas rotas públicas que não usam Supabase quando
- * o `.env` está ausente. Adiando a construção para o primeiro acesso de
- * propriedade (sempre dentro de `queryFn`/`mutationFn`/`useEffect`), as rotas
- * públicas navegam sem `.env`, e um eventual erro de credencial só aparece
- * dentro do callback do TanStack Query — como estado de erro tratado, nunca como
- * throw no load. O aviso pt-BR de env ausente continua vindo de `env.ts`.
+ * ----------------------------------------------------------------------------
+ * Causa-raiz da intolerância a `.env` ausente (2ª tentativa):
+ * O `AuthListener`, montado no `RootLayout` que envolve TODAS as rotas públicas,
+ * chama `supabase.auth.onAuthStateChange(...)` num `useEffect` que roda no mount
+ * de QUALQUER rota. Esse acesso acontece sempre no load. Com
+ * `@supabase/supabase-js`, chamar `createClient` com URL vazia lança
+ * `supabaseUrl is required` de forma síncrona — então adiar a construção (lazy
+ * Proxy) não basta: o acesso no load sempre dispararia o `createClient("", "")`
+ * e derrubaria a SPA (tela branca) mesmo nas rotas que não usam Supabase.
+ *
+ * Correção em duas camadas (sinal + no-op), complementada pelo guard do
+ * consumidor:
+ *  1. `env.ts` expõe `isSupabaseConfigured` — fonte única de verdade sobre a
+ *     configuração, derivada do mesmo `safeParse` que emite o aviso pt-BR.
+ *  2. Aqui, quando NÃO configurado, `getClient()` NUNCA chama o `createClient`
+ *     real: devolve um client no-op inerte com a mesma superfície tocada no load
+ *     (`auth.onAuthStateChange`). Assim, tocar o client no load sem `.env` nunca
+ *     lança, e o export `supabase` continua estável para os 6 consumidores (que
+ *     permanecem inalterados).
+ *
+ * Com `.env` presente (mesmo credencial inválida) o caminho é SEMPRE o
+ * `createClient` real: o no-op não intercepta, e um erro de credencial propaga
+ * normalmente como estado de erro do TanStack Query dentro de
+ * `queryFn`/`mutationFn` — nunca é mascarado nem vira throw no load.
+ *
+ * Construção preguiçosa (lazy) via Proxy: `createClient` (ou o no-op) só é
+ * resolvido no primeiro acesso de propriedade, memoizado numa variável de
+ * módulo (um único client por caminho). O aviso pt-BR de env ausente continua
+ * vindo de `env.ts`.
+ * ----------------------------------------------------------------------------
  */
 
 let client: SupabaseClient | null = null;
 
-/** Constrói o client uma única vez (memoizado) e devolve sempre a mesma instância. */
+/**
+ * Client no-op seguro para o estado "não configurado" (sem `.env` válido).
+ *
+ * Cobre só a superfície tocada no LOAD: `auth.onAuthStateChange`. Devolve a mesma
+ * forma que o client real — `{ data: { subscription } }` com um `Subscription`
+ * completo cujo `unsubscribe` é um no-op seguro — e NÃO invoca o callback (não
+ * simula eventos de auth). Isso mantém o `AuthListener` funcionando (assina e
+ * desassina sem erro) enquanto não há Supabase configurado.
+ *
+ * O cast parcial → `SupabaseClient` é localizado e deliberado, no mesmo espírito
+ * do cast do Proxy abaixo: construímos apenas o fragmento `.auth` que o load usa.
+ * Sem `any`, sem `@ts-ignore`.
+ */
+function createNoopClient(): SupabaseClient {
+  const noopClient = {
+    auth: {
+      onAuthStateChange(
+        callback: Subscription["callback"],
+      ): { data: { subscription: Subscription } } {
+        const subscription: Subscription = {
+          id: "noop-supabase-unconfigured",
+          callback,
+          unsubscribe: () => {},
+        };
+        return { data: { subscription } };
+      },
+    },
+  };
+
+  return noopClient as unknown as SupabaseClient;
+}
+
+/**
+ * Constrói o client uma única vez (memoizado) e devolve sempre a mesma instância.
+ * Ramifica pelo sinal `isSupabaseConfigured`: client real via `createClient` no
+ * caminho configurado; client no-op inerte quando não configurado.
+ */
 function getClient(): SupabaseClient {
   if (client === null) {
-    client = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
+    client = isSupabaseConfigured
+      ? createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY)
+      : createNoopClient();
   }
   return client;
 }
