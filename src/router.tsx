@@ -25,6 +25,7 @@ import {
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { ProfissionaisPage } from "@/app/config/profissionais/ProfissionaisPage";
+import { HorariosPage } from "@/app/config/profissionais/horarios/HorariosPage";
 import { RequireAuth } from "@/app/guards/RequireAuth";
 import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
@@ -85,7 +86,13 @@ export const router = createBrowserRouter([
                       { path: "servicos", element: <ServicosPage /> },
                       {
                         path: "profissionais",
-                        element: <ProfissionaisPage />,
+                        children: [
+                          { index: true, element: <ProfissionaisPage /> },
+                          {
+                            path: ":profissionalId/horarios",
+                            element: <HorariosPage />,
+                          },
+                        ],
                       },
                     ],
                   },
