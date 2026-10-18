@@ -29,6 +29,10 @@ export interface Permissions {
   /** Agendar para qualquer profissional (admin/receptionist). O professional
    * fica travado em si mesmo no seletor do formulário. */
   canScheduleForAnyProfessional: boolean;
+  /** Parear/gerenciar a conexão de WhatsApp do tenant (admin). Configuração do dono. */
+  canManageWhatsAppConnection: boolean;
+  /** Disparar mensagem de WhatsApp sob demanda (admin/receptionist/professional). */
+  canSendWhatsAppMessage: boolean;
   isAdmin: boolean;
   isProfessional: boolean;
   isReceptionist: boolean;
@@ -49,6 +53,8 @@ export function usePermissions(): Permissions {
     canManageCustomers: isAdmin || isReceptionist,
     canManageAppointments: isAdmin || isReceptionist || isProfessional,
     canScheduleForAnyProfessional: isAdmin || isReceptionist,
+    canManageWhatsAppConnection: isAdmin,
+    canSendWhatsAppMessage: isAdmin || isReceptionist || isProfessional,
     isAdmin,
     isProfessional,
     isReceptionist,

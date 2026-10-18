@@ -176,3 +176,74 @@ export interface AppointmentWithRelations extends Appointment {
   services: { name: string } | null;
   professionals: { name: string } | null;
 }
+
+/**
+ * Entidades do módulo WhatsApp (conexão + log de disparos). Shape das linhas
+ * lidas sob RLS — o cliente nunca envia `tenant_id`, o banco o devolve. A
+ * escrita de `messages` é exclusiva da Edge Function (service role, ADR-04); o
+ * cliente só lê. PII mínima em log: `Message` não carrega telefone/documento,
+ * e `payload` só expõe metadados não sensíveis.
+ */
+
+/** Estados observáveis da conexão (espelha `whatsapp_instances.connection_status`, ADR-02). */
+export const WHATSAPP_CONNECTION_STATUSES = [
+  "desconectado",
+  "aguardando_qr",
+  "conectado",
+] as const;
+
+export type WhatsAppConnectionStatus =
+  (typeof WHATSAPP_CONNECTION_STATUSES)[number];
+
+/** Estados de um disparo de mensagem (espelha `messages.status`, ADR-03). */
+export const MESSAGE_STATUSES = [
+  "fila",
+  "enviado",
+  "entregue",
+  "falha",
+] as const;
+
+export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
+
+/** Templates da régua de comunicação (espelha `messages.template`, dominio.md). */
+export const MESSAGE_TEMPLATES = [
+  "confirmacao",
+  "lembrete_d1",
+  "cobranca",
+  "comprovante",
+] as const;
+
+export type MessageTemplate = (typeof MESSAGE_TEMPLATES)[number];
+
+/**
+ * Linha de `whatsapp_instances` (uma por tenant). `evolution_instance_name` é o
+ * nome lógico derivado do tenant — **sem segredo**. QR/token não são
+ * persistidos; o QR vem só na resposta efêmera de `pair` (ADR-04).
+ */
+export interface WhatsAppInstance {
+  id: string;
+  tenant_id: string;
+  evolution_instance_name: string;
+  connection_status: WhatsAppConnectionStatus;
+  last_connected_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Linha de `messages` (log de disparo). PII-safe: sem telefone/documento em
+ * claro; o vínculo ao destino é `customer_id`. `payload` é um jsonb de
+ * metadados não sensíveis (sem PII); `created_at` é `timestamptz` UTC.
+ */
+export interface Message {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  appointment_id: string | null;
+  channel: "whatsapp";
+  template: MessageTemplate;
+  status: MessageStatus;
+  provider_message_id: string | null;
+  failure_reason: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
