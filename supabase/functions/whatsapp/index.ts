@@ -19,6 +19,7 @@ import {
   type SendInput,
   type SendResponse,
 } from "./schemas.ts";
+// `SendResponse` é usado nas assinaturas de `sendResponse()` e nos retornos de condição.
 import { createEvolutionAdapter } from "./evolution-adapter.ts";
 
 const corsHeaders: Record<string, string> = {
@@ -38,6 +39,14 @@ function jsonResponse(body: unknown, status: number): Response {
 
 function errorResponse(message: string, status: number, extra?: Record<string, unknown>): Response {
   return jsonResponse({ error: message, ...extra }, status);
+}
+
+/**
+ * Resposta de condição de negócio do `send`: devolve SEMPRE o DTO `SendResponse` no corpo
+ * (mesmo com status != 200), para a UI validar com zod e decidir a mensagem pelo `outcome`.
+ */
+function sendResponse(body: SendResponse, status: number): Response {
+  return jsonResponse(body, status);
 }
 
 /** Papel do usuário resolvido no servidor a partir de `profiles`. */
@@ -119,9 +128,9 @@ async function loadTenantContext(
 
 /** Compõe a chave natural de idempotência: template + alvo (agendamento tem precedência). */
 function buildDedupeKey(input: SendInput): string {
-  const target = input.appointment_id
-    ? `a:${input.appointment_id}`
-    : `c:${input.customer_id}`;
+  const target = input.appointmentId
+    ? `a:${input.appointmentId}`
+    : `c:${input.customerId}`;
   return `${input.template}:${target}`;
 }
 
@@ -221,7 +230,7 @@ async function handleSend(
     .from("customers")
     .select("id, phone, whatsapp_opt_in, active")
     .eq("tenant_id", tenantId)
-    .eq("id", input.customer_id)
+    .eq("id", input.customerId)
     .maybeSingle();
   if (customerErr) {
     console.error("send: falha ao resolver cliente", customerErr.message);
@@ -230,33 +239,45 @@ async function handleSend(
   if (!customer) {
     return errorResponse("Cliente não encontrado nesta empresa.", 404);
   }
+  // Cliente inativo (soft-delete) não recebe disparo — coerente com a semântica de `active`.
+  if (customer.active === false) {
+    return errorResponse("Cliente inativo não pode receber mensagens.", 404);
+  }
 
   const dedupeKey = buildDedupeKey(input);
   const basePayload = {
     template: input.template,
-    appointment_id: input.appointment_id ?? null,
+    appointment_id: input.appointmentId ?? null,
   };
 
   // Opt-in (LGPD): sem consentimento, NÃO chama o provedor. Grava falha (não entra no dedupe).
   if (!customer.whatsapp_opt_in) {
-    const { error: logErr } = await service.from("messages").insert({
-      tenant_id: tenantId,
-      customer_id: input.customer_id,
-      appointment_id: input.appointment_id ?? null,
-      channel: "whatsapp",
-      template: input.template,
-      status: "falha",
-      failure_reason: "opt_in_ausente",
-      payload: basePayload,
-      dedupe_key: dedupeKey,
-    });
+    const { data: failed, error: logErr } = await service
+      .from("messages")
+      .insert({
+        tenant_id: tenantId,
+        customer_id: input.customerId,
+        appointment_id: input.appointmentId ?? null,
+        channel: "whatsapp",
+        template: input.template,
+        status: "falha",
+        failure_reason: "opt_in_ausente",
+        payload: basePayload,
+        dedupe_key: dedupeKey,
+      })
+      .select("id")
+      .single();
     if (logErr) {
       console.error("send: falha ao registrar bloqueio de opt-in", logErr.message);
     }
-    return errorResponse(
-      "Cliente não autorizou receber mensagens no WhatsApp.",
+    return sendResponse(
+      {
+        outcome: "opt_out",
+        message_id: (failed?.id as string | undefined) ?? null,
+        status: "falha",
+        provider_message_id: null,
+      },
       422,
-      { outcome: "opt_out" } satisfies Pick<SendResponse, "outcome">,
     );
   }
 
@@ -273,13 +294,13 @@ async function handleSend(
     return errorResponse("Não foi possível validar o envio.", 500);
   }
   if (existing) {
-    return jsonResponse(
+    return sendResponse(
       {
         outcome: "duplicate",
         message_id: existing.id,
         status: existing.status,
         provider_message_id: existing.provider_message_id ?? null,
-      } satisfies SendResponse,
+      },
       200,
     );
   }
@@ -291,10 +312,14 @@ async function handleSend(
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!instance || instance.connection_status !== "conectado") {
-    return errorResponse(
-      "O WhatsApp da empresa não está conectado. Conecte antes de enviar.",
+    return sendResponse(
+      {
+        outcome: "not_connected",
+        message_id: null,
+        status: "falha",
+        provider_message_id: null,
+      },
       409,
-      { outcome: "not_connected" } satisfies Pick<SendResponse, "outcome">,
     );
   }
 
@@ -303,8 +328,8 @@ async function handleSend(
     .from("messages")
     .insert({
       tenant_id: tenantId,
-      customer_id: input.customer_id,
-      appointment_id: input.appointment_id ?? null,
+      customer_id: input.customerId,
+      appointment_id: input.appointmentId ?? null,
       channel: "whatsapp",
       template: input.template,
       status: "fila",
@@ -325,13 +350,13 @@ async function handleSend(
         .in("status", ["fila", "enviado", "entregue"])
         .maybeSingle();
       if (winner) {
-        return jsonResponse(
+        return sendResponse(
           {
             outcome: "duplicate",
             message_id: winner.id,
             status: winner.status,
             provider_message_id: winner.provider_message_id ?? null,
-          } satisfies SendResponse,
+          },
           200,
         );
       }
@@ -354,13 +379,13 @@ async function handleSend(
       .from("messages")
       .update({ status: "enviado", provider_message_id: sendResult.providerMessageId })
       .eq("id", messageId);
-    return jsonResponse(
+    return sendResponse(
       {
         outcome: "sent",
         message_id: messageId,
         status: "enviado",
         provider_message_id: sendResult.providerMessageId,
-      } satisfies SendResponse,
+      },
       200,
     );
   } catch (err) {
@@ -369,9 +394,17 @@ async function handleSend(
       .from("messages")
       .update({ status: "falha", failure_reason: "provider_error" })
       .eq("id", messageId);
-    return errorResponse("Falha ao enviar a mensagem pelo provedor.", 502, {
-      outcome: "not_connected",
-    });
+    // Falha de envio é um outcome PRÓPRIO (`send_failed`), distinto de `not_connected` — a UI
+    // precisa diferenciar "provedor falhou" de "conecte o WhatsApp". Mantém o DTO no corpo.
+    return sendResponse(
+      {
+        outcome: "send_failed",
+        message_id: messageId,
+        status: "falha",
+        provider_message_id: null,
+      },
+      502,
+    );
   }
 }
 
@@ -417,7 +450,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const ctx = await loadTenantContext(identity, service);
 
   try {
-    if (parsed.data.action === "parear") {
+    if (parsed.data.action === "pair") {
       return await handlePair(ctx, service);
     }
     return await handleSend(parsed.data, ctx, service);

@@ -16,19 +16,23 @@ export const templateSchema = z.enum([
 ]);
 export type Template = z.infer<typeof templateSchema>;
 
-/** `{ action: 'parear' }` — sem outros campos; tenant_id derivado do JWT. */
+/** `{ action: 'pair' }` — sem outros campos; tenant_id derivado do JWT. */
 export const pairInputSchema = z.object({
-  action: z.literal("parear"),
+  action: z.literal("pair"),
 });
 
-/** `{ action: 'enviar', template, customer_id, appointment_id? }`. */
+/**
+ * `{ action: 'send', template, customerId, appointmentId? }`. O contrato de fio usa camelCase
+ * (`customerId`/`appointmentId`), alinhado ao consumidor (ADR-06) e à análise de frontend. Esta
+ * ADR é a DONA do contrato: qualquer mudança aqui obriga atualizar os zod schemas do frontend.
+ */
 export const sendInputSchema = z.object({
-  action: z.literal("enviar"),
+  action: z.literal("send"),
   template: templateSchema,
-  customer_id: z.string().uuid({ message: "customer_id deve ser um UUID válido." }),
-  appointment_id: z
+  customerId: z.string().uuid({ message: "customerId deve ser um UUID válido." }),
+  appointmentId: z
     .string()
-    .uuid({ message: "appointment_id deve ser um UUID válido." })
+    .uuid({ message: "appointmentId deve ser um UUID válido." })
     .optional(),
 });
 
@@ -52,7 +56,7 @@ export const connectionStatusSchema = z.enum([
 ]);
 export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
 
-/** Resposta de `parear`. QR não é persistido; vem só nesta resposta. */
+/** Resposta de `pair`. QR não é persistido; vem só nesta resposta. */
 export const pairResponseSchema = z.object({
   connection_status: connectionStatusSchema,
   qr_code_base64: z.string().optional(),
@@ -60,12 +64,22 @@ export const pairResponseSchema = z.object({
 });
 export type PairResponse = z.infer<typeof pairResponseSchema>;
 
-/** Resultado do envio: enviado, deduplicado, bloqueado por opt-in, ou instância não conectada. */
+/**
+ * Resultado do envio. Cada valor é um estado de negócio distinto que a UI (ADR-06) traduz para
+ * uma mensagem própria — por isso `send_failed` (falha do provedor) é separado de `not_connected`
+ * (instância desconectada): conflacioná-los faria o 502 ser lido como "conecte o WhatsApp".
+ *  - `sent`          → mensagem aceita pelo provedor.
+ *  - `duplicate`     → já havia um disparo vivo com a mesma chave (idempotência).
+ *  - `opt_out`       → cliente sem consentimento LGPD; nada enviado.
+ *  - `not_connected` → instância do tenant não está conectada.
+ *  - `send_failed`   → provedor recusou/falhou o envio.
+ */
 export const sendOutcomeSchema = z.enum([
   "sent",
   "duplicate",
   "opt_out",
   "not_connected",
+  "send_failed",
 ]);
 export type SendOutcome = z.infer<typeof sendOutcomeSchema>;
 
@@ -77,7 +91,14 @@ export const messageStatusSchema = z.enum([
 ]);
 export type MessageStatus = z.infer<typeof messageStatusSchema>;
 
-/** Resposta de `enviar` — contrato validado pela UI (ADR-06). */
+/**
+ * Resposta de `send` — contrato validado pela UI (ADR-06). TODAS as condições de negócio do
+ * `send` (sucesso, duplicado, opt-out, não-conectado, falha de provedor) retornam ESTE shape no
+ * corpo, mesmo quando o status HTTP não é 200. Assim a UI sempre valida com zod e lê o `outcome`
+ * para decidir a mensagem, sem depender do canal de erro do `functions.invoke`. Os erros
+ * puramente infra/auth (400/401/403/404/500) usam o shape `{ error, issues? }` e caem no canal
+ * de erro do invoke.
+ */
 export const sendResponseSchema = z.object({
   outcome: sendOutcomeSchema,
   message_id: z.string().uuid().nullable(),
