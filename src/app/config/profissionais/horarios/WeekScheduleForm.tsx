@@ -19,6 +19,14 @@ import { WEEKDAYS, type WorkingHour } from "@/types/domain";
 
 import { DayRow } from "@/app/config/profissionais/horarios/DayRow";
 
+/**
+ * Ordem de exibição da grade: segunda→domingo (design em analysis-frontend.md).
+ * Os índices referenciam posições em `WEEKDAYS` (0=domingo…6=sábado), que
+ * permanece a ordem do array `days` do form e do valor persistido em
+ * `working_hours.weekday`. Aqui só reordenamos a renderização.
+ */
+const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
 interface WeekScheduleFormProps {
   professionalId: string;
   /** Linhas atuais da grade (lidas sob RLS). */
@@ -115,14 +123,17 @@ export function WeekScheduleForm({
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
         <div className="space-y-3">
-          {WEEKDAYS.map((weekday, index) => (
-            <DayRow
-              key={weekday.value}
-              index={index}
-              label={weekday.label}
-              readOnly={readOnly}
-            />
-          ))}
+          {DISPLAY_ORDER.map((weekdayIndex) => {
+            const weekday = WEEKDAYS[weekdayIndex];
+            return (
+              <DayRow
+                key={weekday.value}
+                index={weekdayIndex}
+                label={weekday.label}
+                readOnly={readOnly}
+              />
+            );
+          })}
         </div>
 
         {!readOnly ? (
