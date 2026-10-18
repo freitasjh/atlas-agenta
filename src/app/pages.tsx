@@ -46,21 +46,6 @@ export function AgendaPage() {
   );
 }
 
-export function ClientesPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Clientes"
-        descricao="Cadastro de clientes e consentimento de WhatsApp. Em construção."
-      />
-      <PlaceholderPanel
-        titulo="Clientes do tenant"
-        descricao="O cadastro de clientes e o opt-in de WhatsApp vêm nas próximas fases."
-      />
-    </div>
-  );
-}
-
 export function CobrancasPage() {
   return (
     <div className="space-y-6">

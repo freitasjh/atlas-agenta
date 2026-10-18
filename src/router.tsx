@@ -17,11 +17,11 @@ import {
 import { AppLayout } from "@/app/AppLayout";
 import {
   AgendaPage,
-  ClientesPage,
   CobrancasPage,
   DashboardPage,
   QuitacaoPage,
 } from "@/app/pages";
+import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { ProfissionaisPage } from "@/app/config/profissionais/ProfissionaisPage";
