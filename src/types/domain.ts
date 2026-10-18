@@ -127,3 +127,52 @@ export const WEEKDAYS = [
 ] as const;
 
 export type Weekday = (typeof WEEKDAYS)[number]["value"];
+
+/**
+ * Entidades do agendamento base (clientes finais + agendamentos). Shape das
+ * linhas lidas sob RLS — o cliente nunca envia `tenant_id`, o banco o devolve.
+ * Dinheiro em centavos inteiros; instantes em `timestamptz` UTC (ISO string),
+ * convertidos para o fuso do tenant só na borda da UI (`src/lib/datetime.ts`).
+ */
+
+/** Linha de `customers`. `email` é opcional; `active` é soft-delete. */
+export interface Customer {
+  id: string;
+  tenant_id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  whatsapp_opt_in: boolean;
+  active: boolean;
+  created_at: string;
+}
+
+/**
+ * Linha de `appointments`. `price_cents` é snapshot do serviço no ato;
+ * `starts_at`/`ends_at`/`confirmed_at`/`created_at` são `timestamptz` UTC.
+ */
+export interface Appointment {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  professional_id: string;
+  service_id: string;
+  starts_at: string;
+  ends_at: string;
+  price_cents: number;
+  status: AppointmentStatus;
+  confirmed_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Shape do join embutido do PostgREST que a leitura da agenda (ADR-06) lê para
+ * os nomes legíveis: `select("…, customers(name), services(name),
+ * professionals(name)")`. Cada relação pode vir `null` defensivamente (o zod do
+ * hook valida o shape aninhado antes do uso).
+ */
+export interface AppointmentWithRelations extends Appointment {
+  customers: { name: string } | null;
+  services: { name: string } | null;
+  professionals: { name: string } | null;
+}

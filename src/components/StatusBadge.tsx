@@ -73,6 +73,15 @@ const SUBSCRIPTION_MAP: Record<
   },
 };
 
+/**
+ * Rótulo pt-BR de um estado de agendamento — fonte única reusada pela máquina
+ * de estados da UI (`src/lib/scheduling-status.ts`) para o menu "Mudar status",
+ * sem duplicar os textos.
+ */
+export function getAppointmentStatusLabel(status: AppointmentStatus): string {
+  return APPOINTMENT_MAP[status].label;
+}
+
 interface AppointmentBadgeProps {
   status: AppointmentStatus;
   className?: string;

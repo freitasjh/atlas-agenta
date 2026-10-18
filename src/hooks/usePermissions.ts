@@ -7,9 +7,11 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
  * escrita; a trava real é o RLS no banco.
  *
  * Mapa (PRD §5):
- *   admin        -> gerencia catálogo e qualquer grade.
- *   professional -> lê o catálogo; edita apenas a própria grade (via profile_id).
- *   receptionist -> só leitura.
+ *   admin        -> gerencia catálogo, qualquer grade, clientes e agenda de todos.
+ *   professional -> lê o catálogo; edita a própria grade/agenda (via profile_id);
+ *                   lê clientes (apoio) e cria agendamento só para si.
+ *   receptionist -> sem escrita de catálogo; gerencia clientes e agenda de todos
+ *                   os profissionais (price_cents é operacional, não `charge`).
  */
 export interface Permissions {
   /** Criar/editar/inativar serviços, profissionais e vínculos N:N (admin). */
@@ -20,8 +22,16 @@ export interface Permissions {
   canEditOwnSchedule: boolean;
   /** Papel sem nenhuma escrita de catálogo (receptionist). */
   isReadOnly: boolean;
+  /** Criar/editar clientes (admin ou receptionist; professional só lê). */
+  canManageCustomers: boolean;
+  /** Criar/editar/mudar status de agendamentos (admin, receptionist, professional). */
+  canManageAppointments: boolean;
+  /** Agendar para qualquer profissional (admin/receptionist). O professional
+   * fica travado em si mesmo no seletor do formulário. */
+  canScheduleForAnyProfessional: boolean;
   isAdmin: boolean;
   isProfessional: boolean;
+  isReceptionist: boolean;
 }
 
 export function usePermissions(): Permissions {
@@ -29,13 +39,18 @@ export function usePermissions(): Permissions {
 
   const isAdmin = role === "admin";
   const isProfessional = role === "professional";
+  const isReceptionist = role === "receptionist";
 
   return {
     canManageCatalog: isAdmin,
     canEditAnySchedule: isAdmin,
     canEditOwnSchedule: isAdmin || isProfessional,
-    isReadOnly: role === "receptionist",
+    isReadOnly: isReceptionist,
+    canManageCustomers: isAdmin || isReceptionist,
+    canManageAppointments: isAdmin || isReceptionist || isProfessional,
+    canScheduleForAnyProfessional: isAdmin || isReceptionist,
     isAdmin,
     isProfessional,
+    isReceptionist,
   };
 }
