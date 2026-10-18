@@ -15,12 +15,8 @@ import {
 } from "@/auth/pages";
 
 import { AppLayout } from "@/app/AppLayout";
-import {
-  AgendaPage,
-  CobrancasPage,
-  DashboardPage,
-  QuitacaoPage,
-} from "@/app/pages";
+import { CobrancasPage, DashboardPage, QuitacaoPage } from "@/app/pages";
+import { AgendaPage } from "@/app/agenda/AgendaPage";
 import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";

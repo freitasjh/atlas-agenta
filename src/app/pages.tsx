@@ -3,7 +3,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { PlaceholderPanel } from "@/components/PlaceholderPanel";
 import { SignOutButton } from "@/components/SignOutButton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { APPOINTMENT_STATUSES } from "@/types/domain";
 
 /**
  * Páginas-casca do painel do tenant (`/app`). Mínimas e em pt-BR; o conteúdo
@@ -21,27 +20,6 @@ export function DashboardPage() {
         titulo="Painel do tenant"
         descricao="Indicadores de agenda e cobrança aparecem aqui nas próximas fases."
       />
-    </div>
-  );
-}
-
-export function AgendaPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Agenda"
-        descricao="Agendamentos por dia, semana e profissional. Em construção."
-      />
-      <PlaceholderPanel
-        titulo="Agenda do tenant"
-        descricao="A grade de horários e a criação de agendamentos vêm nas próximas fases. Abaixo, os estados do agendamento:"
-      >
-        <div className="flex flex-wrap gap-2">
-          {APPOINTMENT_STATUSES.map((status) => (
-            <StatusBadge key={status} status={status} />
-          ))}
-        </div>
-      </PlaceholderPanel>
     </div>
   );
 }
