@@ -90,7 +90,11 @@ export function useSaveWorkingHours(professionalId: string) {
         if (insertError) throw insertError;
       }
     },
-    onSuccess: () => {
+    // `onSettled` (não `onSuccess`): o save é delete + insert em round-trips
+    // separados; se o insert falhar depois do delete, a grade no servidor fica
+    // vazia. Revalidar também no erro recarrega a grade real e evita exibir
+    // estado fantasma (ex.: o form ainda com as faixas que não persistiram).
+    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: workingHoursKey(professionalId),
       });
