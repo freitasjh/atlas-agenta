@@ -146,17 +146,4 @@ export function ContaCanceladaPage() {
   );
 }
 
-export function ConfigPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Configurações"
-        descricao="Serviços, equipe, horários e WhatsApp. Em construção."
-      />
-      <PlaceholderPanel
-        titulo="Configurações do tenant"
-        descricao="A configuração de serviços, equipe e integração de WhatsApp vêm nas próximas fases."
-      />
-    </div>
-  );
-}
+

@@ -17,6 +17,26 @@ function serviceProfessionalsKey(serviceId: string) {
   return ["service-professionals", serviceId] as const;
 }
 
+/**
+ * Insere vínculos N:N para um serviço recém-criado (fluxo de criação, onde o
+ * `serviceId` só existe após o insert, então o hook `useSetServiceProfessionals`
+ * — que exige o id de antemão — não se aplica). Sem `tenant_id` do cliente; o
+ * banco o deriva de `current_tenant_id()` sob RLS.
+ */
+export async function insertServiceProfessionals(
+  serviceId: string,
+  professionalIds: string[],
+) {
+  if (professionalIds.length === 0) return;
+  const { error } = await supabase.from("service_professionals").insert(
+    professionalIds.map((professional_id) => ({
+      service_id: serviceId,
+      professional_id,
+    })),
+  );
+  if (error) throw error;
+}
+
 /** IDs dos profissionais vinculados a um serviço. */
 export function useServiceProfessionals(serviceId: string | null) {
   return useQuery<string[]>({

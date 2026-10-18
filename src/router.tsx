@@ -19,10 +19,11 @@ import {
   AgendaPage,
   ClientesPage,
   CobrancasPage,
-  ConfigPage,
   DashboardPage,
   QuitacaoPage,
 } from "@/app/pages";
+import { ConfigHubPage } from "@/app/config/ConfigHubPage";
+import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { RequireAuth } from "@/app/guards/RequireAuth";
 import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
@@ -76,7 +77,13 @@ export const router = createBrowserRouter([
                   { path: "agenda", element: <AgendaPage /> },
                   { path: "clientes", element: <ClientesPage /> },
                   { path: "cobrancas", element: <CobrancasPage /> },
-                  { path: "config", element: <ConfigPage /> },
+                  {
+                    path: "config",
+                    children: [
+                      { index: true, element: <ConfigHubPage /> },
+                      { path: "servicos", element: <ServicosPage /> },
+                    ],
+                  },
                 ],
               },
             ],
