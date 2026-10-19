@@ -6,8 +6,8 @@
 //  - ADR-09: monta a INFRA compartilhada — resolução de credenciais do env, cliente HTTP com
 //    `apikey` + timeout (AbortController), schemas zod das respostas não confiáveis da Evolution
 //    e normalização determinística do número E.164.
-//  - ADR-10 (esta): fia `pair` REAL (criar/conectar instância idempotente + QR base64).
-//  - ADR-11: fiará `sendText` real — até lá `RealEvolutionAdapter.sendText` segue stub.
+//  - ADR-10: fia `pair` REAL (criar/conectar instância idempotente + QR base64).
+//  - ADR-11 (esta): fia `sendText` REAL (envia texto e devolve o `providerMessageId` real).
 //
 // Seleção por env `EVOLUTION_MODE` (`mock` | `real`, default `mock`). `EVOLUTION_API_URL` /
 // `EVOLUTION_API_KEY` só são lidas pela trilha real — segredos vivem em env do servidor, NUNCA
@@ -282,9 +282,9 @@ export class MockEvolutionAdapter implements EvolutionAdapter {
 
 /**
  * Implementação REAL. A infra compartilhada (credenciais, cliente HTTP, schemas, normalização
- * de número) vem da ADR-09. `pair` é REAL (ADR-10 — esta); `sendText` CONTINUA stub até a
- * ADR-11. As credenciais chegam via `createEvolutionAdapter()` (lidas do env no servidor) e só
- * são resolvidas/validadas no ponto de uso das operações reais.
+ * de número) vem da ADR-09. `pair` (ADR-10) e `sendText` (ADR-11) são REAIS. As credenciais
+ * chegam via `createEvolutionAdapter()` (lidas do env no servidor) e só são resolvidas/validadas
+ * no ponto de uso das operações reais.
  */
 export class RealEvolutionAdapter implements EvolutionAdapter {
   // Em `real`, estas vêm de env do servidor (NUNCA do cliente, NUNCA com prefixo VITE_).
@@ -295,7 +295,7 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
 
   /**
    * Resolve e valida as credenciais no ponto de uso (falha cedo e clara, sem rede — R7/AC-07).
-   * Fica disponível para as operações reais das ADR-10/11; o stub abaixo ainda não a aciona.
+   * Usada pelas operações reais `pair` (ADR-10) e `sendText` (ADR-11).
    */
   protected credentials(): EvolutionCredentials {
     return resolveEvolutionCredentials(this.apiUrl, this.apiKey);
@@ -365,14 +365,52 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
     throw new Error("Não foi possível obter o QR Code do WhatsApp. Tente novamente.");
   }
 
-  sendText(_params: SendTextParams): Promise<SendResult> {
-    throw new Error("Integração real da Evolution não implementada nesta fase.");
+  /**
+   * `sendText` REAL (ADR-11): envia um texto pela instância do tenant e devolve o
+   * `providerMessageId` real da Evolution. O `index.ts` já conferiu opt-in LGPD, idempotência
+   * (`dedupe_key`) e instância conectada, e grava `messages.provider_message_id` com o retorno
+   * — o adapter NÃO toca o banco, NÃO conhece papéis, NÃO resolve tenant (RNF-RE-04).
+   *
+   * Fluxo (contrato v2.3.7 — análise §5):
+   *  1. Credenciais do env (sem rede se ausentes — R7/AC-07).
+   *  2. Normaliza o `to` E.164 (`+55...`) para o formato aceito pela Evolution v2 (dígitos,
+   *     sem `+`) com o helper puro da ADR-09 (R4/AC-04).
+   *  3. `POST /message/sendText/{instance}` com corpo `{ number, text }`, cliente HTTP com
+   *     timeout da ADR-09; timeout/erro de rede → falha pt-BR controlada (R13/AC-13).
+   *  4. Resposta externa NÃO confiável — validar o shape com zod antes de ler `key.id`; fora do
+   *     contrato (sem `key.id`, tipo errado, corpo de erro) → falha pt-BR controlada, SEM vazar
+   *     o corpo do provedor (R6/AC-06). O `index.ts` traduz em `send_failed` (502).
+   *  5. PII mínima em log: NUNCA logar `to` (telefone) nem `text` (corpo); só motivo técnico
+   *     curto (status/categoria). A correlação é por `provider_message_id` (R8/R9/AC-09).
+   */
+  async sendText(params: SendTextParams): Promise<SendResult> {
+    const credentials = this.credentials();
+    const number = normalizePhoneForEvolution(params.to);
+
+    const sendRes = await evolutionFetch(credentials, {
+      method: "POST",
+      path: `/message/sendText/${encodeURIComponent(params.instanceName)}`,
+      body: { number, text: params.text },
+    });
+    if (!sendRes.ok) {
+      // Falha de envio distinta de rede/timeout: motivo técnico curto, sem corpo nem PII.
+      console.error(`sendText: envio falhou (status ${sendRes.status})`);
+      throw new Error("Não foi possível enviar a mensagem pelo WhatsApp.");
+    }
+
+    const parsed = sendTextResponseSchema.safeParse(sendRes.body);
+    if (!parsed.success) {
+      console.error("sendText: resposta de envio fora do contrato");
+      throw new Error("Resposta inválida do servidor de WhatsApp.");
+    }
+
+    return { providerMessageId: parsed.data.key.id };
   }
 }
 
 /**
  * Seleciona o adapter por `EVOLUTION_MODE`. Default `mock`. As credenciais da Evolution só são
- * lidas na trilha `real` — e, nesta fase, só para compor o stub que avisa que não está pronto.
+ * lidas na trilha `real`, resolvidas/validadas no ponto de uso de `pair`/`sendText`.
  */
 export function createEvolutionAdapter(): EvolutionAdapter {
   const mode = (Deno.env.get("EVOLUTION_MODE") ?? "mock").toLowerCase();
