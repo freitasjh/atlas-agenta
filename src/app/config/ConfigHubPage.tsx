@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Scissors, Users, type LucideIcon } from "lucide-react";
+import { MessageCircle, Scissors, Users, type LucideIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -29,6 +29,12 @@ const SHORTCUTS: ConfigShortcut[] = [
     titulo: "Profissionais",
     descricao: "Quem atende na sua empresa e os horários de cada um.",
     icon: Users,
+  },
+  {
+    to: "/app/config/whatsapp",
+    titulo: "WhatsApp",
+    descricao: "Conecte o número que fala com seus clientes.",
+    icon: MessageCircle,
   },
 ];
 

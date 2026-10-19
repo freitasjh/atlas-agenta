@@ -22,6 +22,7 @@ import { ConfigHubPage } from "@/app/config/ConfigHubPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { ProfissionaisPage } from "@/app/config/profissionais/ProfissionaisPage";
 import { HorariosPage } from "@/app/config/profissionais/horarios/HorariosPage";
+import { WhatsAppPage } from "@/app/config/whatsapp/WhatsAppPage";
 import { RequireAuth } from "@/app/guards/RequireAuth";
 import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
                           },
                         ],
                       },
+                      { path: "whatsapp", element: <WhatsAppPage /> },
                     ],
                   },
                 ],
