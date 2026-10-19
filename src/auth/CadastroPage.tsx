@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AuthError } from "@supabase/supabase-js";
@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
 import { mapAuthError } from "@/lib/auth-errors";
 import { useSignUp } from "@/hooks/useAuthMutations";
+import { getPlan, parsePlanSlug } from "@/lib/plans";
 
 /** Códigos de erro do Supabase que indicam e-mail já cadastrado. */
 const EMAIL_TAKEN_CODES = new Set(["user_already_exists", "email_exists"]);
@@ -44,6 +45,11 @@ const EMAIL_TAKEN_CODES = new Set(["user_already_exists", "email_exists"]);
 export function CadastroPage() {
   const signUp = useSignUp();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Intenção de plano vinda de `/precos` (`?plano=`). Entrada não confiável:
+  // `parsePlanSlug` valida contra o enum e devolve `null` no caso inválido.
+  // Puramente apresentacional — não entra em `onSubmit` nem é persistida.
+  const plan = parsePlanSlug(params.get("plano"));
   const [serverError, setServerError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
   const feedbackRef = useRef<HTMLParagraphElement>(null);
@@ -124,9 +130,28 @@ export function CadastroPage() {
         <CardTitle className="font-display text-2xl">
           Criar conta da empresa
         </CardTitle>
-        <CardDescription>Comece o teste do Atlas Agenda.</CardDescription>
+        <CardDescription>Comece seu teste gratuito.</CardDescription>
       </CardHeader>
       <CardContent>
+        {plan ? (
+          <div
+            aria-labelledby="plano-escolhido-titulo"
+            className="mb-4 rounded-md border border-primary/30 bg-primary/5 p-4"
+          >
+            <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-foreground">
+              Plano escolhido
+            </span>
+            <p
+              id="plano-escolhido-titulo"
+              className="mt-2 font-display font-semibold"
+            >
+              Você escolheu o plano {getPlan(plan).nome}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {getPlan(plan).destaques.join(" · ")}
+            </p>
+          </div>
+        ) : null}
         {serverError ? (
           <p
             ref={feedbackRef}
