@@ -4,6 +4,7 @@ import { CalendarCheck, MessageCircle, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlaceholderPanel } from "@/components/PlaceholderPanel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PLANS } from "@/lib/plans";
 
 /**
  * Páginas da área de marketing (ADR-05). A landing é a única superfície com
@@ -107,36 +108,6 @@ function Feature({
   );
 }
 
-const PLANOS = [
-  {
-    nome: "Individual",
-    publico: "Autônomo",
-    destaques: [
-      "1 profissional",
-      "Até 150 agendamentos por mês",
-      "Régua de mensagens padrão",
-    ],
-  },
-  {
-    nome: "Clínica",
-    publico: "Equipe",
-    destaques: [
-      "Até 5 profissionais",
-      "Agendamentos ilimitados",
-      "Mensagens personalizadas e taxa de reserva configurável",
-    ],
-  },
-  {
-    nome: "Pro",
-    publico: "Multi-profissionais",
-    destaques: [
-      "Mais de 5 profissionais (adicional por extra)",
-      "Relatórios",
-      "Suporte prioritário",
-    ],
-  },
-] as const;
-
 export function PrecosPage() {
   return (
     <div className="space-y-8">
@@ -151,18 +122,29 @@ export function PrecosPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        {PLANOS.map((plano) => (
+        {PLANS.map((plano) => (
           <div
-            key={plano.nome}
-            className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6"
+            key={plano.slug}
+            className={
+              plano.recomendado
+                ? "flex flex-col gap-4 rounded-lg border border-primary bg-card p-6"
+                : "flex flex-col gap-4 rounded-lg border border-border bg-card p-6"
+            }
           >
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {plano.publico}
-              </p>
-              <h2 className="font-display text-xl font-semibold">
-                {plano.nome}
-              </h2>
+            <div className="flex flex-col gap-2">
+              {plano.recomendado ? (
+                <span className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  Recomendado
+                </span>
+              ) : null}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {plano.publico}
+                </p>
+                <h2 className="font-display text-xl font-semibold">
+                  {plano.nome}
+                </h2>
+              </div>
             </div>
             <ul className="space-y-2 text-sm text-muted-foreground">
               {plano.destaques.map((item) => (
@@ -175,6 +157,15 @@ export function PrecosPage() {
                 </li>
               ))}
             </ul>
+            <Button
+              asChild
+              className="mt-auto w-full"
+              variant={plano.recomendado ? "default" : "outline"}
+            >
+              <Link to={`/cadastro?plano=${plano.slug}`}>
+                Começar com o {plano.nome}
+              </Link>
+            </Button>
           </div>
         ))}
       </div>
