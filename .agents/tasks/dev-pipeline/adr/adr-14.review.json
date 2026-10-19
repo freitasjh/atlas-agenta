@@ -1,0 +1,9 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Ambos os revisores (A e B) aprovaram. União de issues não contém defeito bloqueante.",
+    "Contraste do selo 'Recomendado' (text-primary sobre bg-primary/10) em tema claro: delegado ao QA pela própria ADR (critério 6), não é defeito de implementação. Plano de ação já registrado (bg-primary/15 ou text-foreground se < 4.5:1 AA).",
+    "mt-auto no CTA além do w-full especificado: desvio benigno e consciente da letra da ADR (alinha CTAs na base do card), não bloqueia.",
+    "Contraprova de build: npm run build (tsc -b && vite build) confirmada em exit 0 por ambos os revisores; sem any, sem dependência nova. Inspeção de src/marketing/pages.tsx, src/lib/plans.ts e src/components/ui/button.tsx confirma aderência linha a linha à ADR. Sem ferramenta de shell neste step para re-executar; evidência de build herdada dos pareceres + inspeção de fonte."
+  ]
+}

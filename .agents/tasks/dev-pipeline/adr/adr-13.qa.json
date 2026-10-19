@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-13 entrega apenas o modulo utilitario puro src/lib/plans.ts (PLAN_SLUGS, PlanSlug, Plan, PLANS, parsePlanSlug, getPlan), sem componente, rota ou tela. Nao ha superficie navegavel para verificar de ponta a ponta nesta ADR. O comportamento de parsePlanSlug/getPlan e dos CTAs sera exercido no QA real das ADR-14 (/precos aciona CTA -> /cadastro?plano=) e ADR-15 (/cadastro le e valida ?plano). QA consolidado antes do PR."
+}

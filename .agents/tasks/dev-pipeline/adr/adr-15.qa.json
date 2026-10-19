@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-15 fecha o mesmo funil marketing das ADR-13 e ADR-14, que já estão em qaPending para verificação consolidada. O critério de aceite é de ponta a ponta atravessando telas (/precos CTA -> /cadastro?plano= exibindo a intenção -> cadastro cria tenant em trial -> /app). Testar /cadastro isolado agora, com /precos ainda adiado, fragmentaria a verificação do funil. Juntar à QA consolidada do funil (13/14/15) antes do PR cobre a jornada completa de uma vez: presenca/ausencia do bloco para clinica|individual|pro|xpto|vazio, console limpo, sem regressao no fluxo trial->/app, dark mode e responsividade. Build/typecheck limpos confirmados pelos dois revisores (tsc -b && vite build, sem erro); diff de 27 linhas em um unico arquivo apresentacional, sem dep nova, sem toque em schema/trigger/signupSchema/useSignUp."
+}
