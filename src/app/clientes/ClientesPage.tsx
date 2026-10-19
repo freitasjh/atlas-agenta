@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, MessageCircle, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
+import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,6 +63,44 @@ function OptInBadge({ optIn }: { optIn: boolean }) {
   );
 }
 
+/**
+ * Ação "Enviar mensagem" por cliente (Agenda e Clientes compartilham o diálogo).
+ * Opt-in na borda: sem consentimento, o botão fica desabilitado com o motivo em
+ * texto (não só `disabled`) — defesa dupla; a trava real é o servidor.
+ */
+function SendMessageButton({
+  customer,
+  onSend,
+}: {
+  customer: Customer;
+  onSend: (customer: Customer) => void;
+}) {
+  const optIn = customer.whatsapp_opt_in;
+  return (
+    <div className="inline-flex flex-col items-start">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={!optIn}
+        title={
+          optIn
+            ? undefined
+            : "Este cliente não autorizou receber mensagens no WhatsApp."
+        }
+        onClick={() => onSend(customer)}
+      >
+        <MessageCircle aria-hidden="true" />
+        Enviar mensagem
+      </Button>
+      {!optIn ? (
+        <span className="sr-only">
+          Este cliente não autorizou receber mensagens no WhatsApp.
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** Valor com debounce leve para a busca client-side (não refaz request). */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -90,7 +129,7 @@ function normalizeForSearch(value: string): string {
  * sem paginação de servidor nesta fase).
  */
 export function ClientesPage() {
-  const { canManageCustomers } = usePermissions();
+  const { canManageCustomers, canSendWhatsAppMessage } = usePermissions();
   const customersQuery = useCustomers({ activeOnly: true });
   const deactivateCustomer = useDeactivateCustomer();
 
@@ -98,6 +137,7 @@ export function ClientesPage() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerToDeactivate, setCustomerToDeactivate] =
     useState<Customer | null>(null);
+  const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 150);
@@ -224,7 +264,7 @@ export function ClientesPage() {
                       <TableHead>Telefone</TableHead>
                       <TableHead>E-mail</TableHead>
                       <TableHead>WhatsApp</TableHead>
-                      {canManageCustomers ? (
+                      {canManageCustomers || canSendWhatsAppMessage ? (
                         <TableHead className="text-right">Ações</TableHead>
                       ) : null}
                     </TableRow>
@@ -242,24 +282,36 @@ export function ClientesPage() {
                         <TableCell>
                           <OptInBadge optIn={customer.whatsapp_opt_in} />
                         </TableCell>
-                        {canManageCustomers ? (
+                        {canManageCustomers || canSendWhatsAppMessage ? (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openEdit(customer)}
-                              >
-                                <Pencil aria-hidden="true" />
-                                Editar
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setCustomerToDeactivate(customer)}
-                              >
-                                Remover
-                              </Button>
+                              {canSendWhatsAppMessage ? (
+                                <SendMessageButton
+                                  customer={customer}
+                                  onSend={setMessageTarget}
+                                />
+                              ) : null}
+                              {canManageCustomers ? (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openEdit(customer)}
+                                  >
+                                    <Pencil aria-hidden="true" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      setCustomerToDeactivate(customer)
+                                    }
+                                  >
+                                    Remover
+                                  </Button>
+                                </>
+                              ) : null}
                             </div>
                           </TableCell>
                         ) : null}
@@ -292,23 +344,33 @@ export function ClientesPage() {
                       </div>
                       <OptInBadge optIn={customer.whatsapp_opt_in} />
                     </div>
-                    {canManageCustomers ? (
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEdit(customer)}
-                        >
-                          <Pencil aria-hidden="true" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setCustomerToDeactivate(customer)}
-                        >
-                          Remover
-                        </Button>
+                    {canManageCustomers || canSendWhatsAppMessage ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {canSendWhatsAppMessage ? (
+                          <SendMessageButton
+                            customer={customer}
+                            onSend={setMessageTarget}
+                          />
+                        ) : null}
+                        {canManageCustomers ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(customer)}
+                            >
+                              <Pencil aria-hidden="true" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCustomerToDeactivate(customer)}
+                            >
+                              Remover
+                            </Button>
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
                   </li>
@@ -368,6 +430,18 @@ export function ClientesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {canSendWhatsAppMessage && messageTarget ? (
+        <SendMessageDialog
+          open={!!messageTarget}
+          onOpenChange={(open) => {
+            if (!open) setMessageTarget(null);
+          }}
+          customerId={messageTarget.id}
+          customerName={messageTarget.name}
+          whatsappOptIn={messageTarget.whatsapp_opt_in}
+        />
+      ) : null}
     </div>
   );
 }

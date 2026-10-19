@@ -1,8 +1,16 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  MessageCircle,
+  Pencil,
+  Plus,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,21 +113,28 @@ function AgendaItem({
   appointment,
   timeZone,
   canManage,
+  canSendMessage,
   onEdit,
   onChangeStatus,
+  onSendMessage,
 }: {
   appointment: AppointmentWithRelations;
   timeZone: string;
   canManage: boolean;
+  canSendMessage: boolean;
   onEdit: (appointment: AppointmentWithRelations) => void;
   onChangeStatus: (
     appointment: AppointmentWithRelations,
     to: AppointmentStatus,
   ) => void;
+  onSendMessage: (appointment: AppointmentWithRelations) => void;
 }) {
   const transitions = getAllowedTransitions(appointment.status);
   const showStatusMenu =
     canManage && !isFinalStatus(appointment.status) && transitions.length > 0;
+  // Opt-in na borda: sem consentimento, a ação fica desabilitada com o motivo
+  // em texto (defesa dupla; a trava real é o servidor).
+  const optIn = appointment.customers?.whatsapp_opt_in ?? false;
 
   return (
     <li
@@ -161,6 +176,29 @@ function AgendaItem({
                 <Pencil aria-hidden="true" />
                 Editar
               </Button>
+              {canSendMessage ? (
+                <div className="flex flex-col items-start">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!optIn}
+                    title={
+                      optIn
+                        ? undefined
+                        : "Este cliente não autorizou receber mensagens no WhatsApp."
+                    }
+                    onClick={() => onSendMessage(appointment)}
+                  >
+                    <MessageCircle aria-hidden="true" />
+                    Enviar mensagem
+                  </Button>
+                  {!optIn ? (
+                    <span className="sr-only">
+                      Este cliente não autorizou receber mensagens no WhatsApp.
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               {showStatusMenu ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -200,8 +238,11 @@ function AgendaItem({
  * vinculado vê um estado vazio honesto.
  */
 export function AgendaPage() {
-  const { canManageAppointments, canScheduleForAnyProfessional } =
-    usePermissions();
+  const {
+    canManageAppointments,
+    canScheduleForAnyProfessional,
+    canSendWhatsAppMessage,
+  } = usePermissions();
   const { tenant } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
@@ -241,6 +282,8 @@ export function AgendaPage() {
     appointment: AppointmentWithRelations;
     to: AppointmentStatus;
   } | null>(null);
+  const [messageTarget, setMessageTarget] =
+    useState<AppointmentWithRelations | null>(null);
 
   function openCreate() {
     setEditingAppointment(null);
@@ -438,8 +481,10 @@ export function AgendaPage() {
                   appointment={appointment}
                   timeZone={timeZone}
                   canManage={canManageAppointments}
+                  canSendMessage={canSendWhatsAppMessage}
                   onEdit={openEdit}
                   onChangeStatus={handleChangeStatus}
+                  onSendMessage={setMessageTarget}
                 />
               ))}
             </ul>
@@ -465,6 +510,19 @@ export function AgendaPage() {
         change={statusChange}
         onClose={() => setStatusChange(null)}
       />
+
+      {canSendWhatsAppMessage && messageTarget ? (
+        <SendMessageDialog
+          open={!!messageTarget}
+          onOpenChange={(open) => {
+            if (!open) setMessageTarget(null);
+          }}
+          customerId={messageTarget.customer_id}
+          customerName={messageTarget.customers?.name ?? "o cliente"}
+          whatsappOptIn={messageTarget.customers?.whatsapp_opt_in ?? false}
+          appointmentId={messageTarget.id}
+        />
+      ) : null}
     </div>
   );
 }

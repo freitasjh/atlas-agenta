@@ -41,7 +41,9 @@ const appointmentRowSchema = z.object({
   status: z.enum(APPOINTMENT_STATUSES),
   confirmed_at: z.string().nullable(),
   created_at: z.string(),
-  customers: z.object({ name: z.string() }).nullable(),
+  customers: z
+    .object({ name: z.string(), whatsapp_opt_in: z.boolean() })
+    .nullable(),
   services: z
     .object({
       name: z.string(),
@@ -56,7 +58,7 @@ const appointmentListSchema = z.array(appointmentRowSchema);
 
 /** `select` com o join embutido — uma request só, nomes legíveis inclusos. */
 const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, created_at, customers(name), services(name, duration_minutes, price_cents), professionals(name)";
+  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 

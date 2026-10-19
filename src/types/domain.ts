@@ -172,7 +172,7 @@ export interface Appointment {
  * hook valida o shape aninhado antes do uso).
  */
 export interface AppointmentWithRelations extends Appointment {
-  customers: { name: string } | null;
+  customers: { name: string; whatsapp_opt_in: boolean } | null;
   services: { name: string } | null;
   professionals: { name: string } | null;
 }
