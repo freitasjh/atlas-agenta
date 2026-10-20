@@ -18,6 +18,9 @@ const professionalRowSchema = z.object({
   name: z.string(),
   profile_id: z.string().nullable(),
   active: z.boolean(),
+  schedule_start_date: z.string().nullable(),
+  schedule_end_date: z.string().nullable(),
+  slot_step_minutes: z.number(),
   created_at: z.string(),
 });
 
@@ -32,7 +35,9 @@ export function useProfessionals(options?: { activeOnly?: boolean }) {
     queryFn: async () => {
       let query = supabase
         .from("professionals")
-        .select("id, tenant_id, name, profile_id, active, created_at")
+        .select(
+          "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
+        )
         .order("name", { ascending: true });
       if (activeOnly) query = query.eq("active", true);
       const { data, error } = await query;
@@ -49,7 +54,9 @@ export function useCreateProfessional() {
       const { data, error } = await supabase
         .from("professionals")
         .insert({ name: input.name, active: input.active })
-        .select("id, tenant_id, name, profile_id, active, created_at")
+        .select(
+          "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
+        )
         .single();
       if (error) throw error;
       return professionalRowSchema.parse(data);
@@ -68,7 +75,9 @@ export function useUpdateProfessional() {
         .from("professionals")
         .update({ name: input.name, active: input.active })
         .eq("id", id)
-        .select("id, tenant_id, name, profile_id, active, created_at")
+        .select(
+          "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
+        )
         .single();
       if (error) throw error;
       return professionalRowSchema.parse(data);
@@ -88,7 +97,9 @@ export function useDeactivateProfessional() {
         .from("professionals")
         .update({ active })
         .eq("id", id)
-        .select("id, tenant_id, name, profile_id, active, created_at")
+        .select(
+          "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
+        )
         .single();
       if (error) throw error;
       return professionalRowSchema.parse(data);
