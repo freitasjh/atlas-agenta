@@ -22,6 +22,15 @@ export const pairInputSchema = z.object({
 });
 
 /**
+ * `{ action: 'check' }` — reconcilia o estado real da Evolution com o persistido (ADR-17/18).
+ * Corpo só `action`, igual a `pair`; tenant_id derivado do JWT, nunca do cliente. Nome `check`
+ * (preferido a `status`) para não colidir com `connection_status`/`subscription_status`.
+ */
+export const checkInputSchema = z.object({
+  action: z.literal("check"),
+});
+
+/**
  * `{ action: 'send', template, customerId, appointmentId? }`. O contrato de fio usa camelCase
  * (`customerId`/`appointmentId`), alinhado ao consumidor (ADR-06) e à análise de frontend. Esta
  * ADR é a DONA do contrato: qualquer mudança aqui obriga atualizar os zod schemas do frontend.
@@ -43,10 +52,12 @@ export const sendInputSchema = z.object({
 export const requestSchema = z.discriminatedUnion("action", [
   pairInputSchema,
   sendInputSchema,
+  checkInputSchema,
 ]);
 export type RequestBody = z.infer<typeof requestSchema>;
 export type PairInput = z.infer<typeof pairInputSchema>;
 export type SendInput = z.infer<typeof sendInputSchema>;
+export type CheckInput = z.infer<typeof checkInputSchema>;
 
 /** Estados observáveis da conexão — espelha `whatsapp_instances.connection_status`. */
 export const connectionStatusSchema = z.enum([
@@ -63,6 +74,16 @@ export const pairResponseSchema = z.object({
   last_connected_at: z.string().nullable().optional(),
 });
 export type PairResponse = z.infer<typeof pairResponseSchema>;
+
+/**
+ * Resposta de `check` (ADR-17): o estado persistido após reconciliar com a Evolution. Reusa
+ * `connectionStatusSchema` (`desconectado|aguardando_qr|conectado`). Validada pela UI (ADR-19).
+ */
+export const checkResponseSchema = z.object({
+  connection_status: connectionStatusSchema,
+  last_connected_at: z.string().nullable().optional(),
+});
+export type CheckResponse = z.infer<typeof checkResponseSchema>;
 
 /**
  * Resultado do envio. Cada valor é um estado de negócio distinto que a UI (ADR-06) traduz para

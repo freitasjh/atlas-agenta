@@ -39,10 +39,22 @@ export interface SendTextParams {
   text: string;
 }
 
+/** Resultado da checagem de estado da conexão. A porta é dona do formato — não vaza o corpo cru. */
+export interface ConnectionStateResult {
+  /** Estado real reportado pela Evolution: `open|connecting|close`. */
+  state: EvolutionState;
+}
+
 /** Porta estável: a Edge Function só conhece esta interface, nunca o provedor concreto. */
 export interface EvolutionAdapter {
   pair(instanceName: string): Promise<PairResult>;
   sendText(params: SendTextParams): Promise<SendResult>;
+  /**
+   * Consulta o estado REAL da conexão da instância (ADR-17). Devolve só o `state` normalizado —
+   * nunca o corpo cru da Evolution. Dado externo validado com `connectionStateSchema` na impl
+   * real; falha fora do contrato vira `Error` pt-BR, sem vazar corpo nem API key.
+   */
+  getConnectionState(instanceName: string): Promise<ConnectionStateResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +290,15 @@ export class MockEvolutionAdapter implements EvolutionAdapter {
     await simulatedLatency();
     return { providerMessageId: `mock-${crypto.randomUUID()}` };
   }
+
+  /**
+   * MOCK: sem rede. Retorna `open` para que o fallback de demo consiga concluir a conexão sem
+   * celular/QR real (RF-QR-05).
+   */
+  async getConnectionState(_instanceName: string): Promise<ConnectionStateResult> {
+    await simulatedLatency();
+    return { state: "open" };
+  }
 }
 
 /**
@@ -405,6 +426,40 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
     }
 
     return { providerMessageId: parsed.data.key.id };
+  }
+
+  /**
+   * `getConnectionState` REAL (ADR-17): consulta o estado atual da instância na Evolution.
+   * Porta pura — não toca o banco, não resolve tenant (RNF-RE-04). O consumidor (ADR-18)
+   * reconcilia este estado com `whatsapp_instances.connection_status`.
+   *
+   * Fluxo (contrato v2.3.7 — análise §5):
+   *  1. Credenciais do env (sem rede se ausentes — R7/AC-07).
+   *  2. `GET /instance/connectionState/{instance}`, cliente HTTP com timeout da ADR-09;
+   *     timeout/erro de rede → falha pt-BR controlada (R13/AC-13).
+   *  3. Resposta externa NÃO confiável — validar o shape com `connectionStateSchema` antes de
+   *     ler `instance.state`; fora do contrato ou `!ok` → falha pt-BR controlada, SEM vazar o
+   *     corpo do provedor nem a API key (R6/AC-06, R8/R9).
+   */
+  async getConnectionState(instanceName: string): Promise<ConnectionStateResult> {
+    const credentials = this.credentials();
+
+    const stateRes = await evolutionFetch(credentials, {
+      method: "GET",
+      path: `/instance/connectionState/${encodeURIComponent(instanceName)}`,
+    });
+    if (!stateRes.ok) {
+      console.error(`getConnectionState: consulta falhou (status ${stateRes.status})`);
+      throw new Error("Não foi possível consultar o estado do WhatsApp.");
+    }
+
+    const parsed = connectionStateSchema.safeParse(stateRes.body);
+    if (!parsed.success) {
+      console.error("getConnectionState: resposta de estado fora do contrato");
+      throw new Error("Resposta inválida do servidor de WhatsApp.");
+    }
+
+    return { state: parsed.data.instance.state };
   }
 }
 
