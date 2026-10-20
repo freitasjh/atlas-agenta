@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:functions": "bash scripts/dev-functions.sh",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview"
