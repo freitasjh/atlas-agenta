@@ -239,7 +239,8 @@ export type SendTextResponse = z.infer<typeof sendTextResponseSchema>;
  * Especificação canônica fixada na ADR-01 (dona da regra; a ponta do cadastro em `src/lib/phone.ts`
  * / ADR-02 a espelha — mesma tabela de casos, sem divergir — RF-E164-05):
  *
- *  - 10 ou 11 díg que NÃO começam com `55` (fixo/móvel nacional sem DDI) → prefixa `55`.
+ *  - 10 ou 11 díg (fixo/móvel nacional sem DDI) → prefixa `55` (a fronteira é o COMPRIMENTO,
+ *    não o prefixo: 11 díg começando com `55` é DDD 55/RS, nacional sem DDI → também prefixa).
  *  - 12 ou 13 díg começando com `55` (fixo/móvel BR já com DDI) → mantém (idempotente).
  *  - demais comprimentos → devolve os dígitos como estão (NÃO lança; a Evolution recusa).
  *
