@@ -4,6 +4,13 @@ import { ArrowLeft, Eye } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useProfessionals } from "@/hooks/useProfessionals";
@@ -12,6 +19,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 
 import { WeekScheduleForm } from "@/app/config/profissionais/horarios/WeekScheduleForm";
+import { ScheduleValidityForm } from "@/app/config/profissionais/horarios/ScheduleValidityForm";
+import { ScheduleOverridesSection } from "@/app/config/profissionais/horarios/ScheduleOverridesSection";
 
 const PROFISSIONAIS_HREF = "/app/config/profissionais";
 
@@ -62,7 +71,7 @@ function BackLink() {
  */
 export function HorariosPage() {
   const { profissionalId } = useParams<{ profissionalId: string }>();
-  const { canEditAnySchedule, canEditOwnSchedule } = usePermissions();
+  const { canEditAnySchedule, canEditOwnSchedule, isAdmin } = usePermissions();
 
   const professionalsQuery = useProfessionals();
   const profileQuery = useProfile();
@@ -150,6 +159,38 @@ export function HorariosPage() {
             workingHours={workingHoursQuery.data ?? []}
             readOnly={!canEdit}
           />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Vigência da agenda</CardTitle>
+              <CardDescription>
+                Período em que o profissional atende e o passo dos horários
+                oferecidos. Só o administrador edita.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScheduleValidityForm
+                professionalId={professional.id}
+                readOnly={!isAdmin}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Exceções por data</CardTitle>
+              <CardDescription>
+                Folgas, feriados e horários atípicos que sobrepõem a grade
+                semanal em dias específicos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScheduleOverridesSection
+                professionalId={professional.id}
+                readOnly={!canEdit}
+              />
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
