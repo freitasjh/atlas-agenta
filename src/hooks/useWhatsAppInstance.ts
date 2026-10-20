@@ -2,7 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
-import { WHATSAPP_INSTANCE_KEY, type PairResponse } from "@/lib/whatsapp";
+import {
+  WHATSAPP_INSTANCE_KEY,
+  type CheckResponse,
+  type PairResponse,
+} from "@/lib/whatsapp";
 import {
   WHATSAPP_CONNECTION_STATUSES,
   type WhatsAppInstance,
@@ -36,6 +40,12 @@ const pairResponseSchema = z.object({
   last_connected_at: z.string().nullable().optional(),
 });
 
+/** Resposta de `check` (ADR-17) — espelho do `checkResponseSchema` do backend. */
+const checkResponseSchema = z.object({
+  connection_status: z.enum(WHATSAPP_CONNECTION_STATUSES),
+  last_connected_at: z.string().nullable().optional(),
+}) satisfies z.ZodType<CheckResponse>;
+
 const WHATSAPP_INSTANCE_SELECT =
   "id, tenant_id, evolution_instance_name, connection_status, last_connected_at, created_at";
 
@@ -48,17 +58,51 @@ const AWAITING_QR_POLL_MS = 2500;
  * transição `aguardando_qr → conectado` observável sem reload. Em
  * `conectado`/`desconectado` (ou sem linha) o polling para. Sem WebSocket.
  */
+/**
+ * Lê a (única) linha de `whatsapp_instances` do tenant sob RLS. Dado canônico;
+ * `null` quando o tenant ainda não tem instância.
+ */
+async function readWhatsAppInstanceRow(): Promise<WhatsAppInstance | null> {
+  const { data, error } = await supabase
+    .from("whatsapp_instances")
+    .select(WHATSAPP_INSTANCE_SELECT)
+    .maybeSingle();
+  if (error) throw error;
+  if (data === null) return null;
+  return whatsAppInstanceRowSchema.parse(data);
+}
+
+/**
+ * Reconcilia o estado real da Evolution com o persistido (action `check`, ADR-17)
+ * em modo **best-effort**: o corpo carrega só `{ action: "check" }` (sem
+ * `tenant_id`; servidor deriva do JWT). Qualquer falha — rede, Evolution fora,
+ * parse inválido — é ENGOLIDA (log técnico curto, sem PII, nunca relança): o dado
+ * canônico é sempre a releitura da linha. Não devolve valor; só provoca a
+ * transição do lado do servidor.
+ */
+async function reconcileWhatsAppCheck(): Promise<void> {
+  try {
+    const { data, error } = await supabase.functions.invoke("whatsapp", {
+      body: { action: "check" },
+    });
+    if (error) throw error;
+    checkResponseSchema.parse(data);
+  } catch {
+    // best-effort: falha de check não derruba a leitura nem o QR.
+    console.debug("[whatsapp] check best-effort falhou; usando a linha canônica");
+  }
+}
+
 export function useWhatsAppInstance() {
   return useQuery<WhatsAppInstance | null>({
     queryKey: WHATSAPP_INSTANCE_KEY,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("whatsapp_instances")
-        .select(WHATSAPP_INSTANCE_SELECT)
-        .maybeSingle();
-      if (error) throw error;
-      if (data === null) return null;
-      return whatsAppInstanceRowSchema.parse(data);
+      const row = await readWhatsAppInstanceRow();
+      // Só reconcilia enquanto aguardando QR: dispara `check` (best-effort) e
+      // relê a linha, que é o dado canônico. Fora desse estado, a linha basta.
+      if (row?.connection_status !== "aguardando_qr") return row;
+      await reconcileWhatsAppCheck();
+      return readWhatsAppInstanceRow();
     },
     // Polling só no estado transitório; desligado nos estados estáveis.
     refetchInterval: (query) =>

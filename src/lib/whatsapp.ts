@@ -80,6 +80,11 @@ export interface PairRequest {
   action: "pair";
 }
 
+/** Payload de `check` — tenant derivado do JWT no servidor (ADR-17). */
+export interface CheckRequest {
+  action: "check";
+}
+
 /** Payload de `send` (camelCase, alinhado ao consumidor). */
 export interface SendRequest {
   action: "send";
@@ -92,6 +97,16 @@ export interface SendRequest {
 export interface PairResponse {
   connection_status: WhatsAppConnectionStatus;
   qr_code_base64?: string;
+  last_connected_at?: string | null;
+}
+
+/**
+ * Resposta de `check` (ADR-17) — o estado persistido após o servidor reconciliar
+ * com a Evolution. Sem QR: a reconciliação não re-emite código, só informa o
+ * estado canônico. A UI (ADR-19) a valida por zod e trata como best-effort.
+ */
+export interface CheckResponse {
+  connection_status: WhatsAppConnectionStatus;
   last_connected_at?: string | null;
 }
 

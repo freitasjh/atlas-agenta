@@ -59,6 +59,10 @@ const PAIRING_STEPS = [
 
 export function ConnectionCard({ instance, canManage }: ConnectionCardProps) {
   const pair = usePairWhatsApp();
+  // QR efêmero da resposta de `pair`. É setado só em `handleConnect` e NUNCA
+  // zerado por efeito/refetch: enquanto a linha está `aguardando_qr`, o polling
+  // de `useWhatsAppInstance` relê a instância sem tocar neste estado local, então
+  // o card segue exibindo o mesmo QR até a linha virar `conectado` (ADR-19).
   const [qrCodeBase64, setQrCodeBase64] = useState<string | undefined>(
     undefined,
   );
