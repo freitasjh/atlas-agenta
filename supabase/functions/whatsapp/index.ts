@@ -169,7 +169,7 @@ async function handlePair(
     return errorResponse("Não foi possível preparar a conexão.", 500);
   }
 
-  // Adapter (mock) devolve o QR fake. QR NÃO é persistido.
+  // Adapter devolve o QR. QR NÃO é persistido — vive só nesta resposta.
   let qrCodeBase64: string;
   try {
     const pairResult = await adapter.pair(instanceName);
@@ -179,22 +179,76 @@ async function handlePair(
     return errorResponse("Falha ao gerar o QR Code da conexão.", 502);
   }
 
-  // Pareamento simulado conclui: evolui para `conectado` + last_connected_at.
-  const connectedAt = new Date().toISOString();
-  const { error: updateErr } = await service
+  // `pair` PARA em `aguardando_qr`: a conclusão da conexão passa a ser reconciliada por `check`
+  // (handleCheck) condicionada ao `state === "open"` real da Evolution. No modo real, `pair`
+  // nunca grava nem retorna `conectado` — o usuário precisa escanear o QR no celular.
+  return jsonResponse(
+    {
+      connection_status: "aguardando_qr",
+      qr_code_base64: qrCodeBase64,
+    },
+    200,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Operação: check (reconcilia o estado real da Evolution com a linha persistida)
+// ---------------------------------------------------------------------------
+async function handleCheck(
+  ctx: TenantContext,
+  service: SupabaseClient,
+): Promise<Response> {
+  const { identity } = ctx;
+  // Parear e reconciliar são atos de configuração do dono do tenant — espelha `handlePair`.
+  if (identity.role !== "admin") {
+    return errorResponse("Você não tem permissão para verificar a conexão do WhatsApp.", 403);
+  }
+  if (!identity.tenantId) {
+    return errorResponse("Usuário sem empresa associada.", 403);
+  }
+
+  const tenantId = identity.tenantId;
+  const instanceName = `tenant-${tenantId}`;
+  const adapter = createEvolutionAdapter();
+
+  // Consulta o estado REAL da Evolution. Falha é NÃO-fatal: devolve o estado atual da linha.
+  let realState: Awaited<ReturnType<typeof adapter.getConnectionState>> | null = null;
+  try {
+    realState = await adapter.getConnectionState(instanceName);
+  } catch (err) {
+    // Nunca logar corpo cru/token/QR — só motivo técnico curto.
+    console.error("check: adapter falhou", err instanceof Error ? err.message : "erro");
+    realState = null;
+  }
+
+  // Reconciliação idempotente: só quando a Evolution confirma `open`, transiciona para
+  // `conectado` + last_connected_at. Gravar o mesmo `conectado` repetido é inócuo.
+  if (realState?.state === "open") {
+    const { error: updateErr } = await service
+      .from("whatsapp_instances")
+      .update({ connection_status: "conectado", last_connected_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId);
+    if (updateErr) {
+      console.error("check: falha ao reconciliar estado", updateErr.message);
+      return errorResponse("Não foi possível atualizar o estado da conexão.", 500);
+    }
+  }
+
+  // Relê a linha e devolve o estado persistido (validável por `checkResponseSchema`).
+  const { data: row, error: readErr } = await service
     .from("whatsapp_instances")
-    .update({ connection_status: "conectado", last_connected_at: connectedAt })
-    .eq("tenant_id", tenantId);
-  if (updateErr) {
-    console.error("pair: falha ao concluir pareamento", updateErr.message);
-    return errorResponse("Não foi possível concluir a conexão.", 500);
+    .select("connection_status, last_connected_at")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (readErr) {
+    console.error("check: falha ao reler instância", readErr.message);
+    return errorResponse("Não foi possível consultar o estado da conexão.", 500);
   }
 
   return jsonResponse(
     {
-      connection_status: "conectado",
-      qr_code_base64: qrCodeBase64,
-      last_connected_at: connectedAt,
+      connection_status: (row?.connection_status as string | null) ?? "desconectado",
+      last_connected_at: (row?.last_connected_at as string | null) ?? null,
     },
     200,
   );
@@ -452,6 +506,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     if (parsed.data.action === "pair") {
       return await handlePair(ctx, service);
+    }
+    if (parsed.data.action === "check") {
+      return await handleCheck(ctx, service);
     }
     return await handleSend(parsed.data, ctx, service);
   } catch (err) {
