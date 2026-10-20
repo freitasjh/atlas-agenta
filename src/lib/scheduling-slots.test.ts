@@ -263,10 +263,11 @@ describe("generateAvailableSlots", () => {
     expect(semOcupado.map((s) => s.label)).toEqual(["09:00", "10:00", "11:00"]);
   });
 
-  it("DST: slots no fuso do tenant permanecem no horário de parede correto", () => {
-    // 2025-02-15 — America/Sao_Paulo não tem mais DST desde 2019, então o
-    // offset é estável (-03:00). O teste garante que a conversão de parede para
-    // UTC é consistente num mês diferente.
+  it("fuso estável (Brasil, sem DST): parede 09:00 → UTC consistente em meses diferentes", () => {
+    // America/Sao_Paulo não tem mais horário de verão desde 2019, então o
+    // offset é estável (-03:00). A borda de transição de offset (DST) é coberta
+    // pelos testes de `datetime.ts`; aqui garantimos apenas que a conversão de
+    // parede → UTC é consistente num mês diferente.
     const slots = generateAvailableSlots(
       baseInput({
         day: "2025-02-17", // segunda-feira
@@ -276,5 +277,33 @@ describe("generateAvailableSlots", () => {
     );
     expect(slots[0]?.label).toBe("09:00");
     expect(slots[0]?.startUtc).toBe("2025-02-17T12:00:00.000Z");
+  });
+
+  it("DST real (America/New_York): o mesmo horário de parede cai em offset UTC diferente antes/depois da virada", () => {
+    // Em 2025 os EUA entram no DST em 2025-03-09. Antes (EST = UTC-5), depois
+    // (EDT = UTC-4). Exercita a TRANSIÇÃO real de offset: 09:00 de parede não
+    // muda, mas o instante UTC muda de 14:00Z para 13:00Z.
+    const antes = generateAvailableSlots(
+      baseInput({
+        day: "2025-03-03", // segunda, ainda EST (UTC-5)
+        timeZone: "America/New_York",
+        durationMinutes: 60,
+        slotStepMinutes: 60,
+      }),
+    );
+    const depois = generateAvailableSlots(
+      baseInput({
+        day: "2025-03-10", // segunda, já EDT (UTC-4)
+        timeZone: "America/New_York",
+        durationMinutes: 60,
+        slotStepMinutes: 60,
+      }),
+    );
+    // Rótulo de parede idêntico nos dois lados da virada.
+    expect(antes[0]?.label).toBe("09:00");
+    expect(depois[0]?.label).toBe("09:00");
+    // Mas o instante UTC reflete o offset de cada lado (EST→14:00Z, EDT→13:00Z).
+    expect(antes[0]?.startUtc).toBe("2025-03-03T14:00:00.000Z");
+    expect(depois[0]?.startUtc).toBe("2025-03-10T13:00:00.000Z");
   });
 });

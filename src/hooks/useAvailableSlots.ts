@@ -5,6 +5,7 @@ import {
   type AvailableSlot,
   type BusyInterval,
 } from "@/lib/scheduling-slots";
+import { isActiveAppointmentStatus } from "@/lib/scheduling-status";
 import { useAppointments } from "@/hooks/useAppointments";
 import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
 import { useScheduleValidity } from "@/hooks/useProfessionals";
@@ -92,8 +93,12 @@ export function useAvailableSlots({
     const override =
       (overridesQuery.data ?? []).find((o) => o.override_date === day) ?? null;
 
+    // Só agendamentos ATIVOS ocupam a agenda. `cancelado`/`nao_compareceu`
+    // liberam o horário (AC-13) — mesma regra da constraint
+    // `appointments_no_overlap` no banco, centralizada em `scheduling-status`.
     const busy: BusyInterval[] = (appointmentsQuery.data ?? [])
       .filter((a) => a.id !== excludeAppointmentId)
+      .filter((a) => isActiveAppointmentStatus(a.status))
       .map((a) => ({ startsAt: a.starts_at, endsAt: a.ends_at }));
 
     return generateAvailableSlots({

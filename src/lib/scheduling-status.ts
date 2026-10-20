@@ -63,3 +63,24 @@ export function isTransitionAllowed(
 export function getTransitionLabel(status: AppointmentStatus): string {
   return getAppointmentStatusLabel(status);
 }
+
+/**
+ * Status que **não** ocupam a agenda do profissional — espelham o
+ * `where (status not in ('cancelado','nao_compareceu'))` da constraint
+ * `appointments_no_overlap` (migration
+ * `20250219092000_appointments_no_overlap.sql`). Ponto único para não divergir
+ * da fonte da verdade do banco.
+ */
+export const INACTIVE_APPOINTMENT_STATUSES: readonly AppointmentStatus[] = [
+  "cancelado",
+  "nao_compareceu",
+];
+
+/**
+ * True quando o agendamento está "ativo" e portanto ocupa o horário do
+ * profissional (deve descontar slots). `cancelado`/`nao_compareceu` liberam o
+ * horário — mesma regra da constraint de não-sobreposição no banco (AC-13).
+ */
+export function isActiveAppointmentStatus(status: AppointmentStatus): boolean {
+  return !INACTIVE_APPOINTMENT_STATUSES.includes(status);
+}
