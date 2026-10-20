@@ -4,6 +4,7 @@ import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import type { Professional } from "@/types/domain";
 import type { ProfessionalInput } from "@/lib/validations/catalog";
+import type { ScheduleValidityInput } from "@/lib/validations/schedule";
 
 /**
  * Hooks de dados de `professionals` (TanStack Query). Validação zod no retorno;
@@ -28,10 +29,14 @@ const professionalListSchema = z.array(professionalRowSchema);
 
 const PROFESSIONALS_KEY = ["professionals"] as const;
 
-export function useProfessionals(options?: { activeOnly?: boolean }) {
+export function useProfessionals<TData = Professional[]>(options?: {
+  activeOnly?: boolean;
+  select?: (professionals: Professional[]) => TData;
+}) {
   const activeOnly = options?.activeOnly ?? false;
-  return useQuery<Professional[]>({
+  return useQuery<Professional[], Error, TData>({
     queryKey: [...PROFESSIONALS_KEY, { activeOnly }],
+    select: options?.select,
     queryFn: async () => {
       let query = supabase
         .from("professionals")
@@ -74,6 +79,68 @@ export function useUpdateProfessional() {
       const { data, error } = await supabase
         .from("professionals")
         .update({ name: input.name, active: input.active })
+        .eq("id", id)
+        .select(
+          "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
+        )
+        .single();
+      if (error) throw error;
+      return professionalRowSchema.parse(data);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PROFESSIONALS_KEY });
+    },
+  });
+}
+
+/**
+ * Vigência da grade + passo-base de slots de um profissional. Seletor fino
+ * derivado de `useProfessionals` (os campos já vêm no `select`) para evitar um
+ * request duplicado — a chave de query e o cache são compartilhados. Retorna
+ * `null` enquanto a lista carrega ou quando o profissional não existe/é de outro
+ * tenant (RLS não o traz).
+ */
+export interface ScheduleValidity {
+  schedule_start_date: string | null;
+  schedule_end_date: string | null;
+  slot_step_minutes: number;
+}
+
+export function useScheduleValidity(professionalId: string | null) {
+  return useProfessionals({
+    select: (professionals): ScheduleValidity | null => {
+      if (!professionalId) return null;
+      const match = professionals.find((p) => p.id === professionalId);
+      if (!match) return null;
+      return {
+        schedule_start_date: match.schedule_start_date,
+        schedule_end_date: match.schedule_end_date,
+        slot_step_minutes: match.slot_step_minutes,
+      };
+    },
+  });
+}
+
+/**
+ * Atualiza **apenas** as colunas de agenda em `professionals`
+ * (`schedule_start_date`/`schedule_end_date`/`slot_step_minutes`) — não toca
+ * `name`/`active`/`profile_id`. Sem `tenant_id` no corpo; o RLS garante que a
+ * escrita é admin-only (ADR-01). Invalida a chave de profissionais.
+ */
+export function useUpdateScheduleValidity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...input
+    }: ScheduleValidityInput & { id: string }) => {
+      const { data, error } = await supabase
+        .from("professionals")
+        .update({
+          schedule_start_date: input.scheduleStartDate,
+          schedule_end_date: input.scheduleEndDate,
+          slot_step_minutes: input.slotStepMinutes,
+        })
         .eq("id", id)
         .select(
           "id, tenant_id, name, profile_id, active, schedule_start_date, schedule_end_date, slot_step_minutes, created_at",
