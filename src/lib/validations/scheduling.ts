@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { toE164BR } from "@/lib/phone";
+
 /**
  * Schemas de validação do agendamento base (react-hook-form + resolver zod).
  *
@@ -9,15 +11,15 @@ import { z } from "zod";
  * pt-BR.
  */
 
-/** E.164: `+` opcional seguido de 8–15 dígitos, primeiro dígito não-zero. */
-const E164_REGEX = /^\+?[1-9]\d{7,14}$/;
-
 /**
- * `customers`: name 1–120, phone E.164, email opcional, whatsapp_opt_in bool.
+ * `customers`: name 1–120, phone E.164-BR, email opcional, whatsapp_opt_in bool.
  *
- * `phone` é normalizado (remove espaços, parênteses, hífens e pontos) antes de
- * validar E.164 — a UI aceita a digitação br e normaliza; o banco guarda o
- * valor normalizado. `email` vazio vira `undefined` (não grava string vazia).
+ * `phone` é normalizado para **E.164-BR canônico** (`+55` + DDD + assinante)
+ * por `toE164BR` (`src/lib/phone.ts`, que espelha a especificação da ADR-01): a
+ * UI aceita a digitação br, o DDI `55` é assumido automaticamente e o banco
+ * guarda o valor normalizado. Entrada com comprimento inválido vira `null` e o
+ * submit é recusado com erro pt-BR (RF-E164-03). `email` vazio vira `undefined`
+ * (não grava string vazia).
  */
 export const customerSchema = z.object({
   name: z
@@ -28,9 +30,9 @@ export const customerSchema = z.object({
   phone: z
     .string()
     .trim()
-    .transform((value) => value.replace(/[\s()\-.]/g, ""))
-    .refine((value) => E164_REGEX.test(value), {
-      message: "Informe um telefone válido (ex.: +5511999998888).",
+    .transform((value) => toE164BR(value))
+    .refine((value): value is string => value !== null, {
+      message: "Informe um telefone com DDD (ex.: (11) 99999-8888).",
     }),
   email: z
     .string()

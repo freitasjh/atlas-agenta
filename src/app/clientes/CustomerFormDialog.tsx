@@ -163,7 +163,8 @@ export function CustomerFormDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Com DDD. É para onde vão as mensagens de WhatsApp.
+                    Com DDD. Assumimos o Brasil (+55) automaticamente. É o
+                    número que recebe as mensagens de WhatsApp.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
