@@ -1,0 +1,23 @@
+{
+  "module": "WhatsApp real — RealEvolutionAdapter (pair + sendText reais atras da porta existente)",
+  "branch": "feat/whatsapp-base-mock",
+  "baseBranch": "feat/scaffold-inicial-atlas-agenda",
+  "prPublished": false,
+  "prBlocker": "Entrega local-only confirmada pela orquestracao: repositorio sem git remote e sem CLI de forge (gh/glab/cr ausentes). PR nao publicado; publicacao pendente de o usuario conectar um remote. Os commits da feature vivem em feat/whatsapp-base-mock (branch de entrega duplicada descartada).",
+  "url": null,
+  "adrsDelivered": [
+    { "id": "adr-09", "title": "Fundacao HTTP: cliente, credenciais do env, schemas zod e normalizacao de numero" },
+    { "id": "adr-10", "title": "pair real: criar/conectar instancia idempotente e devolver QR base64" },
+    { "id": "adr-11", "title": "sendText real: enviar texto e devolver providerMessageId real" },
+    { "id": "adr-12", "title": "Endurecimento final: segredo/PII, mock intacto, confinamento do diff e divida aceita" }
+  ],
+  "verification": {
+    "appFilesChanged": "unico arquivo de aplicacao da fase: supabase/functions/whatsapp/evolution-adapter.ts (344 insercoes, 15 remocoes). index.ts, schemas.ts, migrations e UI intactos.",
+    "frontend": "npm run typecheck (tsc -b) e npm run build (tsc -b && vite build) limpos; TS estrito; unico aviso e chunk >500kB pre-existente.",
+    "edgeFunctionBoot": "supabase functions serve whatsapp --env-file supabase/functions/.env com EVOLUTION_MODE=real sobe no supabase-edge-runtime-1.77.4 (Deno v2.1.4); probe sem auth -> 401 estruturado, provando module graph compilado/executado sem erro de boot; log de serve sem erros.",
+    "secretAudit": "git grep da API key literal em arquivos versionados = vazio; URL ngrok ausente de src/ e do codigo da function; sem VITE_EVOLUTION em src/; .env git-ignored e nao rastreado; .env.example presente.",
+    "mockIntacto": "MockEvolutionAdapter inalterado e selecionavel por EVOLUTION_MODE=mock; contrato de fio pair/send camelCase e interface EvolutionAdapter preservados — troca mock->real transparente a Edge Function e ao frontend.",
+    "chromeDevtoolsQa": "Nao aplicavel nesta fase: nenhuma ADR (09-12) toca o frontend; UI de /app/config/whatsapp byte-a-byte inalterada e evolution-adapter.ts fora do grafo Vite. Nenhuma superficie visual nova para verificar.",
+    "realSendNotTested": "Envio real a terceiro NAO disparado no QA automatizado (decisao D-02 do usuario); passo de teste manual documentado em pr-result.json."
+  }
+}

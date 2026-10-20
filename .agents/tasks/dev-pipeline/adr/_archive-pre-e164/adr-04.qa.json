@@ -1,0 +1,22 @@
+{
+  "test": "deferred",
+  "reason": "ADR-04 é a primeira Edge Function do projeto (escopo 'dados'), superfície privilegiada de servidor sem UI. Não há tela, rota ou DOM para inspecionar via Chrome DevTools nesta ADR — o comportamento de ponta a ponta (parear/enviar pela interface) só se torna testável em ADR-07/08. Seus critérios de aceite exigem ambiente Deno (`deno check supabase/functions/whatsapp/*.ts`) + `supabase functions serve` + Supabase local, que o pipeline de build atual não cobre (tsconfig só inclui `src/`; deno ausente neste ambiente) — lacuna já declarada na própria ADR. Adiar para a verificação consolidada antes do PR, junto das migrations fundação (adr-01/02/03). A corretude de segurança/multi-tenant/idempotência foi confirmada por inspeção direta do código (schemas sem tenant_id no payload, derivação do tenant via JWT/profiles com service role, opt-in LGPD antes do provedor, dedupe por índice único parcial com tratamento de 23505, outcomes distintos not_connected/send_failed) e pelos dois pareceres (build `tsc -b && vite build` OK, grep negativo de segredos/cron/rede real).",
+  "evidence": {
+    "build": "Contraprova de build executada pelos dois revisores independentes: `npm run build` (`tsc -b && vite build`) OK sem erros (Revisor B: 5,36s; Revisor A: 0 erros em build e typecheck). Arquivos Deno de `supabase/functions/whatsapp/*.ts` ficam fora do escopo do tsconfig do app por desenho — verificação de tipos Deno pendente para o QA consolidado (`deno check`).",
+    "files_confirmed": [
+      "supabase/functions/whatsapp/index.ts",
+      "supabase/functions/whatsapp/schemas.ts",
+      "supabase/functions/whatsapp/evolution-adapter.ts",
+      "supabase/functions/.env.example"
+    ],
+    "code_inspection": [
+      "schemas.ts: requestSchema é z.discriminatedUnion('action', [pair, send]) em camelCase, sem tenant_id (ignorado por construção, sem .passthrough()); sendOutcomeSchema inclui 'send_failed' distinto de 'not_connected'; sendResponseSchema é o DTO único.",
+      "index.ts: opt-in LGPD checado antes de chamar o adapter (grava 'falha'/'opt_in_ausente' sem PII, 422); idempotência por lookup de status vivo + insert em 'fila' + captura de 23505 com releitura da vencedora; not_connected retorna 409 com DTO; send_failed retorna 502 com DTO; provider_message_id só em sucesso; logs sem telefone/texto em claro.",
+      "evolution-adapter.ts: porta EvolutionAdapter com MockEvolutionAdapter (zero rede) default e RealEvolutionAdapter stub; seleção por EVOLUTION_MODE (default 'mock'); env de servidor nunca com prefixo VITE_."
+    ],
+    "deferred_to_consolidated_qa": [
+      "deno check supabase/functions/whatsapp/*.ts",
+      "supabase functions serve + Supabase local com EVOLUTION_MODE=mock para exercitar A1-A8 (pair devolve QR fake e transição desconectado→aguardando_qr→conectado; send com opt-in true → enviado; opt-in false → 422 falha sem PII; reenvio idêntico → duplicate; tenant forjado ignorado; papel insuficiente → 403; grep negativo de segredos/cron/rede real)"
+    ]
+  }
+}

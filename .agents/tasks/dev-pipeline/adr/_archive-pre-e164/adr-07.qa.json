@@ -1,0 +1,14 @@
+{
+  "test": "deferred",
+  "reason": "ADR-07 entrega uma tela utilizável de ponta a ponta (/app/config/whatsapp: pareamento por QR mock, máquina de estados da conexão e histórico sem PII), o que em princípio pediria QA ao vivo agora. Porém este passo de agregação roda sem terminal e sem o MCP chrome-devtools, então não é possível subir `npm run dev` nem dirigir o navegador aqui sem fabricar evidência. A verificação visual (tokens, dark default, guards de RBAC/capacidade, responsividade ~375px, aria-live, ausência de erro no console, requisições ao Supabase) fica consolidada no run único de qaPending antes do PR, junto com adr-01..06 — a tela desta ADR deve ser exercida lá. Contraprova de build: os dois revisores independentes (A e B) rodaram `npm run build` (tsc -b && vite build) e reportaram limpo, sem `any`; confirmei estaticamente que os 6 arquivos existem, a rota `whatsapp` está ligada em src/router.tsx sob os guards existentes, e os imports resolvem para módulos existentes (ADR-05/06).",
+  "evidence": {
+    "build": "Contraprova não re-executada neste passo por ausência de terminal; ambos os revisores independentes confirmaram `tsc -b && vite build` limpo, sem erro de tipo e sem `any` introduzido (aviso de chunk >500kB é pré-existente e global).",
+    "static_checks": [
+      "src/app/config/whatsapp/WhatsAppPage.tsx, ConnectionCard.tsx, QrCodeDisplay.tsx, RecentMessagesList.tsx presentes.",
+      "src/router.tsx: rota { path: \"whatsapp\", element: <WhatsAppPage /> } adicionada como filha de config, dentro do bloco RequireAuth → RequireActiveSubscription → AppLayout (sem guard novo).",
+      "Payload de pareamento sem tenant_id (isolamento por RLS/JWT); projeção de mensagens sem PII (telefone/corpo nunca chegam à tela); QR efêmero em useState, não persistido.",
+      "Acessibilidade por inspeção: aria-live polite na transição de status, alt no QR + instruções numeradas como alternativa não-visual, motion-reduce nas animações, aria-busy no skeleton, badges com cor + texto."
+    ],
+    "visual_qa": "Pendente — a ser feito no run consolidado de qaPending antes do PR, com dev server + chrome-devtools MCP."
+  }
+}

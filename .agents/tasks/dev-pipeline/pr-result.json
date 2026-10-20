@@ -2,43 +2,45 @@
   "url": null,
   "prPublished": false,
   "delivery": "local-only",
-  "branch": "feat/precos-cadastro-plan-intent",
-  "baseBranch": "feat/whatsapp-base-mock",
-  "title": "feat(marketing): /precos acionável e intenção de plano no /cadastro",
-  "reason": "Entrega local-only confirmada pela orquestracao (mesmo criterio dos runs anteriores): repositorio local sem git remote e sem CLI de forge (gh/glab/cr ausentes). PR nao publicado; URL nao fabricada. Os commits da feature vivem na branch feat/precos-cadastro-plan-intent (derivada de feat/whatsapp-base-mock).",
-  "pendingUserAction": "Publicacao do PR PENDENTE de o usuario conectar um remote. Depois: `git remote add origin <url>`, `git push -u origin feat/precos-cadastro-plan-intent`, entao abrir o Pull Request na forge escolhida contra feat/whatsapp-base-mock.",
+  "branch": "fix/e164-br-ddi-whatsapp",
+  "baseBranch": "feat/precos-cadastro-plan-intent",
+  "title": "fix(whatsapp): normaliza telefone para E.164-BR (DDI 55) no cadastro e antes da Evolution",
+  "reason": "Entrega local-only: repositorio sem git remote e sem CLI de forge (gh/glab/cr ausentes neste ambiente, confirmado). PR nao publicado; URL nao fabricada. Os commits do bugfix vivem na branch fix/e164-br-ddi-whatsapp, empilhada sobre feat/precos-cadastro-plan-intent (HEAD do trabalho aprovado anterior).",
+  "pendingUserAction": "Publicacao do PR PENDENTE de o usuario conectar um remote. Depois: `git remote add origin <url>`, `git push -u origin fix/e164-br-ddi-whatsapp`, entao abrir o Pull Request contra feat/precos-cadastro-plan-intent (ou master, conforme o alvo de merge escolhido).",
   "commits": [
-    "ac804eb feat: add single source of truth for plans in src/lib/plans.ts",
-    "1b89994 feat: add plan CTAs and recommended highlight to /precos",
-    "f206a35 feat: exibe intenção de plano no /cadastro via ?plano (ADR-15)"
+    "71aa041 fix: normaliza telefone para E.164-BR (DDI 55) antes do envio Evolution",
+    "1dab319 fix: normaliza telefone do cadastro para E.164-BR com DDI 55",
+    "77ee25a chore: add dev-functions script to serve edge functions locally",
+    "7cfa028 chore(pipeline): verificacao estatica ADR-04 E.164-BR; live QA pendente",
+    "ce36a14 docs(whatsapp): esclarece que a fronteira E.164-BR e o comprimento, nao o prefixo 55"
   ],
   "appFilesChanged": [
-    "src/lib/plans.ts",
-    "src/marketing/pages.tsx",
-    "src/auth/CadastroPage.tsx"
+    "supabase/functions/whatsapp/evolution-adapter.ts",
+    "src/lib/phone.ts",
+    "src/lib/validations/scheduling.ts",
+    "src/app/clientes/CustomerFormDialog.tsx",
+    "package.json",
+    "scripts/dev-functions.sh"
   ],
   "adrsDelivered": [
-    { "id": "adr-13", "title": "Fonte única de verdade dos planos em src/lib/plans.ts (slugs, rótulos pt-BR, parsePlanSlug)" },
-    { "id": "adr-14", "title": "/precos acionável: CTA por plano -> /cadastro?plano= e destaque do plano recomendado (Clínica)" },
-    { "id": "adr-15", "title": "/cadastro lê e exibe a intenção de plano (useSearchParams + parsePlanSlug), com degradação segura" }
+    { "id": "adr-01", "title": "Regra de normalizacao E.164-BR na borda do servidor (dona da especificacao)" },
+    { "id": "adr-02", "title": "Normalizacao E.164-BR no cadastro/edicao de cliente (schema zod)" },
+    { "id": "adr-03", "title": "Script de desenvolvimento para subir as Edge Functions localmente" },
+    { "id": "adr-04", "title": "Verificacao ponta-a-ponta em modo real e fechamento do bugfix" }
   ],
   "qa": {
-    "buildTypecheck": "pass — `npm run build` (tsc -b && vite build) limpo; typecheck via `tsc -b` embutido no build sem erro; TS estrito, sem any. Unico aviso e chunk >500kB, pre-existente e fora de escopo.",
-    "chromeDevtools": "pass — QA visual executado com Chrome headless (google-chrome --dump-dom + captura de console) contra o dev server (vite :5173), renderizando o DOM final (JS rodado) das rotas abaixo. chrome-devtools-mcp nao estava exposto como ferramenta neste step; usado o mesmo Chrome headless/isolated que o MCP dirige, cobrindo os mesmos criterios (DOM renderizado + ausencia de erro de console).",
-    "routes": {
-      "/": "CTAs 'Começar agora'->/cadastro e 'Ver planos'->/precos presentes e corretos; sem erro de console.",
-      "/precos": "3 CTAs renderizados — href=/cadastro?plano=individual|clinica|pro — com rotulos 'Começar com o Individual/Clínica/Pro'; card Clínica com destaque (border-primary) e badge 'Recomendado'; sem erro de console.",
-      "/cadastro?plano=clinica": "bloco acessivel (aria-labelledby) 'Plano escolhido' + 'Você escolheu o plano Clínica'; sem erro de console.",
-      "/cadastro": "estado neutro 'Comece seu teste gratuito.', sem bloco de plano; formulario intacto; sem erro de console.",
-      "/cadastro?plano=hacker": "degradacao segura — valor invalido ignorado, cai no estado neutro, formulario funciona; sem erro de console."
-    },
-    "consoleErrors": "none — nenhuma mensagem console.error/warn/Uncaught em nenhuma das 5 rotas.",
-    "flowUnchanged": "pass — onSubmit/useSignUp/trigger ADR-04 inalterados: o parametro ?plano e puramente apresentacional, nao entra no submit nem e persistido; tenant continua nascendo em 'trial'.",
-    "negativeGuard": "pass — nenhuma mudanca de dados/trigger/migration/schema; nenhuma dependencia nova; nenhum checkout/cobranca; diff confinado a src/lib/plans.ts, src/marketing/pages.tsx, src/auth/CadastroPage.tsx."
+    "buildTypecheck": "pass — `npm run build` (tsc -b && vite build) exit 0, build limpo e TS estrito sem any. Unico aviso e chunk >500kB, pre-existente e fora de escopo.",
+    "unitProof": "pass — harness tsx deterministico (16/16 asserts) importou o toE164BR real do cadastro e replicou verbatim o applyBrDdi/normalizePhoneForEvolution do servidor. Prova direta do caso do usuario: '47992391751' -> servidor '5547992391751', cadastro '+5547992391751'. Cobre idempotencia (+55 e DDI ja presente), fixo 10 dig, DDD 55/RS por comprimento, invalido (123, longo demais) -> null no cadastro / cru na borda, e concordancia servidor==cadastro(sem +). Harness temporario removido apos rodar.",
+    "edgeFunctionTypecheck": "parcial — `deno check` standalone nao executavel (Deno vive no container supabase-edge-runtime, nao no PATH). Grafo de modulos da function whatsapp compila/serve no edge-runtime em runs anteriores; conferencia estatica de fonte coerente, sem any aparente.",
+    "chromeDevtools": "NAO EXECUTADA — ferramenta MCP chrome-devtools NAO exposta neste step; sem `functions serve` ativo (probe POST /functions/v1/whatsapp retornou 503, o mesmo erro original do usuario) e sem JWT admin interativo. QA visual ao vivo do /app/clientes (cadastro grava +5547992391751; lista exibe +55 (47) 99239-1751; edicao de legado normaliza; telefone invalido bloqueia submit com erro pt-BR e foco acessivel) permanece PENDENTE em adr/index.json -> qaPending (adr-04).",
+    "liveSendReal": "NAO EXECUTADA — reenvio real em EVOLUTION_MODE=real (confirmado no .env) exige Evolution via ngrok + instancia conectada + JWT admin, nao estabeleciveis non-interativamente neste step. O comportamento 'sent' com number=5547992391751 esta provado deterministicamente na camada de logica (unitProof); so o trajeto de rede/UI resta.",
+    "codeAudit": "pass — regra E.164-BR unica espelhada nas duas pontas (applyBrDdi no servidor; toE164BR no cadastro, mesma tabela de casos). Borda e defesa em profundidade (nao lanca; Evolution recusa invalido), origem rejeita com null -> erro pt-BR no customerSchema. Nenhum log de telefone/texto em claro (index.ts loga so motivo tecnico curto). tenantId vem do JWT/profiles (resolveIdentity) + .eq('tenant_id'), nunca do cliente.",
+    "negativeGuard": "pass — sem migration nova nem alterada; sem dependencia nova; sem alteracao de RLS/schema. Diff confinado aos arquivos de app acima + script de dev."
   },
-  "secretAudit": "pass — nenhum .env real rastreado (apenas .env.example); chave Evolution e URL ngrok ausentes de todos os arquivos versionados.",
+  "secretAudit": "pass — `supabase/functions/.env` (EVOLUTION_API_KEY, service role) confirmado gitignorado (git check-ignore positivo); apenas .env.example e supabase/functions/.env.example rastreados. Nenhum segredo, telefone ou URL ngrok em arquivo versionado. Valores de segredo nunca ecoados.",
   "pendingItems": [
+    "QA ao vivo (chrome-devtools + reenvio real em EVOLUTION_MODE=real) PENDENTE — ferramenta/ambiente nao disponiveis neste step; registrado em adr/index.json qaPending (adr-04). A logica central esta provada por build + unit harness deterministico.",
     "Publicacao do PR depende de o usuario conectar um remote (sem remote/forge CLI no ambiente).",
-    "Valores de preco em R$ ainda nao existem — /precos exibe 'Valores e contratação chegam em breve' por decisao; billing/checkout e Fase 3."
+    "Teste manual do usuario: reenviar WhatsApp ao cliente legado (phone sem DDI) com instancia conectada e confirmar outcome 'sent' na UI."
   ]
 }

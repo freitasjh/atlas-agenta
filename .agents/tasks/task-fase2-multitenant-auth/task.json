@@ -1,0 +1,7 @@
+{
+  "task_id": "task-fase2-multitenant-auth",
+  "task_description": "Fase 2 do Atlas Agenda: fundacao multi-tenant (tabelas tenants + profiles com RLS, funcoes current_tenant_id()/current_role_name() security definer, trigger de signup atomico) e autenticacao real do Supabase no frontend (forms de login/cadastro/recuperar/redefinir senha, guards RequireAuth/RequireRole/RequireActiveSubscription com logica real, hooks TanStack Query de sessao/profile/tenant, tela de quitacao e 403, logout). Branch feat/scaffold-inicial-atlas-agenda. Apenas tenants+profiles; nenhuma tabela operacional. PRD aprovado com: trial 14 dias; confirmacao de e-mail DESLIGADA no MVP (cadastro abre sessao direto, codigo tolerante a config); sem Supabase CLI+Docker neste ambiente, entao CA-F2-01 degrada para validacao estatica do SQL + prova de isolamento por inspecao das policies, mas rodar supabase init e deixar migrations versionadas, documentando o db reset como passo manual no PR.",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}

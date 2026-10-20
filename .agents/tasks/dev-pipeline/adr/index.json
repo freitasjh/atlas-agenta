@@ -1,36 +1,65 @@
 {
-  "task": "Normalização de telefone para E.164 (DDI 55) no envio de WhatsApp (bugfix A+B)",
+  "task": "Evolução do módulo de Agenda: slots sob demanda, exceções/vigência e visão de calendário",
+  "prd": ".agents/tasks/dev-pipeline/prd.md",
   "adrs": [
     {
       "id": "adr-01",
-      "file": "adr-01-regra-e164-br-servidor.md",
-      "title": "Regra de normalização E.164-BR na borda do servidor (dona da especificação)",
+      "file": "adr-01-professionals-vigencia-passo.md",
+      "title": "Vigência da grade e passo-base de slots em professionals",
       "scope": "dados",
       "status": "approved"
     },
     {
       "id": "adr-02",
-      "file": "adr-02-normalizacao-cadastro-cliente.md",
-      "title": "Normalização E.164-BR no cadastro/edição de cliente (schema zod)",
-      "scope": "frontend",
+      "file": "adr-02-schedule-overrides-rls.md",
+      "title": "Tabela schedule_overrides (exceções por data) com RLS/RBAC",
+      "scope": "dados",
       "status": "approved"
     },
     {
       "id": "adr-03",
-      "file": "adr-03-script-dev-functions.md",
-      "title": "Script de desenvolvimento para subir as Edge Functions localmente",
+      "file": "adr-03-tipos-e-schemas-zod.md",
+      "title": "Tipos de domínio e schemas zod de exceção/vigência",
       "scope": "ambos",
-      "status": "approved"
+      "status": "pending"
     },
     {
       "id": "adr-04",
-      "file": "adr-04-verificacao-ponta-a-ponta.md",
-      "title": "Verificação ponta-a-ponta em modo real e fechamento do bugfix",
-      "scope": "ambos",
+      "file": "adr-04-hooks-dados-overrides-vigencia.md",
+      "title": "Hooks de dados: exceções e vigência/passo",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-05",
+      "file": "adr-05-gerador-slots-e-useAvailableSlots.md",
+      "title": "Gerador de slots puro (lib/scheduling-slots.ts) e useAvailableSlots",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-06",
+      "file": "adr-06-slotpicker-no-formulario.md",
+      "title": "SlotPicker no fluxo de criação (AppointmentFormDialog)",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-07",
+      "file": "adr-07-vigencia-e-excecoes-na-tela-horarios.md",
+      "title": "Vigência e exceções na tela de horários (HorariosPage)",
+      "scope": "frontend",
+      "status": "pending"
+    },
+    {
+      "id": "adr-08",
+      "file": "adr-08-visao-calendario-e-toggle.md",
+      "title": "Visão de calendário (dia/semana) alternável com a lista (AgendaPage)",
+      "scope": "frontend",
       "status": "pending"
     }
   ],
-  "current": "adr-04",
-  "qaPending": ["adr-01", "adr-02", "adr-03", "adr-04"],
-  "allApproved": false
+  "current": "adr-03",
+  "allApproved": false,
+  "qaPending": ["adr-01", "adr-02"]
 }

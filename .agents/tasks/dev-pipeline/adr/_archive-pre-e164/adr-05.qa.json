@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-05 e fundacao sem superficie testavel de ponta a ponta: so tipos/enums, capacidades RBAC em usePermissions, rotulos pt-BR, schema zod e um componente WhatsAppStatusBadge ainda nao montado em nenhuma rota. Nao ha tela navegavel, hook de dados nem fluxo completo a exercitar no sistema real nesta ADR. A verificacao visual (tokens, dark mode, contraste AA do badge, guards RBAC/assinatura, responsividade) so tem o que testar quando ADR-06 (hooks) e ADR-07/08 (telas de conexao e dialogo de envio) renderizarem o badge e os fluxos. Adiado para a verificacao consolidada antes do PR."
+}

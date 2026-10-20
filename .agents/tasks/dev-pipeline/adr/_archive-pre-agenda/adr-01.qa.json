@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-01 é fundação sem superfície testável isolada: altera apenas o helper puro normalizePhoneForEvolution na Edge Function whatsapp (runtime Deno), sem tela nem fluxo utilizável de ponta a ponta por si só. A prova de comportamento (legado sem DDI '47992391751' → envio 'sent' pela Evolution em vez de HTTP 400) exige a instância Evolution real + o fluxo de envio completo, e a própria ADR delega essa verificação ponta-a-ponta à ADR-04 ('Verificação ponta-a-ponta em modo real'). O build (npm run build) já passa limpo; o frontend não é afetado por esta ADR (cadastro é escopo da ADR-02). Adiado para a verificação consolidada antes do PR via ADR-04."
+}

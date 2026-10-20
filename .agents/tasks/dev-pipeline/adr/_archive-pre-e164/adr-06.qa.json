@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-06 entrega so hooks de dados (useWhatsAppInstance/usePairWhatsApp em src/hooks/useWhatsAppInstance.ts e useRecentMessages/useSendMessage em src/hooks/useMessages.ts). Nao ha superficie navegavel: nenhuma rota monta esses hooks ainda. As telas que os consomem sao ADR-07 (/app/config/whatsapp: hub de conexao, QR, historico) e ADR-08 (dialogo de envio em Agenda/Clientes), ainda pending. Os criterios de aceite A2 (polling condicional observavel nas requisicoes) e A3/A4/A5 so tem fluxo real a exercitar quando essas telas renderizarem os hooks. Build/typecheck (unico gate de qualidade do projeto; nao ha lint/test) passa limpo e os dois revisores independentes confirmaram. Adiado para a verificacao consolidada antes do PR, junto de adr-01..adr-05, quando ADR-07/08 derem superficie navegavel (QR, badge de status, historico PII-safe, guards RBAC/assinatura)."
+}

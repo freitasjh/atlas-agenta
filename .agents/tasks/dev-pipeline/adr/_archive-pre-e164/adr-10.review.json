@@ -1,0 +1,11 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Revisor A: APROVADA SEM RESSALVAS. Revisor B: APPROVED. A união das issues não contém defeito bloqueante desta ADR.",
+    "As 2 issues do Revisor B são explicitamente confirmed+não-bloqueantes: (1) leitura do corpo em evolutionFetch roda fora do deadline do AbortController (clearTimeout no finally antes de response.text()) — carryover da ADR-09 que a ADR-10 tornou vivo, a ser fechado na ADR-11 ou formalizado na dívida da ADR-12; (2) connection_status otimista no index.ts (OQ-01) — dívida aceita, fora de escopo (ADR proíbe tocar index.ts), consolidada na ADR-12.",
+    "pair real implementado conforme contrato v2.3.7: POST /instance/create (integration WHATSAPP-BAILEYS, qrcode:true) com 403/409 'já existe' não-fatal (idempotência por nome, AC-02); GET /instance/connect/{instance} validado por connectResponseSchema (zod). base64 -> toQrDataUrl() data URL (AC-03, QR nunca persistido/logado); state 'open' -> Error pt-BR capturado pelo index.ts como 502 (AC-04, PairResult intacto, D-05 opção b); connecting/close -> erro pt-BR. Stub 'não implementada' removido do pair (AC-01).",
+    "Segurança/multi-tenant: adapter não resolve tenant, não aceita tenant_id, não toca banco (RNF-RE-04); instanceName derivado do JWT no index.ts; encodeURIComponent no path; credenciais só de Deno.env (EVOLUTION_API_URL/EVOLUTION_API_KEY, sem VITE_); grep pela API key literal no código-fonte = vazio (só aparece em doc de review); logs carregam apenas status/motivo técnico, nunca corpo cru/QR/key (R8/R9).",
+    "Confinamento de diff (AC-12): adapter é o único arquivo alterado; index.ts/schemas.ts/migrations/UI inalterados; MockEvolutionAdapter intacto (R10). evolution-adapter não é importado por nenhum código em src/** — fora do grafo do Vite.",
+    "Contraprova: scripts disponíveis são apenas build (tsc -b && vite build) e typecheck (tsc -b); não há lint/test no package.json. O adapter é Edge Function Deno (npm:/jsr:/Deno.*) fora do tsc -b do frontend; typecheck Deno (supabase functions serve, AC-11) não roda aqui porque Deno não está instalado neste ambiente — mesma limitação das ADRs anteriores, fica para o QA/teste manual do usuário. Revisão estática do TS estrito do arquivo: sem any implícito, sem acesso de campo antes do parse zod."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "test": "deferred",
+  "reason": "ADR backend-only: fia RealEvolutionAdapter.sendText (POST /message/sendText/{instance}) na Edge Function Deno 'whatsapp'. Sem superficie frontend nova — a UI existente nao muda nesta ADR e o adapter nao e importado por src/** (fora do grafo Vite). O comportamento verificavel de ponta a ponta (envio real -> providerMessageId real da Evolution) depende de (a) runtime Deno + 'supabase functions serve', ausente neste ambiente (which deno = ausente), e (b) o servidor Evolution real em ngrok. O proprio usuario declarou que fara os testes reais de envio (mensagem 12: 'eu vou fazer os testes') e o PRD coloca o disparo real como teste do usuario (D-02/R14). Verificacao por Chrome DevTools MCP nao se aplica (sem tela nova). QA consolidado antes do PR cobrira o fluxo real; ADR-11 adicionada a qaPending.",
+  "evidence": {
+    "frontend_touched": false,
+    "deno_available": false,
+    "dev_server_started": false,
+    "chrome_devtools_applicable": false,
+    "verified_statically": [
+      "diff confinado a supabase/functions/whatsapp/evolution-adapter.ts (AC-12); index.ts/schemas.ts/migrations/UI intactos",
+      "sendText real: POST /message/sendText/{instance} com corpo { number, text } via evolutionFetch (timeout 15s + AbortController da ADR-09); bate com o contrato v2.3.7 da analise §5 (AC-01/AC-05)",
+      "normalizePhoneForEvolution faz strip de '+'/nao-digitos no E.164 antes do POST (AC-04)",
+      "resposta validada com sendTextResponseSchema.safeParse antes de ler key.id; fora do contrato -> erro pt-BR sem vazar corpo do provedor (AC-06)",
+      "credenciais so do env (resolveEvolutionCredentials); ausentes -> falha pt-BR sem rede (AC-07)",
+      "console.error do caminho de envio loga so status/categoria (rede|timeout); nenhum 'to' nem 'text' em claro (AC-09)",
+      "MockEvolutionAdapter.sendText inalterado (devolve mock-<uuid>, zero rede); createEvolutionAdapter default mock (AC-10)",
+      "dois pareceres independentes rodaram npm run build + npm run typecheck = OK limpo; grep por API key literal no codigo = vazio; .env git-ignored (AC-08/AC-11 parcial)",
+      "limite de verificacao: typecheck/boot Deno da function (supabase functions serve) nao exercido aqui (Deno ausente) — recai no QA consolidado / teste real do usuario, conforme a propria ADR previu"
+    ]
+  }
+}

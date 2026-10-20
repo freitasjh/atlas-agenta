@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-17 e infra/contrato puro: adiciona a porta EvolutionAdapter.getConnectionState e o contrato de fio da action 'check' (schemas.ts), sem nenhum handler invocando a porta nem rota aceitando action:'check' (isso e ADR-18) e sem superficie de frontend (ADR-19). Codigo correto porem inerte por design — nao ha comportamento de ponta a ponta verificavel ainda. O boot real da Edge Function (CA-17.1, 'supabase functions serve whatsapp') e a verificacao fim a fim do fluxo de QR ficam para a QA consolidada apos ADR-18/19. Contraprova de build (tsc -b && vite build) passou limpa nas duas reviews independentes; o grafo Deno das Edge Functions nao e compilado pelo Vite, reforcando que nao ha superficie testavel neste commit."
+}

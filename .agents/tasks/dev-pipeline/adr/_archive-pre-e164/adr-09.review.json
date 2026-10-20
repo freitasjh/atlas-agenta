@@ -1,0 +1,10 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Revisor A: APROVADO (sem bloqueios). Revisor B: APPROVED. União das issues não contém defeito bloqueante nesta ADR.",
+    "As 3 observações do Revisor B (timeout não cobre leitura do corpo; createInstanceSchema tolerante; contrato acoplado à v2.3.7) são explicitamente dívida para ADR-10/11, não defeitos da ADR-09 (infra sem chamada real).",
+    "Diff confinado a supabase/functions/whatsapp/evolution-adapter.ts (AC-12). Stub de pair/sendText intacto, MockEvolutionAdapter intacto, seleção por EVOLUTION_MODE default mock preservada.",
+    "Segredo: API key só lida de Deno.env no servidor, nunca em literal/log/bundle, nunca VITE_. grep pela key real = vazio. .env git-ignored.",
+    "Contraprova: npm run build (tsc -b && vite build) confirmado passando pelos dois revisores; arquivo é código Deno fora do grafo do Vite, build confirma que nada vazou para o bundle. Não há scripts de lint/test no package.json."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Ambos os revisores (A e B) aprovaram; nenhuma issue bloqueante.",
+    "Contraprova: npm run typecheck (tsc -b) e npm run build (tsc -b && vite build) reportados limpos por ambos os revisores; aviso de chunk > 500 kB é pré-existente (bundle único do SPA), não introduzido por esta ADR.",
+    "Fronteiras verificadas na fonte: payload de send leva só template/customerId/appointmentId (sem tenant_id), opt-in gated na borda com texto + Link, gancho de cobrança em StatusChangeConfirm segue só comentário."
+  ],
+  "nonBlockingObservations": [
+    "not_connected usa window.location.href (full reload de SPA) em vez de navegação react-router; preferir useNavigate/Link como no aviso de opt-in do mesmo arquivo (Revisor B #1).",
+    "title em botão desabilitado não é alcançável por teclado; mitigado por sr-only adjacente, dentro do que o design doc §6 aceita — QA deve confirmar anúncio por leitor de tela (Revisor B #2).",
+    "Botão de envio na AgendaItem fica dentro do bloco canManage; sem regressão hoje (canManage e canSend cobrem o mesmo conjunto de papéis), mas a ação não é independente do gerenciar (Revisor B #3, informativo).",
+    "onOpenChange não cancela/reseta a mutação pendente ao fechar o diálogo durante envio; UX menor em rede lenta, servidor não sofre (Revisor A #1).",
+    "isSendSuccess em whatsapp-errors.ts não é usada pelo diálogo; remover ou documentar uso futuro (Revisor A obs. 1)."
+  ]
+}

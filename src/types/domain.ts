@@ -75,13 +75,42 @@ export interface Service {
   created_at: string;
 }
 
-/** Linha de `professionals`. `profile_id` é somente-leitura nesta fase. */
+/**
+ * Linha de `professionals`. `profile_id` é somente-leitura nesta fase.
+ * `schedule_start_date`/`schedule_end_date` são a vigência da grade (dia de
+ * calendário `YYYY-MM-DD`, ambas opcionais; `null` = sem limite naquela ponta).
+ * `slot_step_minutes` é o passo-base de oferta de slots (5..240, default 30).
+ */
 export interface Professional {
   id: string;
   tenant_id: string;
   name: string;
   profile_id: string | null;
   active: boolean;
+  schedule_start_date: string | null;
+  schedule_end_date: string | null;
+  slot_step_minutes: number;
+  created_at: string;
+}
+
+/**
+ * Linha de `schedule_overrides` (exceção por profissional/data, sobrepõe a
+ * grade recorrente num dia específico). `override_date` é dia de calendário
+ * (`YYYY-MM-DD`) no fuso do tenant; horas em `HH:MM`. `is_closed = true` =
+ * folga/feriado sem janela; `is_closed = false` = janela atípica (campos de
+ * janela preenchidos). `reason` é rótulo opcional não-PII.
+ */
+export interface ScheduleOverride {
+  id: string;
+  tenant_id: string;
+  professional_id: string;
+  override_date: string;
+  is_closed: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  break_start: string | null;
+  break_end: string | null;
+  reason: string | null;
   created_at: string;
 }
 

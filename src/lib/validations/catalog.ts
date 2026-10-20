@@ -42,9 +42,106 @@ export const professionalSchema = z.object({
 export type ProfessionalInput = z.infer<typeof professionalSchema>;
 
 /** Hora no formato `HH:MM` (espelha a coluna `time` da grade). */
-const timeString = z
+export const timeString = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário inválido (use HH:MM).");
+
+/**
+ * Campos de janela de expediente + intervalo opcional, compartilhados entre a
+ * grade semanal (`workingHoursDaySchema`) e a exceção de data atípica
+ * (`scheduleOverrideSchema`, ADR-03). Mantê-los numa só forma permite reusar a
+ * mesma validação em ambos (uma só fonte de verdade de UX).
+ */
+export interface ScheduleWindowFields {
+  startTime?: string;
+  endTime?: string;
+  hasBreak: boolean;
+  breakStart?: string;
+  breakEnd?: string;
+}
+
+/**
+ * Valida a janela de expediente + intervalo quando ela está ativa (o dia da
+ * grade está ligado, ou a exceção é de janela atípica): janela coerente
+ * (`start < end`) e, se houver intervalo, ambos-ou-nenhum, coerente e dentro da
+ * janela — espelhando os CHECKs `working_hours_window` /
+ * `working_hours_break_coherent` e `schedule_overrides_window`. Reusada por
+ * `workingHoursDaySchema` e `scheduleOverrideSchema` para evitar divergência.
+ */
+export function refineScheduleWindow(
+  fields: ScheduleWindowFields,
+  ctx: z.RefinementCtx,
+): void {
+  if (!fields.startTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Informe o horário de início.",
+      path: ["startTime"],
+    });
+  }
+  if (!fields.endTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Informe o horário de fim.",
+      path: ["endTime"],
+    });
+  }
+  if (fields.startTime && fields.endTime && fields.startTime >= fields.endTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "O início deve ser antes do fim.",
+      path: ["endTime"],
+    });
+  }
+
+  if (!fields.hasBreak) return;
+
+  // Intervalo: ambos-ou-nenhum.
+  if (!fields.breakStart) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Informe o início do intervalo.",
+      path: ["breakStart"],
+    });
+  }
+  if (!fields.breakEnd) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Informe o fim do intervalo.",
+      path: ["breakEnd"],
+    });
+  }
+  if (
+    fields.breakStart &&
+    fields.breakEnd &&
+    fields.breakStart >= fields.breakEnd
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "O início do intervalo deve ser antes do fim.",
+      path: ["breakEnd"],
+    });
+  }
+  // Intervalo dentro da janela.
+  if (
+    fields.startTime &&
+    fields.breakStart &&
+    fields.breakStart < fields.startTime
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "O intervalo deve começar dentro do expediente.",
+      path: ["breakStart"],
+    });
+  }
+  if (fields.endTime && fields.breakEnd && fields.breakEnd > fields.endTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "O intervalo deve terminar dentro do expediente.",
+      path: ["breakEnd"],
+    });
+  }
+}
 
 /**
  * Um dia da grade. Quando `enabled` (o profissional atende no dia), exige janela
@@ -63,68 +160,7 @@ export const workingHoursDaySchema = z
   })
   .superRefine((day, ctx) => {
     if (!day.enabled) return;
-
-    if (!day.startTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Informe o horário de início.",
-        path: ["startTime"],
-      });
-    }
-    if (!day.endTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Informe o horário de fim.",
-        path: ["endTime"],
-      });
-    }
-    if (day.startTime && day.endTime && day.startTime >= day.endTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "O início deve ser antes do fim.",
-        path: ["endTime"],
-      });
-    }
-
-    if (!day.hasBreak) return;
-
-    // Intervalo: ambos-ou-nenhum.
-    if (!day.breakStart) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Informe o início do intervalo.",
-        path: ["breakStart"],
-      });
-    }
-    if (!day.breakEnd) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Informe o fim do intervalo.",
-        path: ["breakEnd"],
-      });
-    }
-    if (day.breakStart && day.breakEnd && day.breakStart >= day.breakEnd) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "O início do intervalo deve ser antes do fim.",
-        path: ["breakEnd"],
-      });
-    }
-    // Intervalo dentro da janela.
-    if (day.startTime && day.breakStart && day.breakStart < day.startTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "O intervalo deve começar dentro do expediente.",
-        path: ["breakStart"],
-      });
-    }
-    if (day.endTime && day.breakEnd && day.breakEnd > day.endTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "O intervalo deve terminar dentro do expediente.",
-        path: ["breakEnd"],
-      });
-    }
+    refineScheduleWindow(day, ctx);
   });
 
 export type WorkingHoursDayInput = z.infer<typeof workingHoursDaySchema>;

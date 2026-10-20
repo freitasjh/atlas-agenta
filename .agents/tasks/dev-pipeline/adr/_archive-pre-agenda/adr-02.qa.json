@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-02 é a ponta de dados/validação do bugfix de telefone (helper puro toE164BR + customerSchema.phone + copy da FormDescription). A própria ADR define que a prova visual ponta-a-ponta (cadastrar sem DDI grava com DDI, exibição '+55 (47)...', edição normaliza, inválido bloqueia e o reenvio ao Evolution sem 400) é a QA consolidada do run, alocada na ADR-04. O caminho de reenvio real ainda depende do script que sobe as Edge Functions (ADR-03), então não há superfície fechável agora. Os dois revisores independentes (A e B) confirmaram, por inspeção e tabela de paridade determinística, que toE164BR espelha exatamente a especificação canônica da ADR-01 para toda entrada válida (AC-02-a..f), com tipagem estrita sem any e build limpo. Testar isoladamente agora seria redundante com a verificação consolidada da ADR-04."
+}

@@ -1,0 +1,10 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Revisor A: APROVADO. Revisor B: APPROVED. Sem divergência de veredito — ambos convergem em aprovado.",
+    "Contraprova de qualidade: ambos revisores reexecutaram `npm run build` (tsc -b && vite build) de forma independente → exit 0, build limpo; único aviso é chunk >500kB, pré-existente e não bloqueante. package.json não tem script de lint/test (só dev, dev:functions, build, typecheck, preview), então build/typecheck é a contraprova disponível e está limpa.",
+    "Issue 1 (confirmado, não bloqueante): JSDoc de applyBrDdi em evolution-adapter.ts contradizia o código ('10/11 díg que NÃO começam com 55'); o código prefixa incondicionalmente por comprimento (correto, cobre DDD 55/RS). Corrigido agora — saneamento de doc, comportamento inalterado.",
+    "Issue 2 (confirmado, mitigado): `deno check` não executável (binário deno ausente no ambiente). Registrado como qaPending, autorizado pela ADR §3 e pelo critério AC-04-a.",
+    "Camada ao vivo (AC-04-c/d) registrada como qaPending de forma honesta no adr-04.qa.json (Evolution/ngrok real + chrome-devtools MCP indisponíveis nesta sessão), com a camada estática aprovada como piso — dentro do contrato da própria ADR."
+  ]
+}
