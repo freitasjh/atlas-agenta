@@ -46,10 +46,35 @@ import {
   useCreateAppointment,
   useUpdateAppointment,
 } from "@/hooks/useAppointments";
+import { useAvailableSlots } from "@/hooks/useAvailableSlots";
 import { useCustomers } from "@/hooks/useCustomers";
-import { useProfessionals } from "@/hooks/useProfessionals";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useProfessionals, useScheduleValidity } from "@/hooks/useProfessionals";
+import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
 import { useServices } from "@/hooks/useServices";
+import { useWorkingHours } from "@/hooks/useWorkingHours";
+import { SlotPicker, type SlotEmptyReason } from "@/app/agenda/SlotPicker";
 import type { AppointmentWithRelations } from "@/types/domain";
+
+/** Weekday (0=domingo) de um dia `YYYY-MM-DD`, independente do fuso local. */
+function weekdayOf(day: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return -1;
+  return new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  ).getUTCDay();
+}
+
+/** `true` se `day` está dentro de `[start, end]` (comparação lexical de datas). */
+function isWithinValidity(
+  day: string,
+  start: string | null,
+  end: string | null,
+): boolean {
+  if (start && day < start) return false;
+  if (end && day > end) return false;
+  return true;
+}
 
 interface AppointmentFormDialogProps {
   open: boolean;
@@ -64,6 +89,12 @@ interface AppointmentFormDialogProps {
   lockedProfessionalId: string | null;
   /** Agendamentos já carregados do dia (checagem de conflito local). */
   dayAppointments: AppointmentWithRelations[];
+  /**
+   * Pré-preenchimento ao criar a partir de uma faixa vazia do calendário
+   * (ADR-08): profissional e/ou início (`HH:MM`). Ignorado em edição. Só tem
+   * efeito no (re)abrir.
+   */
+  prefill?: { professionalId?: string; time?: string } | null;
 }
 
 /**
@@ -84,8 +115,11 @@ export function AppointmentFormDialog({
   timeZone,
   lockedProfessionalId,
   dayAppointments,
+  prefill,
 }: AppointmentFormDialogProps) {
   const isEdit = !!appointment;
+
+  const { canEditAnySchedule, canEditOwnSchedule } = usePermissions();
 
   const customersQuery = useCustomers({ activeOnly: true });
   const professionalsQuery = useProfessionals({ activeOnly: true });
@@ -97,12 +131,12 @@ export function AppointmentFormDialog({
   const emptyValues: AppointmentInput = useMemo(
     () => ({
       customerId: "",
-      professionalId: lockedProfessionalId ?? "",
+      professionalId: lockedProfessionalId ?? prefill?.professionalId ?? "",
       serviceId: "",
       date: day,
-      time: "",
+      time: prefill?.time ?? "",
     }),
-    [day, lockedProfessionalId],
+    [day, lockedProfessionalId, prefill?.professionalId, prefill?.time],
   );
 
   const form = useForm<AppointmentInput>({
@@ -155,6 +189,77 @@ export function AppointmentFormDialog({
       endLabel: formatTimeInTenantTz(endUtc, timeZone),
     };
   }, [selectedService, watchedDate, watchedTime, timeZone]);
+
+  // Slots livres sob demanda (ADR-05): dependem de profissional + serviço +
+  // data já escolhidos. Em edição, exclui o próprio agendamento do desconto de
+  // ocupados (o horário que ele ocupa continua ofertável).
+  const {
+    slots,
+    isLoading: slotsLoading,
+    isEnabled: slotsEnabled,
+  } = useAvailableSlots({
+    day: watchedDate,
+    professionalId: watchedProfessionalId || null,
+    serviceId: watchedServiceId || null,
+    excludeAppointmentId: appointment?.id,
+  });
+
+  // Insumos da cascata (grade/exceção/vigência) — mesma chave de cache que o
+  // hook de slots já lê, sem request novo. Usados só para escolher a MENSAGEM
+  // do estado vazio (folga / fora-vigência / sem-grade / sem-slots); a trava e a
+  // geração continuam em `useAvailableSlots`.
+  const activeProfessionalId = watchedProfessionalId || null;
+  const workingHoursQuery = useWorkingHours(activeProfessionalId);
+  const overridesQuery = useScheduleOverrides(activeProfessionalId);
+  const validityQuery = useScheduleValidity(activeProfessionalId);
+
+  const emptyReason = useMemo<SlotEmptyReason | null>(() => {
+    if (!slotsEnabled || slotsLoading || slots.length > 0) return null;
+
+    const validity = validityQuery.data ?? null;
+    if (
+      !isWithinValidity(
+        watchedDate,
+        validity?.schedule_start_date ?? null,
+        validity?.schedule_end_date ?? null,
+      )
+    ) {
+      return "fora-vigencia";
+    }
+
+    const override =
+      (overridesQuery.data ?? []).find((o) => o.override_date === watchedDate) ??
+      null;
+    if (override) {
+      // Folga (fechado) ou janela atípica sem horário útil ainda é "sem slots".
+      return override.is_closed ? "folga" : "sem-slots";
+    }
+
+    const weekday = weekdayOf(watchedDate);
+    const hasGrade = (workingHoursQuery.data ?? []).some(
+      (wh) => wh.weekday === weekday,
+    );
+    return hasGrade ? "sem-slots" : "sem-grade";
+  }, [
+    slotsEnabled,
+    slotsLoading,
+    slots.length,
+    validityQuery.data,
+    overridesQuery.data,
+    workingHoursQuery.data,
+    watchedDate,
+  ]);
+
+  // Link "Configurar horários" no estado sem-grade, só para quem pode editar a
+  // grade (admin qualquer uma; professional a própria). Defesa em profundidade;
+  // a trava real é o RLS.
+  const canConfigureSchedule =
+    canEditAnySchedule ||
+    (canEditOwnSchedule && activeProfessionalId === lockedProfessionalId);
+  const configureScheduleHref =
+    canConfigureSchedule && activeProfessionalId
+      ? `/app/config/profissionais/${activeProfessionalId}/horarios`
+      : undefined;
 
   const isSaving = createAppointment.isPending || updateAppointment.isPending;
 
@@ -348,35 +453,46 @@ export function AppointmentFormDialog({
               )}
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Data</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={form.control}
+              name="date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Data</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={form.control}
-                name="time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Hora de início</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="time"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Hora de início</FormLabel>
+                  <FormControl>
+                    <SlotPicker
+                      slots={slots}
+                      isLoading={slotsLoading}
+                      isEnabled={slotsEnabled}
+                      emptyReason={emptyReason}
+                      value={field.value}
+                      onSelect={(time) =>
+                        form.setValue("time", time, {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        })
+                      }
+                      configureScheduleHref={configureScheduleHref}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* Derivados read-only (término previsto + valor do serviço). */}
             {derived ? (
