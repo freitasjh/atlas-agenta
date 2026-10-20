@@ -235,12 +235,42 @@ export type SendTextResponse = z.infer<typeof sendTextResponseSchema>;
 // ---------------------------------------------------------------------------
 
 /**
- * Normaliza o `to` E.164 (`+55...`, passado pelo `index.ts` a partir de `customer.phone`) para o
- * formato aceito pela Evolution v2 (dígitos, sem `+`). Determinístico e puro. Remove qualquer
- * caractere não-dígito remanescente (espaços, traços) por robustez.
+ * Aplica a regra de DDI brasileiro (E.164-BR) sobre dígitos já limpos (sem `+`, espaços, traços).
+ * Especificação canônica fixada na ADR-01 (dona da regra; a ponta do cadastro em `src/lib/phone.ts`
+ * / ADR-02 a espelha — mesma tabela de casos, sem divergir — RF-E164-05):
+ *
+ *  - 10 ou 11 díg que NÃO começam com `55` (fixo/móvel nacional sem DDI) → prefixa `55`.
+ *  - 12 ou 13 díg começando com `55` (fixo/móvel BR já com DDI) → mantém (idempotente).
+ *  - demais comprimentos → devolve os dígitos como estão (NÃO lança; a Evolution recusa).
+ *
+ * A fronteira é o COMPRIMENTO, não só o prefixo: um número de 11 díg começando com `55` é DDD 55
+ * (Rio Grande do Sul) + 9 díg = nacional sem DDI → prefixa (`5555...`); 12/13 díg com `55` já têm
+ * DDI. Função pura e determinística: sem rede, sem relógio, sem segredo (RNF-E164-04).
+ */
+function applyBrDdi(digits: string): string {
+  const len = digits.length;
+  // 10/11 díg = nacional sem DDI (a fronteira é o COMPRIMENTO): prefixa `55`, mesmo quando o
+  // número começa com `55` (DDD 55 — RS: 11 díg = DDD 55 + 9 díg móveis → `5555...`).
+  if (len === 10 || len === 11) {
+    return `55${digits}`;
+  }
+  // 12/13 díg com `55` → já com DDI (mantém, idempotente); qualquer outro comprimento → devolve
+  // como está (NÃO lança — a Evolution recusa número inválido).
+  return digits;
+}
+
+/**
+ * Normaliza o `to` (lido pelo `index.ts` a partir de `customer.phone`, podendo vir sem DDI em
+ * registros legados) para o formato aceito pela Evolution v2: dígitos, sem `+`, COM o DDI 55.
+ *
+ * Passos: (1) remove não-dígitos (`+`, espaços, traços); (2) aplica a regra E.164-BR de DDI
+ * (`applyBrDdi`), cobrindo legados sem DDI em tempo de envio — última garantia antes da Evolution
+ * (RF-E164-04). Determinístico e puro (RNF-E164-04); NUNCA loga o número (RNF-E164-01). É defesa
+ * em profundidade: não valida/rejeita formato — se o número for inválido, quem recusa é a Evolution.
  */
 export function normalizePhoneForEvolution(to: string): string {
-  return to.replace(/\D+/g, "");
+  const digits = to.replace(/\D+/g, "");
+  return applyBrDdi(digits);
 }
 
 // ---------------------------------------------------------------------------
@@ -394,8 +424,8 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
    *
    * Fluxo (contrato v2.3.7 — análise §5):
    *  1. Credenciais do env (sem rede se ausentes — R7/AC-07).
-   *  2. Normaliza o `to` E.164 (`+55...`) para o formato aceito pela Evolution v2 (dígitos,
-   *     sem `+`) com o helper puro da ADR-09 (R4/AC-04).
+   *  2. Normaliza o `to` para o formato aceito pela Evolution v2 (dígitos, sem `+`, COM DDI 55)
+   *     com `normalizePhoneForEvolution` — garante o DDI em legados sem código de país (ADR-01).
    *  3. `POST /message/sendText/{instance}` com corpo `{ number, text }`, cliente HTTP com
    *     timeout da ADR-09; timeout/erro de rede → falha pt-BR controlada (R13/AC-13).
    *  4. Resposta externa NÃO confiável — validar o shape com zod antes de ler `key.id`; fora do
