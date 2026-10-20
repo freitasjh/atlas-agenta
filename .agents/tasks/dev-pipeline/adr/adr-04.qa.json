@@ -1,0 +1,18 @@
+{
+  "test": "static-passed-live-deferred",
+  "reason": "ADR-04 é a ADR de verificação ponta-a-ponta do bugfix E.164-BR (não escreve código de aplicação). A camada ESTÁTICA foi executada e passou; a camada AO VIVO em EVOLUTION_MODE=real (reenvio real ao número sem DDI via Evolution/ngrok + prova visual no /app/clientes) depende de ambiente externo (instância Evolution real via ngrok, segredos em supabase/functions/.env) e do driver chrome-devtools MCP, não disponíveis/ativáveis nesta sessão do codificador. Conforme a decisão §3 da ADR e o critério AC-04-c/AC-04-d, a parte ao vivo fica registrada como qaPending com a camada estática aprovada como piso verificável, seguindo o padrão de qaPending já praticado no projeto (ver adr-01/02/03.qa.json).",
+  "evidence": {
+    "AC-04-a-build": "npm run build (tsc -b && vite build) exit 0 — build limpo; aviso de chunk >500kB é pré-existente, não é erro.",
+    "AC-04-a-deno": "deno check NÃO executável: binário deno ausente do ambiente (which deno, ~/.deno/bin/deno, /usr/local/bin/deno todos ausentes). Typecheck da Edge Function fica PENDENTE para o QA com Deno disponível. Conferência estática por leitura: evolution-adapter.ts e index.ts coerentes, sem any implícito aparente.",
+    "AC-04-b-sem-migration": "ls supabase/migrations: última migration 20250220091000_messages.sql (18/out), nenhuma criada por este bugfix; git status em supabase/migrations vazio. AC-08 satisfeito.",
+    "AC-06-sem-PII": "grep de console.* em supabase/functions/whatsapp/index.ts: todos os logs emitem só motivo técnico curto (err.message, status, nomes de etapa) — nenhum console loga customer.phone, number ou text. normalizePhoneForEvolution e sendText não logam o número. Conferido estaticamente.",
+    "AC-07-isolamento": "index.ts resolve tenantId = identity.tenantId (JWT/profiles via resolveIdentity) e filtra customer com .eq('tenant_id', tenantId); nenhum tenant_id vindo do cliente no caminho do fix. RNF-E164-02 preservado.",
+    "regra-compartilhada": "applyBrDdi (evolution-adapter.ts, Deno) e toE164BR (src/lib/phone.ts, Vite/TS) espelham a mesma tabela de casos E.164-BR (10/11 díg → prefixa 55; 12/13 díg com 55 → mantém). Borda não rejeita (defesa, Evolution recusa); origem rejeita com null (erro pt-BR). RF-E164-05/06 coerentes por leitura.",
+    "entrega": "Branch fix/e164-br-ddi-whatsapp; commits 71aa041 (borda A), 1dab319 (cadastro B), 77ee25a (script dev-functions). Working tree de src/supabase/scripts/package.json limpo. Sem push/PR (AC-04-e).",
+    "live-pendente": [
+      "AC-04-c: reenvio real a customers.phone=47992391751 em EVOLUTION_MODE=real → POST /message/sendText com number=5547992391751, sem 400, outcome:'sent' com provider_message_id. Requer Evolution/ngrok + supabase start + functions serve.",
+      "AC-04-d (PRD §8 itens 1-5): cadastro grava +5547992391751; lista exibe +55 (47) 99239-1751; edição de legado normaliza; telefone inválido (123) bloqueia submit com erro pt-BR e foco acessível; reenvio ponta-a-ponta retorna 'sent'. Requer navegador + chrome-devtools MCP.",
+      "AC-04-a (deno check): typecheck da Edge Function whatsapp com Deno instalado."
+    ]
+  }
+}

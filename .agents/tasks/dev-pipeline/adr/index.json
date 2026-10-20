@@ -1,28 +1,36 @@
 {
+  "task": "Normalização de telefone para E.164 (DDI 55) no envio de WhatsApp (bugfix A+B)",
   "adrs": [
     {
-      "id": "adr-13",
-      "file": "adr-13-plans-module.md",
-      "title": "Fonte única de verdade dos planos em src/lib/plans.ts (slugs, rótulos pt-BR, parsePlanSlug)",
+      "id": "adr-01",
+      "file": "adr-01-regra-e164-br-servidor.md",
+      "title": "Regra de normalização E.164-BR na borda do servidor (dona da especificação)",
+      "scope": "dados",
+      "status": "approved"
+    },
+    {
+      "id": "adr-02",
+      "file": "adr-02-normalizacao-cadastro-cliente.md",
+      "title": "Normalização E.164-BR no cadastro/edição de cliente (schema zod)",
       "scope": "frontend",
       "status": "approved"
     },
     {
-      "id": "adr-14",
-      "file": "adr-14-precos-ctas.md",
-      "title": "/precos acionável: CTA por plano -> /cadastro?plano= e destaque do plano recomendado (Clínica)",
-      "scope": "frontend",
+      "id": "adr-03",
+      "file": "adr-03-script-dev-functions.md",
+      "title": "Script de desenvolvimento para subir as Edge Functions localmente",
+      "scope": "ambos",
       "status": "approved"
     },
     {
-      "id": "adr-15",
-      "file": "adr-15-cadastro-plan-intent.md",
-      "title": "/cadastro lê e exibe a intenção de plano (useSearchParams + parsePlanSlug), com degradação segura",
-      "scope": "frontend",
-      "status": "approved"
+      "id": "adr-04",
+      "file": "adr-04-verificacao-ponta-a-ponta.md",
+      "title": "Verificação ponta-a-ponta em modo real e fechamento do bugfix",
+      "scope": "ambos",
+      "status": "pending"
     }
   ],
-  "current": "adr-15",
-  "allApproved": true,
-  "qaPending": []
+  "current": "adr-04",
+  "qaPending": ["adr-01", "adr-02", "adr-03", "adr-04"],
+  "allApproved": false
 }
