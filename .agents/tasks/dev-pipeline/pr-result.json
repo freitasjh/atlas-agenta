@@ -1,46 +1,47 @@
 {
   "url": null,
   "prPublished": false,
-  "delivery": "local-only",
-  "branch": "fix/e164-br-ddi-whatsapp",
-  "baseBranch": "feat/precos-cadastro-plan-intent",
-  "title": "fix(whatsapp): normaliza telefone para E.164-BR (DDI 55) no cadastro e antes da Evolution",
-  "reason": "Entrega local-only: repositorio sem git remote e sem CLI de forge (gh/glab/cr ausentes neste ambiente, confirmado). PR nao publicado; URL nao fabricada. Os commits do bugfix vivem na branch fix/e164-br-ddi-whatsapp, empilhada sobre feat/precos-cadastro-plan-intent (HEAD do trabalho aprovado anterior).",
-  "pendingUserAction": "Publicacao do PR PENDENTE de o usuario conectar um remote. Depois: `git remote add origin <url>`, `git push -u origin fix/e164-br-ddi-whatsapp`, entao abrir o Pull Request contra feat/precos-cadastro-plan-intent (ou master, conforme o alvo de merge escolhido).",
+  "delivery": "branch-pushed-no-forge-cli",
+  "branch": "feat/adr-06-slotpicker",
+  "remote": "git@github.com:freitasjh/atlas-agenta.git",
+  "pushed": true,
+  "compareUrl": "https://github.com/freitasjh/atlas-agenta/pull/new/feat/adr-06-slotpicker",
+  "title": "feat(agenda): slots sob demanda, exceções/vigência e visão de calendário",
+  "reason": "A branch feat/adr-06-slotpicker foi empurrada com sucesso para origin (git push -u, novo branch rastreado). O PR NÃO foi criado porque nenhum CLI de forge está disponível neste step (gh/glab/cr/hub ausentes; instalar via snap/apt exigiria sudo e um token autenticado inexistente). URL do PR não foi fabricada — o GitHub retornou apenas a compareUrl acima para abertura manual. Além disso, a QA ao vivo via chrome-devtools (gate obrigatório antes do PR) NÃO pôde ser executada: a ferramenta MCP chrome-devtools não está exposta a este step de entrega.",
+  "pendingUserAction": "Abrir o PR manualmente pela compareUrl (base a definir: master ou a branch-alvo de merge) OU autenticar um gh/glab para criação programática. Antes do merge, executar a QA visual consolidada no /app/agenda com chrome-devtools (ver qaPending).",
   "commits": [
-    "71aa041 fix: normaliza telefone para E.164-BR (DDI 55) antes do envio Evolution",
-    "1dab319 fix: normaliza telefone do cadastro para E.164-BR com DDI 55",
-    "77ee25a chore: add dev-functions script to serve edge functions locally",
-    "7cfa028 chore(pipeline): verificacao estatica ADR-04 E.164-BR; live QA pendente",
-    "ce36a14 docs(whatsapp): esclarece que a fronteira E.164-BR e o comprimento, nao o prefixo 55"
-  ],
-  "appFilesChanged": [
-    "supabase/functions/whatsapp/evolution-adapter.ts",
-    "src/lib/phone.ts",
-    "src/lib/validations/scheduling.ts",
-    "src/app/clientes/CustomerFormDialog.tsx",
-    "package.json",
-    "scripts/dev-functions.sh"
+    "86854bc fix: week view mobile day-nav and keyboard-reachable empty slots (ADR-08)",
+    "a7f35b7 feat: visão de calendário dia/semana alternável na agenda (ADR-08)",
+    "a45da38 feat: vigência e exceções por data na tela de horários (ADR-07)",
+    "9067952 feat: seletor de slots livres no formulário de agendamento (ADR-06)",
+    "cba4200 fix: filtrar status ativo em busy e cobrir DST real (ADR-05)",
+    "4659e0d feat: gerador de slots puro e useAvailableSlots (ADR-05)",
+    "47bc315 feat: hooks de dados para exceções e vigência/passo da agenda (ADR-04)",
+    "ed4f273 fix: inclui colunas de vigência/passo no select de professionals (ADR-03)",
+    "8fff6f8 feat: add schedule_overrides table with RLS/RBAC (ADR-02)"
   ],
   "adrsDelivered": [
-    { "id": "adr-01", "title": "Regra de normalizacao E.164-BR na borda do servidor (dona da especificacao)" },
-    { "id": "adr-02", "title": "Normalizacao E.164-BR no cadastro/edicao de cliente (schema zod)" },
-    { "id": "adr-03", "title": "Script de desenvolvimento para subir as Edge Functions localmente" },
-    { "id": "adr-04", "title": "Verificacao ponta-a-ponta em modo real e fechamento do bugfix" }
+    { "id": "adr-01", "title": "Vigência da grade e passo-base de slots em professionals" },
+    { "id": "adr-02", "title": "Tabela schedule_overrides (exceções por data) com RLS/RBAC" },
+    { "id": "adr-03", "title": "Tipos de domínio e schemas zod de exceção/vigência" },
+    { "id": "adr-04", "title": "Hooks de dados: exceções e vigência/passo" },
+    { "id": "adr-05", "title": "Gerador de slots puro (lib/scheduling-slots.ts) e useAvailableSlots" },
+    { "id": "adr-06", "title": "SlotPicker no fluxo de criação (AppointmentFormDialog)" },
+    { "id": "adr-07", "title": "Vigência e exceções na tela de horários (HorariosPage)" },
+    { "id": "adr-08", "title": "Visão de calendário (dia/semana) alternável com a lista (AgendaPage)" }
   ],
   "qa": {
-    "buildTypecheck": "pass — `npm run build` (tsc -b && vite build) exit 0, build limpo e TS estrito sem any. Unico aviso e chunk >500kB, pre-existente e fora de escopo.",
-    "unitProof": "pass — harness tsx deterministico (16/16 asserts) importou o toE164BR real do cadastro e replicou verbatim o applyBrDdi/normalizePhoneForEvolution do servidor. Prova direta do caso do usuario: '47992391751' -> servidor '5547992391751', cadastro '+5547992391751'. Cobre idempotencia (+55 e DDI ja presente), fixo 10 dig, DDD 55/RS por comprimento, invalido (123, longo demais) -> null no cadastro / cru na borda, e concordancia servidor==cadastro(sem +). Harness temporario removido apos rodar.",
-    "edgeFunctionTypecheck": "parcial — `deno check` standalone nao executavel (Deno vive no container supabase-edge-runtime, nao no PATH). Grafo de modulos da function whatsapp compila/serve no edge-runtime em runs anteriores; conferencia estatica de fonte coerente, sem any aparente.",
-    "chromeDevtools": "NAO EXECUTADA — ferramenta MCP chrome-devtools NAO exposta neste step; sem `functions serve` ativo (probe POST /functions/v1/whatsapp retornou 503, o mesmo erro original do usuario) e sem JWT admin interativo. QA visual ao vivo do /app/clientes (cadastro grava +5547992391751; lista exibe +55 (47) 99239-1751; edicao de legado normaliza; telefone invalido bloqueia submit com erro pt-BR e foco acessivel) permanece PENDENTE em adr/index.json -> qaPending (adr-04).",
-    "liveSendReal": "NAO EXECUTADA — reenvio real em EVOLUTION_MODE=real (confirmado no .env) exige Evolution via ngrok + instancia conectada + JWT admin, nao estabeleciveis non-interativamente neste step. O comportamento 'sent' com number=5547992391751 esta provado deterministicamente na camada de logica (unitProof); so o trajeto de rede/UI resta.",
-    "codeAudit": "pass — regra E.164-BR unica espelhada nas duas pontas (applyBrDdi no servidor; toE164BR no cadastro, mesma tabela de casos). Borda e defesa em profundidade (nao lanca; Evolution recusa invalido), origem rejeita com null -> erro pt-BR no customerSchema. Nenhum log de telefone/texto em claro (index.ts loga so motivo tecnico curto). tenantId vem do JWT/profiles (resolveIdentity) + .eq('tenant_id'), nunca do cliente.",
-    "negativeGuard": "pass — sem migration nova nem alterada; sem dependencia nova; sem alteracao de RLS/schema. Diff confinado aos arquivos de app acima + script de dev."
+    "buildTypecheck": "pass — `npm run build` (tsc -b && vite build) exit 0, TS estrito, build limpo. Único aviso é chunk >500kB, pré-existente e fora de escopo.",
+    "unitTests": "pass — `npm test` (vitest run): 16/16 em src/lib/scheduling-slots.test.ts. Cobre o gerador puro de slots (grade semanal, break, exceção fechada/janela atípica, vigência início/fim, ocupados, duração do serviço consumindo o bloco, passo-base, e DST real).",
+    "dbLiveSchema": "pass — verificado contra o Postgres local em execução (docker exec psql): schedule_overrides existe com tenant_id DEFAULT current_tenant_id(), RLS habilitado, 3 políticas (select same-tenant; write admin; write own-professional via profile_id=auth.uid()), FK composto (tenant_id, professional_id), unique (tenant_id, professional_id, override_date), índices, e CHECKs (is_closed vs janela com break both-or-none). professionals ganhou schedule_start_date, schedule_end_date, slot_step_minutes; RLS habilitado. Confirma ADR-01 e ADR-02 ao vivo.",
+    "frontendWiring": "pass (source) — SlotPicker.tsx, useAvailableSlots.ts, useScheduleOverrides.ts, scheduling-slots.ts, AgendaPage.tsx presentes e importados no fluxo (AppointmentFormDialog, HorariosPage). Build/typecheck garantem a integração de tipos.",
+    "chromeDevtools": "NÃO EXECUTADA — ferramenta MCP chrome-devtools NÃO exposta a este step de entrega. A QA visual ao vivo consolidada do /app/agenda (chips de slot refletindo grade/exceção/vigência/ocupados no fuso do tenant; estados de vazio folga/fora-vigência/sem-grade; toggle calendário<->lista dia/semana; criar agendamento a partir de um chip sem sobreposição com erro 23P01 pt-BR na corrida) permanece PENDENTE. Não fabricada.",
+    "secretAudit": "pass — .env e supabase/functions/.env não versionados; apenas .env.example rastreado. Nenhum segredo ecoado. Pasta .agents não commitada no diff da feature."
   },
-  "secretAudit": "pass — `supabase/functions/.env` (EVOLUTION_API_KEY, service role) confirmado gitignorado (git check-ignore positivo); apenas .env.example e supabase/functions/.env.example rastreados. Nenhum segredo, telefone ou URL ngrok em arquivo versionado. Valores de segredo nunca ecoados.",
+  "qaGate": "BLOQUEADO para abertura de PR por este step: (a) QA visual chrome-devtools não executável aqui; (b) sem CLI de forge para criar o PR. Nada FALHOU na verificação estática/DB — a verificação visual simplesmente não pôde ser rodada neste ambiente.",
   "pendingItems": [
-    "QA ao vivo (chrome-devtools + reenvio real em EVOLUTION_MODE=real) PENDENTE — ferramenta/ambiente nao disponiveis neste step; registrado em adr/index.json qaPending (adr-04). A logica central esta provada por build + unit harness deterministico.",
-    "Publicacao do PR depende de o usuario conectar um remote (sem remote/forge CLI no ambiente).",
-    "Teste manual do usuario: reenviar WhatsApp ao cliente legado (phone sem DDI) com instancia conectada e confirmar outcome 'sent' na UI."
+    "QA visual consolidada no /app/agenda via chrome-devtools (ADR-01..08) — não executável neste step; tool MCP ausente. Deve ser feita antes do merge.",
+    "Criação do PR: branch já empurrada; abrir manualmente pela compareUrl ou autenticar um gh/glab.",
+    "Confirmar a branch-base de merge (master x branch empilhada)."
   ]
 }

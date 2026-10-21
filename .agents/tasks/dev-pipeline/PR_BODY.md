@@ -1,51 +1,57 @@
-# fix(whatsapp): normaliza telefone para E.164-BR (DDI 55) no cadastro e antes da Evolution
+# feat(agenda): slots sob demanda, exceções/vigência e visão de calendário
 
-**Branch:** `fix/e164-br-ddi-whatsapp` → base `feat/precos-cadastro-plan-intent`
-**Entrega:** local-only (sem remote/forge neste ambiente — PR real pendente de `git remote add`).
+**Branch:** `feat/adr-06-slotpicker` (empurrada para `origin`)
+**Compare/abrir PR:** https://github.com/freitasjh/atlas-agenta/pull/new/feat/adr-06-slotpicker
 
 ## Resumo
 
-Corrige o `send_failed`/HTTP 400 do envio de WhatsApp: o número chegava à Evolution
-sem o DDI `55` (ex.: legado `47992391751`). A normalização E.164-BR passa a acontecer
-nas duas pontas, com a mesma regra:
+Evolui o módulo de agenda por profissional:
 
-- **Borda do servidor (A):** `normalizePhoneForEvolution`/`applyBrDdi` em
-  `supabase/functions/whatsapp/evolution-adapter.ts` prefixa `55` a números nacionais de
-  10/11 dígitos (fronteira por **comprimento**, não por prefixo) antes do `sendText`,
-  cobrindo registros legados sem DDI. Idempotente para 12/13 dígitos já com `55`. Defesa em
-  profundidade: não lança — a Evolution recusa inválido. Nunca loga o número.
-- **Cadastro de cliente (B):** `toE164BR` em `src/lib/phone.ts`, consumido pelo
-  `customerSchema` (zod), grava o telefone normalizado em `+55...`; comprimento inválido é
-  rejeitado com erro em pt-BR no submit. Copy do campo explicita o `+55`.
-- Regra única espelhada nas duas pontas (sem implementações divergentes).
-- Script de dev `scripts/dev-functions.sh` (+ `npm run dev:functions`) para subir as Edge
-  Functions localmente.
+- **Vigência da grade** (`schedule_start_date`/`schedule_end_date`) e **passo-base de slots**
+  (`slot_step_minutes`) por profissional, novas colunas em `professionals`.
+- **Exceções por data** (folga/feriado/horário atípico) em nova tabela multi-tenant
+  `schedule_overrides`, com RLS/RBAC (admin escreve tudo no tenant; profissional só a própria).
+- **Geração de slots sob demanda** (`src/lib/scheduling-slots.ts`, puro e testado): grade semanal
+  − exceções − vigência − agendamentos ocupados, com o encaixe consumindo a **duração do serviço**
+  escolhido a partir de um início válido, no **fuso do tenant**. Nada materializado.
+- **SlotPicker** no fluxo de criação (`AppointmentFormDialog`): escolhe um horário livre; manter a
+  não-sobreposição (constraint `tstzrange` no banco, erro 23P01 em pt-BR na corrida).
+- **Tela de horários** (`HorariosPage`) ganha vigência + exceções, reusando a grade semanal.
+- **AgendaPage** ganha **visão de calendário (dia/semana) alternável com a lista** por escolha do
+  usuário (toggle na própria tela, não config de tenant).
 
 ## ADRs entregues
 
-- **adr-01** — Regra de normalização E.164-BR na borda do servidor (dona da especificação)
-- **adr-02** — Normalização E.164-BR no cadastro/edição de cliente (schema zod)
-- **adr-03** — Script de desenvolvimento para subir as Edge Functions localmente
-- **adr-04** — Verificação ponta-a-ponta em modo real e fechamento do bugfix
+- **adr-01** — Vigência da grade e passo-base de slots em professionals
+- **adr-02** — Tabela schedule_overrides (exceções por data) com RLS/RBAC
+- **adr-03** — Tipos de domínio e schemas zod de exceção/vigência
+- **adr-04** — Hooks de dados: exceções e vigência/passo
+- **adr-05** — Gerador de slots puro (lib/scheduling-slots.ts) e useAvailableSlots
+- **adr-06** — SlotPicker no fluxo de criação (AppointmentFormDialog)
+- **adr-07** — Vigência e exceções na tela de horários (HorariosPage)
+- **adr-08** — Visão de calendário (dia/semana) alternável com a lista (AgendaPage)
 
 ## O que foi testado
 
 - `npm run build` (tsc -b && vite build): **limpo** (único aviso é chunk >500kB, pré-existente).
-- **Prova unitária determinística** (harness tsx, 16/16 asserts): importou o `toE164BR` real e
-  replicou verbatim o `applyBrDdi` do servidor. Caso do usuário `47992391751` → servidor
-  `5547992391751`, cadastro `+5547992391751`. Cobre idempotência, fixo 10 díg, DDD 55/RS por
-  comprimento, inválidos → `null` no cadastro / cru na borda, e concordância entre as pontas.
-- Auditoria de fonte: sem log de telefone/texto em claro; `tenant_id` vem do JWT/profiles
-  (`resolveIdentity`) + `.eq('tenant_id')`, nunca do cliente; sem migration/RLS/dependência nova.
-- Segredos: `supabase/functions/.env` confirmado gitignorado; só `.env.example` versionado.
+- `npm test` (vitest): **16/16** em `scheduling-slots.test.ts` — grade, break, exceção
+  fechada/janela atípica, vigência início/fim, ocupados, duração do serviço consumindo o bloco,
+  passo-base e **DST real**.
+- **DB ao vivo** (psql no container local): `schedule_overrides` com `tenant_id` DEFAULT
+  `current_tenant_id()`, RLS habilitado, 3 políticas (select same-tenant; write admin; write
+  own-professional via `profile_id = auth.uid()`), FK composto `(tenant_id, professional_id)`,
+  unique por data, CHECKs (fechado vs. janela com break both-or-none). `professionals` com as 3
+  colunas novas e RLS. Confirma ADR-01/02 ao vivo.
+- Fiação de frontend (source + typecheck): SlotPicker, useAvailableSlots, useScheduleOverrides,
+  scheduling-slots e AgendaPage presentes e integrados.
 
 ## Itens pendentes
 
-- **QA ao vivo via chrome-devtools PENDENTE:** a ferramenta MCP chrome-devtools não está exposta
-  neste step de entrega, não há `functions serve` ativo (probe retornou 503, mesmo erro original)
-  e o reenvio real em `EVOLUTION_MODE=real` exige Evolution via ngrok + instância conectada + JWT
-  admin interativo. A prova visual no `/app/clientes` (cadastro grava `+5547992391751`; lista
-  exibe `+55 (47) 99239-1751`; edição de legado normaliza; telefone inválido bloqueia submit com
-  erro pt-BR e foco acessível) e o `outcome: "sent"` ponta-a-ponta ficam registrados em
-  `adr/index.json` → `qaPending: ["adr-04"]`. A lógica central está provada por build + unit harness.
-- **Publicação do PR** depende de o usuário conectar um remote.
+- **QA visual ao vivo via chrome-devtools PENDENTE:** a ferramenta MCP chrome-devtools não está
+  exposta ao step de entrega. A verificação visual consolidada no `/app/agenda` (chips de slot
+  refletindo grade/exceção/vigência/ocupados no fuso do tenant; estados de vazio; toggle
+  calendário↔lista dia/semana; criar a partir de um chip sem sobreposição) deve ser feita antes do
+  merge. Nada falhou na verificação estática/DB — a visual apenas não pôde rodar aqui.
+- **Abertura do PR:** branch já empurrada; abrir pela compare URL acima ou autenticar um `gh`/`glab`
+  (nenhum CLI de forge disponível no ambiente deste step).
+- Confirmar a branch-base de merge (`master` ou branch empilhada).
