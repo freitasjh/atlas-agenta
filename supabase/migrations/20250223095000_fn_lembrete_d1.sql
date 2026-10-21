@@ -76,6 +76,9 @@ begin
       -- Janela D-1: entre now()+23h e now()+25h; no passado nunca entra (R4).
       and a.starts_at >= now() + v_window_start
       and a.starts_at <  now() + v_window_end
+      -- Cliente ativo: soft-delete (active = false) não recebe disparo — mesma semântica do
+      -- handleSend sob demanda da Fatia 1 (supabase/functions/whatsapp/index.ts).
+      and c.active = true
       -- Consentimento LGPD explícito (R3).
       and c.whatsapp_opt_in = true
       -- Suspensão de disparo por status de assinatura do tenant.
