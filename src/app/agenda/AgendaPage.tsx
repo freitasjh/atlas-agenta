@@ -33,6 +33,12 @@ import { toast } from "sonner";
 
 import { AppointmentFormDialog } from "@/app/agenda/AppointmentFormDialog";
 import { StatusChangeConfirm } from "@/app/agenda/StatusChangeConfirm";
+import { AgendaCalendarDay } from "@/app/agenda/AgendaCalendarDay";
+import { AgendaCalendarWeek } from "@/app/agenda/AgendaCalendarWeek";
+import {
+  AgendaViewToggle,
+  useAgendaView,
+} from "@/app/agenda/AgendaViewToggle";
 import {
   mapSchedulingError,
   useAppointments,
@@ -42,6 +48,7 @@ import { useProfessionals } from "@/hooks/useProfessionals";
 import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
 import {
@@ -73,6 +80,12 @@ function shiftIsoDate(dateStr: string, days: number): string {
   const base = new Date(Date.UTC(y, m - 1, d));
   base.setUTCDate(base.getUTCDate() + days);
   return base.toISOString().slice(0, 10);
+}
+
+/** Weekday (0=domingo) de um `YYYY-MM-DD`, independente de fuso. */
+function weekdayOf(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
 /** Borda-lateral de status na timeline (reforço redundante do `StatusBadge`). */
@@ -252,6 +265,8 @@ export function AgendaPage() {
   const [day, setDay] = useState(() => todayInTenantTz(timeZone));
   // Filtro de profissional livre (admin/recepção). Vazio = todos.
   const [filterProfessionalId, setFilterProfessionalId] = useState<string>("");
+  // Visão escolhida pelo usuário (lista/dia/semana), persistida no navegador.
+  const [view, setView] = useAgendaView();
 
   // Profissional vinculado ao próprio login (quando `professional`).
   const ownProfessional = useMemo(() => {
@@ -273,6 +288,11 @@ export function AgendaPage() {
     professionalId: effectiveProfessionalId,
   });
 
+  // Grade do profissional em foco, só para desenhar a faixa de expediente na
+  // visão Dia. Quando "todos" estão à vista (sem um profissional em foco), a
+  // janela de horas é derivada dos próprios agendamentos.
+  const workingHoursQuery = useWorkingHours(effectiveProfessionalId ?? null);
+
   const changeStatus = useChangeAppointmentStatus();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -284,14 +304,37 @@ export function AgendaPage() {
   } | null>(null);
   const [messageTarget, setMessageTarget] =
     useState<AppointmentWithRelations | null>(null);
+  // Pré-preenchimento ao criar a partir de uma faixa vazia do calendário.
+  const [prefill, setPrefill] = useState<{
+    professionalId?: string;
+    time?: string;
+  } | null>(null);
 
   function openCreate() {
     setEditingAppointment(null);
+    setPrefill(null);
+    setFormOpen(true);
+  }
+
+  /**
+   * Criar a partir de uma faixa vazia do calendário: pré-preenche profissional
+   * (quando a coluna aponta um) + início e abre o diálogo. A não-sobreposição
+   * segue sendo validada no submit (constraint do banco, ADR-06).
+   */
+  function openCreateAt(professionalId: string | null, time: string) {
+    if (!canManageAppointments) return;
+    setEditingAppointment(null);
+    setPrefill({
+      professionalId:
+        professionalId ?? effectiveProfessionalId ?? undefined,
+      time,
+    });
     setFormOpen(true);
   }
 
   function openEdit(appointment: AppointmentWithRelations) {
     setEditingAppointment(appointment);
+    setPrefill(null);
     setFormOpen(true);
   }
 
@@ -437,6 +480,10 @@ export function AgendaPage() {
                 </Select>
               </div>
             ) : null}
+
+            <div className="sm:ml-auto">
+              <AgendaViewToggle value={view} onChange={setView} />
+            </div>
           </div>
 
           {isLoading ? (
@@ -457,6 +504,27 @@ export function AgendaPage() {
                 Tentar novamente
               </Button>
             </StatePanel>
+          ) : view === "dia" ? (
+            <AgendaCalendarDay
+              day={day}
+              timeZone={timeZone}
+              appointments={appointments}
+              professionals={activeProfessionals}
+              singleColumn={!canScheduleForAnyProfessional || !!effectiveProfessionalId}
+              workingHours={workingHoursQuery.data ?? []}
+              weekday={weekdayOf(day)}
+              onOpenAppointment={canManageAppointments ? openEdit : () => {}}
+              onCreateAt={canManageAppointments ? openCreateAt : undefined}
+            />
+          ) : view === "semana" ? (
+            <AgendaCalendarWeek
+              day={day}
+              timeZone={timeZone}
+              appointments={appointments}
+              todayIso={todayInTenantTz(timeZone)}
+              onSelectDay={setDay}
+              onOpenAppointment={canManageAppointments ? openEdit : () => {}}
+            />
           ) : appointments.length === 0 ? (
             <StatePanel
               titulo="Nenhum agendamento para este dia"
@@ -503,6 +571,7 @@ export function AgendaPage() {
             canScheduleForAnyProfessional ? null : (ownProfessional?.id ?? null)
           }
           dayAppointments={appointments}
+          prefill={prefill}
         />
       ) : null}
 
