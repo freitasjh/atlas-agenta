@@ -1,0 +1,10 @@
+{
+  "test": "deferred",
+  "reason": "ADR-04 é uma mudança server-side dentro da Edge Function 'whatsapp' (render do body do template antes do adapter.sendText). Não há superfície de frontend testável nesta ADR, e os próprios critérios de aceite (AC-05..AC-08) delegam a verificação ao vivo — servir a função com supabase functions serve + adapter mock, confirmar preview == texto recebido — explicitamente à ADR-07, que já é dona do QA ao vivo consolidado da fatia. Testar agora exigiria subir a Edge Function em Deno (não instalado neste ambiente) sem uma tela para exercitar o fluxo ponta a ponta. A contraprova de unidade (renderTemplate: AC-05/AC-06/RNF-T05) já passa no build/test. QA adiado para a verificação consolidada na ADR-07.",
+  "evidence": {
+    "build": "npm run build limpo (tsc -b + vite build), reportado por ambos os revisores na contraprova.",
+    "tests": "npm run test verde 24/24, incluindo os 8 testes do contrato de render (AC-05/AC-06/RNF-T05).",
+    "deno": "supabase/functions excluído do tsc -b; deno não instalado neste ambiente — render.ts verificado por leitura, QA de runtime delegado à ADR-07.",
+    "scope": "Diff restrito a supabase/functions/whatsapp/index.ts e supabase/functions/whatsapp/render.ts (novo); contrato de fio de 'send' inalterado; isolamento por tenant_id derivado do JWT preservado."
+  }
+}

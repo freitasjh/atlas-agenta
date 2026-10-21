@@ -1,0 +1,9 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Revisor A: APPROVED, 0 issues. Revisor B: APPROVED, 2 observações não-bloqueantes (ambas 'confirmed' como corretas por design, não defeitos).",
+    "Contraprova (reexecutada por ambos os revisores no commit 56e21e4): npm run typecheck (tsc -b) limpo, npm run build sucesso (aviso pré-existente de chunk >500kB, não introduzido pela ADR), npm run test 32/32.",
+    "Observação 1 (design): rotulagem rica de histórico do ponto 5 da ADR (getInboundIntentLabel, distinção recebida/enviada) não foi implementada porque o webhook ADR-03 não grava linha de messages para a resposta do cliente — não há dado de entrada a rotular. Redução correta, não corte indevido. QA (ADR-07) não deve procurar label de entrada inexistente.",
+    "Observação 2 (comportamento novo, seguro): useChangeAppointmentStatus passa a gravar confirmed_via='manual' ao confirmar pela UI. Coluna de appointments que recepção/admin já atualizam via status; não é dado financeiro; sem brecha de RBAC/RLS (update por .eq('id', id) sob RLS, sem tenant_id do cliente). QA (ADR-07) deve exercitar: confirmar pela recepção → confirmed_via='manual' → só badge, sem micro-selo."
+  ]
+}

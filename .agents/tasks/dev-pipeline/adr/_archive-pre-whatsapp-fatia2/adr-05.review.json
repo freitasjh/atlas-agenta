@@ -1,0 +1,8 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Reviewers A e B: ambos APPROVED. Contraprova de ambos: npm run build exit 0 (tsc -b + vite build) e npm run test 24/24 exit 0 (projeto não tem script de lint; gates são build e test).",
+    "Issues levantadas são todas não-bloqueantes e consistentes com padrões já existentes do projeto: (1) assimetria de validação do body — form limita 1–1000 mas messageTemplateRowSchema da leitura não trava range (mesmo padrão de serviceRowSchema; banco é o teto real em 2000); (2) schema de leitura tipa mas não valida semântica de updated_at/created_at/active (cosmético, shape vem do próprio banco sob RLS).",
+    "Isolamento multi-tenant correto: hook nunca envia tenant_id; upsert usa onConflict 'tenant_id,template_key' e conta com default current_tenant_id() da coluna (ADR-01). RBAC canManageMessageTemplates = isAdmin espelha canManageWhatsAppConnection; trava real é a RLS."
+  ]
+}

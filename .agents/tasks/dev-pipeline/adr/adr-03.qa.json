@@ -1,0 +1,20 @@
+{
+  "test": "deferred",
+  "reason": "ADR-03 e escopo 'dados': Edge Function Deno publica (whatsapp-inbound) sem superficie de frontend testavel nesta fatia. Seu QA real exige 'supabase functions serve' + 'deno check' (deno ausente neste ambiente, confirmado pelos dois revisores) e exercicio por payload simulado via curl (casos 1/2/duplicado/invalido), que a propria ADR-03 e a ADR-07 definem como verificacao consolidada. O webhook so tem efeito observavel ponta a ponta junto com o lembrete D-1 (ADR-04), o worker de retentativa (ADR-05) e o selo no frontend (ADR-06). Adiar para ADR-07 evita teste parcial de fundacao sem sistema completo.",
+  "evidence": {
+    "contraprova": "npm run build (tsc -b + vite) limpo e npm test (vitest, 32 testes) verde, reexecutados e confirmados pelos dois revisores; tsconfig.app.json exclui supabase/ (deno).",
+    "arquivos_confirmados": [
+      "supabase/functions/whatsapp-inbound/index.ts",
+      "supabase/functions/whatsapp-inbound/schemas.ts",
+      "supabase/config.toml ([functions.whatsapp-inbound] verify_jwt = false escopado)",
+      "supabase/functions/.env.example (WHATSAPP_WEBHOOK_SECRET vazio, sem VITE_)",
+      "supabase/migrations/20250223090000_webhook_events.sql",
+      "supabase/migrations/20250223091000_appointments_confirmed_via.sql",
+      "supabase/migrations/20250223092000_messages_retry_fields.sql",
+      "supabase/migrations/20250223093000_reagendar_retorno_template.sql",
+      "supabase/migrations/20250223094000_pg_cron_setup.sql"
+    ],
+    "deno_check": "nao executado (deno ausente no ambiente) — fica para a verificacao consolidada da ADR-07",
+    "qa_a_cobrir_na_adr_07": "payload simulado por curl: R5 auth (401/rejeitado), R6 schema (400), R7 idempotencia (external_event_id duplicado nao duplica efeito), R8/R12 casamento + isolamento multi-tenant, R9 confirma (status=confirmado + confirmed_via=cliente_whatsapp + confirmed_at), R10/R14 reagendar (messages reagendar_retorno em fila, sem PII), R11 texto nao reconhecido ignorado, R13 transicao invalida sem 500, R19 PII minima em webhook_events.payload e logs."
+  }
+}

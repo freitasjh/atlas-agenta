@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-05 entrega apenas fundação de frontend sem superfície testável: o primitivo Textarea, o tipo MessageTemplateRow, o schema zod, o hook useMessageTemplates/useUpsertMessageTemplate e a flag RBAC canManageMessageTemplates. Nenhuma tela é montada — a própria ADR define que a prova funcional ponta a ponta (ler/editar sob RLS, isolamento entre tenants) ocorre quando a tela da ADR-06 existir. Aqui a verificação é typecheck/build + revisão de contrato, já feita e verde. QA ao vivo adiado para a verificação consolidada da fatia (ADR-06/07)."
+}
