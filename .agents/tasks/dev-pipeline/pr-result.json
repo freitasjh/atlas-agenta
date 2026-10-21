@@ -1,4 +1,11 @@
 {
+  "url": null,
+  "prPublished": false,
+  "delivery": "branch-pushed-pr-api-blocked-by-token-scope",
+  "pushed": true,
+  "compareUrl": "https://github.com/freitasjh/atlas-agenta/pull/new/feat/adr-06-frontend-selo-historico",
+  "reason": "Branch feat/adr-06-frontend-selo-historico empurrada para origin (git push -u, rastreada; commit de artefatos 450f66a no topo dos 9 commits de código). gh CLI autenticado (conta freitasjh), mas `gh pr create` falhou com 'Resource not accessible by personal access token (createPullRequest)': o fine-grained PAT NÃO tem o escopo 'Pull requests: write'. URL do PR NÃO foi fabricada — abrir pela compareUrl ou conceder o escopo ao PAT e recriar.",
+  "pendingUserAction": "Abrir o PR pela compareUrl, OU conceder 'Pull requests: write' ao PAT e rodar: gh pr create --base master --head feat/adr-06-frontend-selo-historico --title \"feat: confirmação interativa D-1 do WhatsApp (Fase 2, Fatia 2)\" --body-file .agents/tasks/dev-pipeline/PR_BODY.md",
   "slice": "WhatsApp Fase 2 — Fatia 2 (confirmação interativa D-1)",
   "branch": "feat/adr-06-frontend-selo-historico",
   "base": "master",
