@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -32,13 +32,64 @@ import {
 } from "@/components/ui/select";
 
 import { useSendMessage } from "@/hooks/useMessages";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { useTenant } from "@/hooks/useTenant";
 import { mapSendOutcome, mapWhatsAppError } from "@/lib/whatsapp-errors";
 import { getMessageTemplateLabel } from "@/lib/whatsapp";
+import {
+  TEMPLATE_FALLBACKS,
+  TEMPLATE_VARIABLES,
+  type TemplateVariable,
+  type TemplateVars,
+} from "@/lib/message-templates";
+import { cn } from "@/lib/utils";
 import {
   sendMessageSchema,
   type SendMessageInput,
 } from "@/lib/validations/whatsapp";
-import { MESSAGE_TEMPLATES } from "@/types/domain";
+
+const KNOWN_VARIABLES = new Set<string>(TEMPLATE_VARIABLES);
+const TOKEN_PATTERN = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g;
+
+type PreviewSegment =
+  | { kind: "text"; value: string }
+  | { kind: "var"; value: string };
+
+/**
+ * Segmenta o corpo do template em texto literal e variáveis resolvidas,
+ * aplicando a MESMA tabela de fallback de `renderTemplate` (ADR-03). Token
+ * desconhecido fica literal; variável conhecida nunca aparece crua. Espelha a
+ * semântica canônica preservando quais trechos foram substituídos (realce por
+ * fundo), igual ao preview do editor (ADR-06). O preview é defesa em
+ * profundidade — a renderização de fio é do servidor (ADR-04).
+ */
+function segmentPreview(body: string, vars: TemplateVars): PreviewSegment[] {
+  const segments: PreviewSegment[] = [];
+  let lastIndex = 0;
+  for (const match of body.matchAll(TOKEN_PATTERN)) {
+    const [raw, name] = match;
+    const start = match.index ?? 0;
+    if (!KNOWN_VARIABLES.has(name)) {
+      // Token desconhecido: mantém literal (parte do texto comum).
+      continue;
+    }
+    if (start > lastIndex) {
+      segments.push({ kind: "text", value: body.slice(lastIndex, start) });
+    }
+    const variable = name as TemplateVariable;
+    const value = vars[variable];
+    const resolved =
+      value != null && value.trim() !== ""
+        ? value
+        : TEMPLATE_FALLBACKS[variable];
+    segments.push({ kind: "var", value: resolved });
+    lastIndex = start + raw.length;
+  }
+  if (lastIndex < body.length) {
+    segments.push({ kind: "text", value: body.slice(lastIndex) });
+  }
+  return segments;
+}
 
 interface SendMessageDialogProps {
   open: boolean;
@@ -81,6 +132,8 @@ export function SendMessageDialog({
   appointmentId,
 }: SendMessageDialogProps) {
   const sendMessage = useSendMessage();
+  const templatesQuery = useMessageTemplates();
+  const tenantQuery = useTenant();
 
   const form = useForm<SendMessageInput>({
     resolver: zodResolver(sendMessageSchema),
@@ -100,6 +153,45 @@ export function SendMessageDialog({
       appointmentId,
     });
   }, [open, customerId, appointmentId, form]);
+
+  const selectedTemplate = form.watch("template");
+
+  // Só os templates ATIVOS do tenant são oferecidos (defesa em profundidade; a
+  // trava final de ativo/inativo é do servidor, ADR-04). Mantém a ordem
+  // canônica de `MessageTemplate` para a UI ficar estável.
+  const activeTemplates = useMemo(
+    () => (templatesQuery.data ?? []).filter((row) => row.active),
+    [templatesQuery.data],
+  );
+
+  const selectedRow = useMemo(
+    () => activeTemplates.find((row) => row.template_key === selectedTemplate),
+    [activeTemplates, selectedTemplate],
+  );
+
+  // Dados disponíveis no diálogo para o preview: `{nome}` = nome do cliente,
+  // `{empresa}` = nome fantasia do tenant. `{servico}`/`{dataHora}` não vêm no
+  // diálogo (só o `appointmentId`); caem no fallback pt-BR, deixando explícito
+  // ao admin que não haverá dado cru. A renderização de fio é do servidor.
+  const previewVars = useMemo<TemplateVars>(
+    () => ({
+      nome: customerName,
+      empresa: tenantQuery.data?.trade_name ?? null,
+    }),
+    [customerName, tenantQuery.data?.trade_name],
+  );
+
+  const previewSegments = useMemo(
+    () =>
+      selectedRow ? segmentPreview(selectedRow.body, previewVars) : [],
+    [selectedRow, previewVars],
+  );
+
+  // Envio bloqueado na borda quando o template escolhido não tem versão ativa
+  // para o tenant (sem seed / desativado). O servidor é a trava real.
+  const templatesLoaded = !templatesQuery.isLoading && !templatesQuery.isError;
+  const noActiveTemplate =
+    whatsappOptIn && templatesLoaded && !selectedRow;
 
   async function onSubmit(values: SendMessageInput) {
     try {
@@ -137,7 +229,8 @@ export function SendMessageDialog({
     }
   }
 
-  const sendDisabled = !whatsappOptIn || sendMessage.isPending;
+  const sendDisabled =
+    !whatsappOptIn || noActiveTemplate || sendMessage.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -172,9 +265,12 @@ export function SendMessageDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {MESSAGE_TEMPLATES.map((template) => (
-                        <SelectItem key={template} value={template}>
-                          {getMessageTemplateLabel(template)}
+                      {activeTemplates.map((row) => (
+                        <SelectItem
+                          key={row.template_key}
+                          value={row.template_key}
+                        >
+                          {getMessageTemplateLabel(row.template_key)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -187,6 +283,54 @@ export function SendMessageDialog({
                 </FormItem>
               )}
             />
+
+            {/* Preview: o texto renderizado que o cliente receberá. É só camada
+                de confiança — a renderização real é do servidor (ADR-04). */}
+            {whatsappOptIn && selectedRow ? (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Prévia da mensagem
+                </p>
+                <div
+                  aria-live="polite"
+                  className="min-h-[72px] whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-3 text-sm text-foreground"
+                >
+                  {previewSegments.map((segment, index) =>
+                    segment.kind === "var" ? (
+                      <span
+                        key={index}
+                        className={cn(
+                          "rounded bg-primary/15 px-1 font-medium text-foreground",
+                        )}
+                      >
+                        {segment.value}
+                      </span>
+                    ) : (
+                      <Fragment key={index}>{segment.value}</Fragment>
+                    ),
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            {noActiveTemplate ? (
+              // Sem template ativo para a chave (sem seed / desativado): envio
+              // bloqueado na borda com motivo pt-BR e atalho para a edição. A
+              // trava real continua no servidor.
+              <p
+                className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
+                role="note"
+              >
+                Nenhum modelo ativo para esta mensagem. Ajuste em{" "}
+                <Link
+                  to="/app/config/mensagens"
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  Modelos de mensagem
+                </Link>
+                .
+              </p>
+            ) : null}
 
             {!whatsappOptIn ? (
               // Opt-in na borda: envio desabilitado, motivo em texto (não só
