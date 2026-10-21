@@ -1,0 +1,10 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Revisor A: APROVADO sem bloqueadores; observações de refinamento menores (aria-label de item em OverrideItem, timing de confirmação de remoção).",
+    "Revisor B: APPROVED; dois pontos menores não-bloqueantes e confirmados: (1) vigência 'sem data de término' salva schedule_end_date=null em silêncio quando o switch está desligado e o campo vazio; (2) slot_step_minutes [5,240] só é validado no submit (CHECK do banco é a trava final).",
+    "Contraprova (concordante entre os dois revisores independentes): npm run typecheck limpo, npm run build limpo (aviso pré-existente de chunk > 500kB, não introduzido por esta ADR), npm run test 16/16 passando.",
+    "Fronteiras respeitadas: nenhuma mutation envia tenant_id; useUpdateScheduleValidity atualiza apenas as 3 colunas de schedule em professionals (não amplia para profile_id/active); RBAC espelha a grade; sem segredo/webhook/PII nova.",
+    "Issues levantadas são todas menores/opcionais; a união não contém defeito bloqueante."
+  ]
+}

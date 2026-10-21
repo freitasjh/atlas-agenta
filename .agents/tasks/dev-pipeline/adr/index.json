@@ -1,66 +1,64 @@
 {
-  "task": "Evolução do módulo de Agenda: slots sob demanda, exceções/vigência e visão de calendário",
+  "task": "WhatsApp Fase 2, Fatia 1 — Templates de mensagem editáveis por tenant + renderização no envio sob demanda",
   "prd": ".agents/tasks/dev-pipeline/prd.md",
+  "base_branch": "master",
   "adrs": [
     {
       "id": "adr-01",
-      "file": "adr-01-professionals-vigencia-passo.md",
-      "title": "Vigência da grade e passo-base de slots em professionals",
+      "file": "adr-01-message-templates-schema-rls.md",
+      "title": "Tabela message_templates por tenant (schema + RLS)",
       "scope": "dados",
-      "status": "approved"
+      "status": "pending",
+      "depends_on": []
     },
     {
       "id": "adr-02",
-      "file": "adr-02-schedule-overrides-rls.md",
-      "title": "Tabela schedule_overrides (exceções por data) com RLS/RBAC",
+      "file": "adr-02-baseline-seed-templates.md",
+      "title": "Baseline/seed dos 4 templates padrão por tenant",
       "scope": "dados",
-      "status": "approved"
+      "status": "pending",
+      "depends_on": ["adr-01"]
     },
     {
       "id": "adr-03",
-      "file": "adr-03-tipos-e-schemas-zod.md",
-      "title": "Tipos de domínio e schemas zod de exceção/vigência",
-      "scope": "ambos",
-      "status": "approved"
+      "file": "adr-03-contrato-render-compartilhado.md",
+      "title": "Contrato de renderização compartilhado (renderTemplate + lista fechada + fallback)",
+      "scope": "frontend",
+      "status": "pending",
+      "depends_on": []
     },
     {
       "id": "adr-04",
-      "file": "adr-04-hooks-dados-overrides-vigencia.md",
-      "title": "Hooks de dados: exceções e vigência/passo",
-      "scope": "frontend",
-      "status": "approved"
+      "file": "adr-04-render-server-side-handleSend.md",
+      "title": "Renderização server-side no handleSend (Edge Function whatsapp)",
+      "scope": "dados",
+      "status": "pending",
+      "depends_on": ["adr-01", "adr-02", "adr-03"]
     },
     {
       "id": "adr-05",
-      "file": "adr-05-gerador-slots-e-useAvailableSlots.md",
-      "title": "Gerador de slots puro (lib/scheduling-slots.ts) e useAvailableSlots",
+      "file": "adr-05-infra-frontend-textarea-hook-rbac.md",
+      "title": "Infra de frontend: Textarea, schema zod, hook de dados e RBAC",
       "scope": "frontend",
-      "status": "approved"
+      "status": "pending",
+      "depends_on": ["adr-01", "adr-03"]
     },
     {
       "id": "adr-06",
-      "file": "adr-06-slotpicker-no-formulario.md",
-      "title": "SlotPicker no fluxo de criação (AppointmentFormDialog)",
+      "file": "adr-06-tela-templates-mensagem.md",
+      "title": "Tela de templates /app/config/mensagens (lista + editor)",
       "scope": "frontend",
-      "status": "approved"
+      "status": "pending",
+      "depends_on": ["adr-01", "adr-02", "adr-03", "adr-05"]
     },
     {
       "id": "adr-07",
-      "file": "adr-07-vigencia-e-excecoes-na-tela-horarios.md",
-      "title": "Vigência e exceções na tela de horários (HorariosPage)",
+      "file": "adr-07-preview-envio-e-qa.md",
+      "title": "Preview no SendMessageDialog + QA ao vivo da fatia",
       "scope": "frontend",
-      "status": "approved"
-    },
-    {
-      "id": "adr-08",
-      "file": "adr-08-visao-calendario-e-toggle.md",
-      "title": "Visão de calendário (dia/semana) alternável com a lista (AgendaPage)",
-      "scope": "frontend",
-      "status": "approved"
+      "status": "pending",
+      "depends_on": ["adr-03", "adr-04", "adr-05", "adr-06"]
     }
   ],
-  "current": "adr-08",
-  "allApproved": true,
-  "qaPending": ["adr-06", "adr-07", "adr-08"],
-  "qaNote": "ADR-01/02 verificadas ao vivo contra o Postgres local (schema+RLS+policies+checks). ADR-03/04/05 cobertas por build/typecheck estrito + 16 testes unitários do gerador puro de slots (incl. DST). ADR-06/07/08 têm critério de aceite VISUAL (chips de slot, estados de vazio, toggle calendário↔lista, corrida de sobreposição na UI) cuja QA via chrome-devtools NÃO pôde ser executada neste step de entrega — ferramenta MCP ausente. Permanecem em qaPending até a QA visual consolidada no /app/agenda antes do merge. Nada FALHOU; a verificação visual apenas não pôde rodar aqui."
+  "current": "adr-01"
 }

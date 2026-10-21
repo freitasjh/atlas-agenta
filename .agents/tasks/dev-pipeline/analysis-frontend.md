@@ -1,477 +1,460 @@
-# Análise de Frontend — Evolução da Agenda: slots sob demanda, exceções/vigência e visão de calendário
+# Design de Frontend — Templates de mensagem WhatsApp por tenant (Fatia 1, WhatsApp Fase 2)
 
-Projeto: **atlas-agenda** · Pipeline: dev-pipeline · Papel: **Designer dedicado de frontend**
-Workdir: `/home/joao/fusionlf/wsProjeto/atlas-agenda`
-Tipo de rota: **Feature (pesada)** · Área: `/app` (tenant)
+Papel: DESIGNER DEDICADO de frontend. Este documento define telas, componentes, rotas/guards,
+direção visual, acessibilidade, arquitetura React e critérios de aceite visuais para a entrega da
+**Fatia 1**: CRUD de templates de mensagem editáveis por tenant, com variáveis, consumidos no
+disparo sob demanda existente. Não contém código de aplicação — ele é produzido nas etapas de
+codificação, uma ADR por vez.
 
-> Esta demanda **toca tela** — e muito. Há três frentes de UI novas (geração/seleção de slots no
-> fluxo de criação, visão de calendário alternável com a lista, e edição de exceções + vigência da
-> grade por profissional). Produzo o design completo. A tensão de modelagem de slots (passo fixo
-> vs. duração do serviço) é resolvida e justificada na §1 — é a decisão front-loaded que a tarefa
-> pediu. Não escrevo código de aplicação aqui.
+> Contexto de fronteira: esta fatia **toca tela** (nova sub-rota de Configurações +
+> alteração mínima no `SendMessageDialog`). O documento cobre o front; o modelo de dados,
+> migrations e RLS/RBAC são do documento de dados; a renderização server-side das variáveis no
+> disparo é da Edge Function. Aqui eu sinalizo essas peças como **dependências** e desenho a UI
+> contra o contrato esperado.
 >
-> Fonte da verdade: `.kiro/steering/` (produto, domínio, stack, segurança-multitenant,
-> convenções) + skills `ui-frontend` e `frontend-design`. Código existente lido:
-> `AgendaPage.tsx`, `AppointmentFormDialog.tsx`, `useAppointments.ts`, `useWorkingHours.ts`,
-> `WeekScheduleForm.tsx`/`DayRow.tsx`/`HorariosPage.tsx`, `lib/datetime.ts`, `usePermissions.ts`,
-> `StatusBadge.tsx`, `index.css`, `tailwind.config.ts`, migrations de catálogo e appointments.
+> Nota: `.agents/tasks/dev-pipeline/analysis-data.md` e a `adr/` ainda refletem o run anterior
+> (evolução da Agenda). Este arquivo foi reescrito para a demanda atual (templates WhatsApp).
 
 ---
 
-## 0. Veredito de superfície de frontend
+## 0. Decisão de escopo: isto toca tela?
 
-A feature **toca tela** em três lugares, todos dentro de `/app` (tenant, nunca `/admin`):
+Sim. A Fatia 1 precisa de:
 
-1. **`/app/agenda` (AgendaPage)** — ganha (a) alternância **calendário ↔ lista** controlada pelo
-   usuário (não config de tenant) e (b) um fluxo de **criação a partir de um slot livre**.
-2. **Fluxo de criação de agendamento (AppointmentFormDialog)** — ganha um **seletor de horário por
-   slots livres gerados sob demanda** (grade − exceções − vigência − ocupados, consumindo a
-   duração do serviço), substituindo/complementando o `<input type="time">` cru atual.
-3. **Grade do profissional (`/app/config/profissionais/:id/horarios`, HorariosPage)** — ganha
-   **duas seções novas** além da grade semanal que já existe (reusada, não recriada): **vigência**
-   (período início/fim em que o profissional atende) e **exceções por data** (folga/feriado/horário
-   atípico).
+1. **Uma tela nova de CRUD** para o admin criar/editar os 4 templates do tenant (`confirmacao`,
+   `lembrete_d1`, `cobranca`, `comprovante`), cada um com corpo pt-BR e variáveis.
+2. **Uma alteração cirúrgica no fluxo de envio existente** (`SendMessageDialog`): em vez de só
+   escolher a chave do template, o usuário passa a ver um **preview do texto renderizado** que
+   será enviado (variáveis substituídas, com fallback), confirmando o que o cliente final receberá.
+   O texto renderizado de verdade é resolvido **no servidor** (ADR da Edge Function); o preview da
+   UI é derivado do mesmo template + dados já disponíveis do agendamento/cliente, como camada de
+   confiança e defesa em profundidade — nunca a fonte da verdade do envio.
 
-**Reuso explícito (não reescrever):** a grade semanal (`WeekScheduleForm`/`DayRow`/
-`useWorkingHours`), o `AppointmentFormDialog` como diálogo-base de criação, os helpers de fuso de
-`lib/datetime.ts`, os tokens de status e o `StatusBadge`, o `usePermissions`, o `PageHeader` e o
-`StatePanel` (padrão de estado vazio/erro já replicado nas telas de `/app`).
-
-**Dependências de dados sinalizadas ao planejamento (back-end/dados, fora do meu papel):**
-
-- **D1 — Entidade nova `schedule_overrides`** (exceções por data) multi-tenant com RLS, FK composta
-  por tenant ao profissional, mesmo RBAC da grade. **Não existe ainda.**
-- **D2 — Vigência da grade por profissional** (`valid_from`/`valid_until`): decisão de dados sobre
-  onde mora (coluna em `professionals`, ou tabela de vigência, ou campos na própria grade). **Não
-  existe ainda.** O front consome como um par de datas por profissional.
-- **D3 — Geração de slots sob demanda**: função determinística que combina grade semanal + exceções
-  + vigência + agendamentos ocupados + duração do serviço, no fuso do tenant, **sem materializar**.
-  O front precisa dela como fonte dos slots; a análise de dados decide se roda no cliente (TS puro
-  sobre dados já lidos por RLS) ou numa RPC/Edge Function. **Recomendação do front na §4.3.**
-- **D4 — "Tempo-base de atendimento" próprio do profissional** (passo da grade de slots): se existir
-  como dado persistido, é coluna nova em `professionals`. **Recomendação do front na §1** — pode
-  nascer como constante de UI sem schema novo.
-
-Nenhuma rota de `/admin`, nenhuma tela de marketing/auth é tocada. Dark mode é padrão do app
-(ThemeProvider) e vale para tudo que eu desenhar.
+O restante (renderização canônica, idempotência, opt-in, service role) permanece no servidor e não
+é redesenhado aqui — só preservado.
 
 ---
 
-## 1. Decisão front-loaded: como os slots são gerados e oferecidos
+## 1. Telas, componentes, rotas e guards
 
-> Este é o ponto que a tarefa mandou resolver **antes** de codar. Recomendo e justifico; não chuto.
+### 1.1 Rota nova
 
-### 1.1 A tensão
+Dentro do grupo de Configurações do tenant (`/app/config`), espelhando `servicos` e `whatsapp`:
 
-- **(A) Grade de slots com passo fixo** (ex.: de 30 em 30 min): a disponibilidade vira uma grade
-  regular de horários candidatos; o agendamento ocupa N passos conforme a duração.
-- **(B) Slot = duração do serviço**: os horários candidatos são gerados diretamente pela duração do
-  serviço escolhido, encostando um no próximo (ex.: serviço de 1h gera 09:00, 10:00, 11:00…).
+```
+/app/config
+  ├─ /servicos                      (existe)
+  ├─ /profissionais                 (existe)
+  ├─ /whatsapp                      (existe — conexão)
+  └─ /mensagens        ← NOVA       (templates de mensagem)
+```
 
-### 1.2 Decisão: **híbrido com passo-base configurável, ancorado na grade — recomendo passo-base de 30 min como default, e o serviço consome o bloco correspondente**
+Registro em `src/router.tsx`, como filha de `config`:
 
-A leitura mais fiel ao exemplo do usuário (clínica; serviço de 1h **ou** 2h) é: **a disponibilidade
-é a grade do profissional; o encaixe de um agendamento consome o tempo da duração do serviço
-escolhido, a partir de um horário de início válido dentro da grade, descontando ocupados e
-exceções.** Isso é a diretriz da própria tarefa, e descarta (B) puro — gerar candidatos só de hora
-em hora para um serviço de 1h impediria um corte das 09:30 quando o expediente começa 09:00 e o
-slot anterior vai até 10:00; perde-se granularidade real de encaixe.
+```
+{ path: "mensagens", element: <TemplatesMensagemPage /> }
+```
 
-Também descarto (A) "puro e cego", em que cada passo é um slot independente oferecido sem relação
-com a duração: isso empurra para o usuário a conta de "cabe ou não cabe" o serviço de 2h.
+Diretório novo: `src/app/config/mensagens/`.
 
-**O híbrido que recomendo:**
+**Por que sub-rota de `config` e não dentro de `/app/config/whatsapp`:** a tela de WhatsApp hoje é
+a máquina de estados da *conexão* (parear QR, status). Templates são *conteúdo editorial* do
+tenant, conceito distinto e de ciclo de vida próprio. Colocá-los numa rota dedicada mantém cada
+tela com um trabalho só (princípio do design system do projeto) e evita inflar a tela de conexão.
+O hub de Configurações ganha um 4º atalho.
 
-- Existe um **passo-base** (granularidade de início dos cortes). Default **30 min**.
-- Os **horários de início candidatos** são gerados varrendo cada janela da grade do dia (descontando
-  o intervalo/almoço e as exceções) em incrementos do passo-base.
-- Um horário de início só vira **slot ofertável** se o bloco `[início, início + duração_do_serviço)`
-  **couber inteiro** dentro da janela de atendimento (não cruza o fim do expediente nem o intervalo)
-  **e não sobrepuser** nenhum agendamento ativo do profissional. Assim um serviço de 1h e um de 2h
-  partem da **mesma** grade de inícios de 30 em 30, mas o de 2h oferta menos opções porque precisa de
-  um bloco maior livre. É exatamente "1h/2h consomem os slots do profissional".
-- **Não** materializa slots (constraint da tarefa): a lista de slots é **derivada sob demanda** a
-  cada combinação (profissional, dia, serviço), recomputada quando qualquer insumo muda.
+### 1.2 Guards (herdados, sem rota especial)
 
-### 1.3 "Tempo-base de atendimento próprio do profissional" (D4)
+A rota nasce dentro de `RequireAuth → RequireActiveSubscription → AppLayout`, então herda:
 
-O usuário disse: "Cada profissional vai ter o seu tempo de consulta, mas vamos ver o caso de uma
-clínica, tem serviço que pode demorar uma hora ou duas, aí vai pegar os horários dos slots do
-profissional." Leitura: o **passo-base** é a materialização desse "tempo de consulta" do
-profissional. Recomendação faseada para o planejamento:
+- **Autenticação:** sem sessão Supabase → `/login`.
+- **Status de assinatura:** `bloqueado` → redireciona para `/app/quitacao`; `cancelado` →
+  conta cancelada. O guard central (`RequireActiveSubscription`) já intercepta antes de montar
+  qualquer módulo de `/app`. A tela de templates **não** precisa de lógica de assinatura própria.
+- **RBAC por capacidade (defesa em profundidade, a trava real é RLS):** a escrita é gate por uma
+  **nova capacidade** `canManageMessageTemplates` em `usePermissions`, seguindo o padrão
+  `canManageCatalog`/`canManageWhatsAppConnection`. Decisão de papéis:
+  - `admin`: **cria/edita** templates (é configuração do dono do tenant, mesmo nível de
+    `canManageWhatsAppConnection`).
+  - `professional` / `receptionist`: **não** gerenciam templates nesta fatia. Como a tela é de
+    configuração editorial do tenant (não operação do dia a dia), e para manter o escopo enxuto,
+    estes papéis **não acessam a tela** — o atalho no hub de Configurações só aparece para quem
+    tem `canManageMessageTemplates`, e a página renderiza `AccessDenied` (componente existente em
+    `src/components/AccessDenied.tsx`) para quem entrar pela URL. Isso espelha como o projeto trata
+    telas de escrita exclusiva de admin.
+  - Observação para o planejador de dados: a RLS de leitura pode ser mais ampla que a de escrita
+    (a Edge Function lê o template sob service role no envio, então os demais papéis não precisam
+    de SELECT no cliente para a Fatia 1). Mantido fechado por padrão.
 
-- **Fase desta entrega:** o passo-base é uma **constante de UI** (30 min), **sem schema novo** —
-  entrega a feature inteira sem bloquear em D4. Documentar a constante num único lugar
-  (`lib/scheduling-slots.ts`, p.ex.).
-- **Evolução natural (backlog, se o planejamento quiser incluir já):** `professionals.slot_minutes`
-  (coluna nova, default 30) para o profissional calibrar a própria granularidade. O front já desenha
-  o seletor preparado para receber esse valor por profissional; se a coluna não vier agora, usa o
-  default. **Não** inventar tela de configuração desse campo nesta entrega se a coluna não existir.
+> Dependência de RBAC: adicionar `canManageMessageTemplates: boolean` a `Permissions` e ao retorno
+> de `usePermissions()` (`= isAdmin`). É mudança de 1 linha no hook, mas é contrato — registrar na
+> ADR.
 
-Justificativa de não chutar schema: criar coluna é decisão de dados (análise de dados + migration).
-O front não depende dela para funcionar — depende só de **um** número de passo por profissional, que
-tem default seguro.
+### 1.3 Árvore de componentes
 
-### 1.4 Por que isto não é o default genérico
+```
+src/app/config/mensagens/
+  TemplatesMensagemPage.tsx        # página: lista os 4 templates, abre o editor
+  TemplateEditorDialog.tsx         # diálogo criar/editar 1 template (rhf + zod)
+  TemplateBodyField.tsx            # textarea do corpo + barra de variáveis + contador
+  TemplatePreview.tsx              # preview do texto renderizado com dados de exemplo
+  VariableChips.tsx                # chips clicáveis que inserem {variavel} no cursor
+```
 
-Um designer de IA "no automático" entregaria (B) puro (lista de horas cheias) ou um date-time picker
-nativo. O híbrido ancorado na grade é a escolha específica desta clínica: respeita janela, intervalo,
-exceção, vigência e a duração variável do serviço, e mantém a não-sobreposição visível **antes** do
-submit — o slot ocupado simplesmente não aparece.
+Reaproveitamento (nunca recriar):
 
----
+- `PageHeader`, `Button`, `Card`, `Badge`, `Dialog*`, `Form*`, `Input`, `Switch`, `Skeleton`,
+  `Separator`, `Table*` (de `src/components` e `src/components/ui`).
+- `StatePanel` local (o mesmo molde já repetido em `ServicosPage`/`WhatsAppPage`): manter a cópia
+  local por consistência com o projeto (ainda não foi extraído para compartilhado; não extrair
+  agora para não alargar o escopo).
+- `getMessageTemplateLabel` de `src/lib/whatsapp.ts` para os rótulos pt-BR das 4 chaves.
 
-## 2. Telas, componentes, rotas e guards
+#### Dependência de UI primitiva: `Textarea`
 
-### 2.1 Mapa de rotas (nenhuma rota nova de nível; só enriquecimento)
+O corpo do template é **multilinha** e hoje **não existe** `src/components/ui/textarea.tsx` no
+projeto (só `input.tsx`). É preciso adicionar o primitivo `Textarea` do shadcn/ui (arquivo padrão,
+sem customização além dos tokens já existentes). Sinalizado como dependência de componente; é a
+peça shadcn canônica, não um primitivo caseiro.
 
-| Rota | Mudança | Guard |
-| --- | --- | --- |
-| `/app/agenda` | Toggle calendário↔lista + criação por slot | auth + `canManageAppointments` p/ criar; leitura p/ todos os papéis do tenant |
-| `/app/config/profissionais/:id/horarios` | +Vigência +Exceções (abaixo da grade semanal) | auth + mesma regra de edição da grade (admin qualquer; professional só a própria; receptionist leitura) |
+### 1.4 Layout da tela (`TemplatesMensagemPage`)
 
-Guards herdados, **não recriados**: `RequireAuth` (sessão Supabase → senão `/login`), o guard de
-**status de assinatura** do `AppLayout`/`/app` (`bloqueado` → tela de **quitação** `/app/quitacao`;
-`cancelado` → suspenso) e o RBAC via `usePermissions`. Nada do que eu desenho fura esses guards: a
-nova UI de agenda e de horários vive **dentro** do `/app` já protegido. Reafirmo: **o RLS é a trava
-real**; a UI só esconde/desabilita o que o papel não pode — defesa em profundidade.
+Os templates são um **conjunto fixo e conhecido de 4 chaves** — não é uma lista de tamanho
+variável como serviços/clientes. Isso muda o padrão: em vez de "tabela + botão Novo", a tela é uma
+**lista dos 4 cards de template**, cada um sempre presente, com ação **Editar**. Não há "criar do
+zero" nem "excluir" na UI — as 4 chaves são o domínio fechado (seed garante a existência; ver §4 e
+dependência de dados). Isso também evita o risco de o tenant ficar sem um template obrigatório.
 
-### 2.2 Componentes novos (e onde moram)
+ASCII (desktop → o mobile empilha os cards):
 
-**Agenda (`src/app/agenda/`):**
+```
+┌───────────────────────────────────────────────────────────────┐
+│  Modelos de mensagem                                            │
+│  Os textos que seus clientes recebem no WhatsApp.               │
+├───────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────┐  ┌──────────────────────────┐ │
+│  │ ● Confirmação      [Ativo]  │  │ ● Lembrete (24h antes)   │ │
+│  │ "Olá {nome}, confirmando…"  │  │ "Oi {nome}, seu horário…"│ │
+│  │                    [Editar] │  │                 [Editar] │ │
+│  └─────────────────────────────┘  └──────────────────────────┘ │
+│  ┌─────────────────────────────┐  ┌──────────────────────────┐ │
+│  │ ● Cobrança         [Ativo]  │  │ ● Comprovante   [Ativo]  │ │
+│  │ "{nome}, o valor de…"       │  │ "Recebemos o pagamento…" │ │
+│  │                    [Editar] │  │                 [Editar] │ │
+│  └─────────────────────────────┘  └──────────────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
+```
 
-- `AgendaViewToggle.tsx` — alternador segmentado **Lista / Dia / Semana**. Controla só estado local
-  do usuário; persiste a preferência em `localStorage` por usuário (não é config de tenant). Teclado:
-  setas entre opções, `aria-pressed`.
-- `AgendaCalendarDay.tsx` — visão **dia**: eixo vertical de horas (coluna de rótulos à esquerda,
-  tabular-nums), uma ou mais **colunas por profissional** (quando admin/recepção veem "todos"),
-  blocos de agendamento posicionados por `starts_at`/`ends_at` com altura proporcional à duração,
-  borda-lateral + `StatusBadge` por status (reusa `STATUS_BORDER` e o mapa de cores já existente).
-  Clicar numa faixa vazia abre o diálogo de criação já com profissional+início pré-preenchidos.
-- `AgendaCalendarWeek.tsx` — visão **semana**: 7 colunas de dia (segunda→domingo, mesma ordem de
-  exibição que a grade usa em `DISPLAY_ORDER`), cada coluna é uma pista de agendamentos do
-  profissional filtrado. No mobile, degrada para **uma coluna de dia navegável** (a semana completa
-  lado a lado não cabe em 360px — ver §3.5).
-- `AppointmentBlock.tsx` — o bloco visual de um agendamento dentro do calendário (extrai a parte
-  visual que hoje vive inline no `AgendaItem`; o `AgendaItem` da lista permanece).
-- `SlotPicker.tsx` — grade de **chips de horário livre** usada dentro do `AppointmentFormDialog`
-  (seção 2.3). Recebe os slots já calculados e emite o início escolhido.
+Cada card mostra: rótulo pt-BR da chave, um **badge de estado** (Ativo/Inativo via `Switch` no
+editor), e as **primeiras ~2 linhas do corpo** (`line-clamp`, texto truncado) como prévia rápida.
+Grade `grid gap-4 sm:grid-cols-2` (mobile-first: 1 coluna no pequeno, 2 a partir de `sm`),
+reusando o padrão do `ConfigHubPage`.
 
-**Horários (`src/app/config/profissionais/horarios/`):**
+Estados da tela: `Skeleton` enquanto carrega; `StatePanel` de erro com "Tentar novamente"; **não
+há estado vazio** real (o seed garante as 4 chaves) — mas se o fetch vier com menos de 4 (tenant
+antigo sem seed), a tela **mostra os que faltam como cards "a configurar"** derivados de
+`MESSAGE_TEMPLATES`, com um default honesto, em vez de sumir. Isso torna a UI robusta a lacuna de
+seed.
 
-- `ScheduleValidityForm.tsx` — vigência: dois `<input type="date">` (início / fim opcional) +
-  switch "sem data de término". Validação zod (fim ≥ início; ambos no fuso do tenant como data pura).
-- `ScheduleOverridesSection.tsx` — lista de exceções por data do profissional + botão "Adicionar
-  exceção".
-- `OverrideFormDialog.tsx` — diálogo de criar/editar uma exceção: data, **tipo** (`folga` /
-  `horario_atipico`), e — quando `horario_atipico` — janela(s) de atendimento daquele dia específico
-  (início/fim, intervalo opcional), reusando a mesma ergonomia de `DayRow`.
-- `OverrideItem.tsx` — item da lista de exceções com badge de tipo e ações editar/remover.
+### 1.5 Editor (`TemplateEditorDialog`)
 
-### 2.3 Fluxo de criação por slot (AppointmentFormDialog, reusado e estendido)
+Diálogo (não rota), espelhando `ServiceFormDialog`: `Dialog` + `Form` (react-hook-form + resolver
+zod), rodapé Cancelar/Salvar com `Loader2` em `isPending`, `toast` de sucesso/erro em pt-BR.
+Campos:
 
-O diálogo atual já faz a ordem certa (cliente → profissional → serviço → data → hora, com término e
-valor derivados read-only). A mudança é **trocar o `<input type="time">` cru por `SlotPicker`**,
-mantendo todo o resto:
+- **Chave (read-only):** título do diálogo = "Editar modelo: {rótulo}". A chave não é editável
+  (domínio fechado).
+- **Corpo (`TemplateBodyField`):** `Textarea` controlado pelo rhf. Acima dele, a
+  **barra de variáveis** (`VariableChips`): chips clicáveis `{nome}`, `{servico}`, `{dataHora}`,
+  `{empresa}`, `{valor}` que inserem o token na posição do cursor. Abaixo, um contador de
+  caracteres e dica pt-BR ("Use as variáveis para personalizar — se faltar o dado, um texto padrão
+  entra no lugar").
+- **Ativo (`Switch`):** template inativo não é oferecido no envio. (Decisão de produto conservadora:
+  manter sempre pelo menos as 4 chaves existindo no banco; o `Switch` controla *oferta*, não
+  *existência*.)
+- **Preview (`TemplatePreview`):** renderização ao vivo do corpo com um **conjunto de dados de
+  exemplo fixo** pt-BR (ex.: nome "Maria Silva", serviço "Consulta", dataHora "qui, 15/02 às
+  14:00", empresa = `trade_name` do tenant atual, valor "R$ 150,00"), mostrando exatamente a
+  substituição e o **fallback** quando um token não resolve. O preview usa a **mesma função de
+  renderização** que o servidor conceitualmente aplica, mas implementada no cliente só para
+  pré-visualização (ver §4.3). Deixa claro ao admin o que o cliente verá.
 
-1. Enquanto **profissional + serviço + data** não estão escolhidos, o `SlotPicker` mostra um estado
-   guia ("Escolha profissional, serviço e data para ver os horários livres.").
-2. Com os três definidos, dispara a query de slots (TanStack Query, §4) e renderiza **chips** de
-   horário livre. A duração do serviço já filtra o que cabe (§1.2).
-3. Selecionar um chip preenche o `time` do form; término e valor derivados continuam aparecendo
-   exatamente como hoje.
-4. **Dois caminhos de entrada no diálogo:** (a) botão "Novo agendamento" (fluxo atual); (b) clique
-   numa faixa/slot vazio do calendário, que **pré-preenche** profissional + data + início e abre o
-   diálogo já no serviço. Ambos convergem no mesmo submit e na mesma checagem de conflito local +
-   constraint do banco.
-5. **Edição:** ao editar um agendamento existente, o slot atual dele continua ofertável mesmo
-   "ocupado" (ele é o próprio ocupante) — o `SlotPicker` recebe o `appointmentId` em edição para
-   excluí-lo do desconto de ocupados, espelhando o que `hasLocalConflict` já faz.
+ASCII do editor (mobile-first, uma coluna; o preview vai abaixo do campo no mobile e ao lado em
+`md`):
 
-A checagem de conflito local (`hasLocalConflict`) **permanece** como feedback imediato; a constraint
-`tstzrange` do banco (`23P01` → `mapSchedulingError`) continua sendo a trava real. Os slots reduzem a
-chance de erro, mas **não substituem** a trava — corrida entre dois operadores ainda cai na
-constraint com a mesma mensagem pt-BR.
+```
+┌──────────────────────────────────────────────┐
+│ Editar modelo: Confirmação                [x] │
+│ O texto enviado ao cliente para este modelo.   │
+├──────────────────────────────────────────────┤
+│ Variáveis:  [{nome}] [{servico}] [{dataHora}]  │
+│             [{empresa}] [{valor}]              │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Olá {nome}, confirmando seu {servico} em   │ │
+│ │ {dataHora}. Até lá!                        │ │
+│ │                                            │ │
+│ └──────────────────────────────────────────┘ │
+│ 72/1000 caracteres                             │
+│                                                │
+│ Prévia (com dados de exemplo):                 │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Olá Maria Silva, confirmando seu Consulta  │ │
+│ │ em qui, 15/02 às 14:00. Até lá!            │ │
+│ └──────────────────────────────────────────┘ │
+│                      [ Cancelar ]  [ Salvar ]  │
+└──────────────────────────────────────────────┘
+```
 
-### 2.4 RBAC nas telas novas (defesa em profundidade sobre o RLS)
+### 1.6 Alteração no `SendMessageDialog` (preservar o envio atual)
 
-- **admin**: calendário/lista de todos os profissionais; edita vigência e exceções de qualquer
-  profissional; cria agendamento para qualquer um.
-- **professional**: calendário/lista só da própria agenda (o filtro de profissional some, como já é
-  hoje); edita a própria vigência/exceções; a de outro profissional abre em **leitura** (mesma regra
-  de `HorariosPage`). Slots só do próprio.
-- **receptionist**: calendário/lista de todos; cria agendamento para qualquer um; **vigência e
-  exceções em leitura** (recepção não escreve catálogo/grade — espelha o RLS de `working_hours`, que
-  não dá escrita à recepção). Sem qualquer dado financeiro na agenda (não há `charges` nesta tela).
+O diálogo de envio **continua funcionando igual** (escolhe template, confirma, invoca a Edge
+Function). Única adição: ao selecionar um template, mostrar um **bloco de preview** com o texto
+renderizado que será enviado àquele cliente/agendamento (variáveis resolvidas com os dados reais
+disponíveis + fallback). Isso cumpre o critério de aceite "o envio sob demanda usa o template
+renderizado" de forma **visível e verificável** na UI, sem mudar o contrato de `send` (o corpo
+continua `{ action, template, customerId, appointmentId? }` — o servidor resolve o texto).
 
----
+- O preview lê o template do tenant via a mesma query de templates (`useMessageTemplates`) e
+  resolve as variáveis com os dados do cliente/agendamento já presentes no contexto do diálogo
+  (nome do cliente já é passado como prop; serviço/dataHora vêm do agendamento quando
+  `appointmentId` existe).
+- Quando faltar dado (ex.: envio a partir de Clientes, sem agendamento → sem `{dataHora}`),
+  o preview mostra o **mesmo fallback** que o servidor aplicará, deixando explícito que não haverá
+  `{dataHora}` cru no texto.
+- Se o template da chave estiver **inativo**, o select não o oferece; se nenhum template ativo
+  existir para a chave, a UI explica em pt-BR e desabilita o envio daquela chave (defesa em
+  profundidade; a trava final é do servidor).
 
-## 3. Direção visual e design system
-
-### 3.1 Ancoragem
-
-O app já tem uma identidade definida e madura: **"painel de operação calmo"** — ardósia/azul-noite
-com acento **jade** (`--primary: 160 64% 45%` no dark), tipografia **Space Grotesk** (display) +
-**Inter** (corpo) + **JetBrains Mono** (dados), raio 0.75rem, tabular-nums ligado no corpo. **Não
-invento um sistema novo** — a feature de calendário precisa se dissolver nesse painel, não competir
-com ele. O risco estético que assumo é **a própria grade de calendário**: uma superfície densa de
-tempo que, bem-feita, é o elemento memorável desta entrega — e que eu mantenho quieta em cor,
-deixando o **status** ser a única fonte de cor saturada (reuso dos tokens `--status-*`).
-
-### 3.2 Tokens — tudo reusa o que existe; adiciono só o necessário
-
-| Uso | Token/classe | Observação |
-| --- | --- | --- |
-| Fundo da grade de calendário | `bg-card` / `bg-background` | linhas de hora em `border-border` |
-| Linha de hora / meia-hora | `border-border` (cheia) e `border-border/50` (meia) | hairline, sem peso |
-| **Linha do "agora"** | `bg-primary` (2px) + bolinha | único uso de acento jade na grade — o "você está aqui" |
-| Bloco de agendamento | `bg-card` + `border-l-2 border-status-*` | reusa `STATUS_BORDER` e `StatusBadge` |
-| Faixa fora da grade (sem expediente) | `bg-muted/30` hachurada leve | comunica "aqui não atende" sem texto |
-| Exceção de **folga** no calendário | overlay `bg-muted/40` + rótulo "Folga" | lê como bloqueio, não como vazio |
-| Chip de slot livre (SlotPicker) | `Button variant="outline"` + estado selecionado `bg-primary text-primary-foreground` | reusa o Button shadcn |
-| Toggle de visão | padrão "segmented" com `bg-secondary` e item ativo `bg-background shadow-sm` | mesmo peso dos controles atuais |
-
-**Não** crio tokens de cor novos. Se o planejamento quiser um token para "faixa sem expediente" e
-"folga", recomendo derivar de `--muted` por opacidade (como acima) em vez de nova variável — mantém
-o tema dark/light coerente de graça.
-
-### 3.3 Tipografia na grade
-
-- Rótulos de hora: `font-mono`/tabular-nums, `text-xs`, `text-muted-foreground` — alinhados à
-  direita na calha de horas.
-- Nome do cliente no bloco: `font-medium text-foreground text-sm`; serviço/profissional
-  `text-xs text-muted-foreground`. Em blocos curtos (< 30 min de altura), **só** cliente + horário,
-  com o resto em `title`/tooltip para não espremer.
-- Cabeçalho de dia na visão semana: `font-display` (Space Grotesk), dia da semana por extenso curto
-  (“seg”, “ter”) + número, com o **hoje** destacado por `text-primary` e peso.
-
-### 3.4 Estados visuais (todos obrigatórios, no molde das telas atuais)
-
-- **Carregando**: `Skeleton` — na grade, esqueleto da calha de horas + blocos fantasmas; nos chips de
-  slot, 6–8 chips esqueleto. `aria-busy="true"`.
-- **Vazio (sem agendamentos)**: na lista, o `StatePanel` já existente; no calendário, a grade aparece
-  **vazia mas desenhada** (as horas e as faixas de expediente visíveis) — o vazio de calendário é a
-  própria grade limpa, não um painel central (um calendário sem malha confunde).
-- **Vazio (sem slots livres)**: no `SlotPicker`, mensagem direta: "Nenhum horário livre para este
-  serviço neste dia." + dica contextual ("Tente outro dia ou um serviço mais curto."). Se a causa for
-  **folga/fora de vigência**, a mensagem é específica: "O profissional não atende nesta data
-  (folga/feriado)." / "Fora do período de atendimento do profissional."
-- **Erro**: `StatePanel` com "Tentar novamente" (reusa o padrão de `refetch`).
-- **Sem grade configurada**: se o profissional não tem `working_hours`, o `SlotPicker` diz "Este
-  profissional ainda não tem grade de horários." com link para `/app/config/profissionais/:id/horarios`
-  (só se o papel pode editar).
-
-### 3.5 Mobile-first (RNF02) e performance (RNF01 < 1,5s)
-
-- **Default no mobile = Lista** (a visão atual, já ótima no celular). Calendário **dia** é a segunda
-  opção; **semana** no mobile vira "dia navegável" com setas (não tenta espremer 7 colunas).
-- A grade de calendário renderiza só a **janela de horas relevante** (do primeiro expediente ao
-  último do dia + folga visual), não 00–24 fixo, reduzindo DOM.
-- Slots são **derivados** (sem request extra se calculados no cliente a partir de dados já em cache —
-  ver §4.3), evitando waterfall. A query de agendamentos do dia já existe e é reusada.
-- `localStorage` guarda a preferência de visão do usuário para a tela abrir já no modo escolhido
-  (sem flash).
+Risco coberto (do role): **nunca renderizar `{variavel}` cru para o cliente** — o preview e o
+fallback tornam isso visível ao admin antes do disparo, e a renderização canônica do servidor é a
+garantia real.
 
 ---
 
-## 4. Arquitetura React (componentes vs. hooks vs. estado de servidor)
+## 2. Direção visual e design system
 
-### 4.1 Regras invioláveis (steering)
+A linguagem visual já está estabelecida (tema "painel de operação calmo": ardósia/azul-noite +
+acento jade, display Space Grotesk, corpo Inter, mono JetBrains, raio 0.75rem, dark por padrão).
+Esta tela **adere** a essa linguagem — não é lugar de introduzir uma nova direção. O que ela traz
+de próprio, com intenção, é o tratamento do **texto do template como artefato editável**:
 
-- Dados de servidor **sempre** via TanStack Query; **nada** de `fetch`/`supabase` solto em
-  `useEffect`. Cliente Supabase do browser com **anon key** + sessão; **RLS isola** — **nunca**
-  enviar `tenant_id` do cliente para filtrar/contornar.
-- Formulários com **react-hook-form** + resolver **zod**; mensagens pt-BR.
-- Service role **jamais** no cliente. Se a geração de slots virar RPC/Edge, continua sob a sessão do
-  usuário (RLS), não service role.
+- **O corpo do template é código-como-conteúdo.** Tokens de variável (`{nome}`, `{dataHora}`) são
+  renderizados no preview com a **família mono (JetBrains Mono, já carregada)** e um leve realce
+  (`bg-primary/10 text-primary rounded px-1`) para distinguir visualmente "slot que será
+  substituído" de texto fixo. É o único toque de personalidade da tela, e é derivado do assunto
+  (templates com variáveis), não decoração.
+- **Chips de variável** usam `Badge`/`Button` `variant="secondary"` em tamanho pequeno, com o nome
+  da variável em mono — consistente com o realce do preview, de modo que o admin associa o chip
+  que clica ao token que aparece.
+- **Cards de template** reusam `Card` com o mesmo hover de borda (`group-hover:border-primary/50`)
+  do `ConfigHubPage`, mantendo a família visual de Configurações.
+- **Tokens:** nenhum token novo de cor. Estado Ativo/Inativo usa o `Badge` padrão
+  (`variant="default"` / `"secondary"`) como em `ServicosPage` (não os tokens `--status-*`, que são
+  da máquina de estados do agendamento — reusá-los aqui seria incoerente semanticamente).
+- **Espaçamento/raio/tipografia:** herdados (`space-y-6` nas páginas, `font-display` nos títulos,
+  `--radius`). Mobile-first: cards empilham em 1 coluna, editor em coluna única no pequeno.
 
-### 4.2 Hooks de dados novos (TanStack Query)
-
-- `useScheduleOverrides(professionalId)` — lê `schedule_overrides` do profissional (RLS isola);
-  mutations de criar/editar/remover com invalidação. Shape validado por zod (mesmo padrão de
-  `useWorkingHours`).
-- `useScheduleValidity(professionalId)` — lê/grava a vigência (D2). Se a vigência for coluna em
-  `professionals`, reusa/estende o hook de profissionais; se for tabela, hook próprio. **O front
-  trata como "um par de datas por profissional" — o mecanismo é decisão de dados.**
-- `useAvailableSlots({ professionalId, serviceId, day })` — ver §4.3. Chave de query inclui
-  `professionalId`, `serviceId`, `day` e o `appointmentId` em edição (para excluir o próprio
-  ocupante). `enabled` só quando os três primeiros existem.
-
-A query de agendamentos do dia (`useAppointments`) é **reusada** tanto pela lista quanto pelas visões
-de calendário — mesma chave, sem duplicar request.
-
-### 4.3 Onde roda a geração de slots — **recomendação do front**
-
-**Recomendo computar os slots no cliente, em uma função pura** (`lib/scheduling-slots.ts`), a partir
-de dados **já lidos sob RLS**: a grade (`working_hours`), as exceções (`schedule_overrides`), a
-vigência (D2), os agendamentos ocupados do dia (`useAppointments`) e a `duration_minutes` do serviço.
-O `useAvailableSlots` é então um `useQuery` (ou `useMemo` derivado) que orquestra essas leituras e
-chama a função pura.
-
-Justificativa:
-
-- **Isolamento já garantido**: todos os insumos vêm por RLS; a função pura não toca `tenant_id` nem
-  faz request privilegiado. Nada vaza entre tenants porque o cliente só enxerga o próprio tenant.
-- **Testabilidade**: função determinística (grade + exceções + vigência + ocupados + duração →
-  lista de inícios válidos), testável isolada com tabela de casos — espelha a disciplina de
-  `lib/datetime.ts`. É o mesmo rigor que a tarefa exige ("defeito = slot ignorar ocupados/exceções/
-  vigência/duração/fuso").
-- **Performance (RNF01)**: sem round-trip extra; recomputa sob demanda ao mudar serviço/dia.
-- **Fuso correto**: reusa `tenantDateTimeToUtc`/`toTenantLocal`/`addMinutes` — a grade é `HH:MM`
-  local do tenant, convertida para UTC na borda para comparar com `starts_at`/`ends_at` (UTC). Essa
-  é a fronteira onde o bug de fuso aconteceria; concentrá-la nos helpers já testados é a defesa.
-
-**Alternativa considerada e descartada por ora**: RPC Postgres / Edge Function que devolve os slots.
-Vale se a lógica precisar ser compartilhada com autoagendamento público (Fase 3, **fora de escopo**)
-ou se o volume de agendamentos tornar o cálculo no cliente pesado. Como a lista do dia já é
-carregada e o horizonte é um dia/semana por vez, o cálculo no cliente é suficiente e mais simples.
-**Sinalizo ao planejamento/dados como ponto de decisão**: se eles preferirem a RPC por querer a regra
-única no banco (como a não-sobreposição já é), o contrato do front (`useAvailableSlots` → lista de
-`{ startUtc, endUtc }`) não muda — só a implementação de dentro.
-
-### 4.4 Formulários (react-hook-form + zod)
-
-- **Vigência** (`scheduleValiditySchema`): `validFrom` (data obrigatória), `validUntil` (opcional);
-  refine `validUntil >= validFrom`. Datas tratadas como **data pura no fuso do tenant** (não
-  instante), coerentes com a semântica de "período de atendimento".
-- **Exceção** (`scheduleOverrideSchema`): `date` (obrigatória), `type` (`folga` | `horario_atipico`),
-  e janela(s) só quando `horario_atipico` — reusa a validação de janela/intervalo de
-  `workingHoursDaySchema` (início < fim; intervalo ambos-ou-nenhum, coerente e dentro da janela). Os
-  schemas **espelham os CHECKs/constraints** que a análise de dados definir para `schedule_overrides`
-  — a validação do cliente é UX; a trava é o banco.
-- O `SlotPicker` **não** é um form próprio: escreve no campo `time` do `appointmentSchema` já
-  existente (nenhuma mudança no schema de agendamento).
-
-### 4.5 Estado local vs. servidor
-
-- **Servidor** (TanStack Query): agendamentos do dia, grade, exceções, vigência, serviços,
-  profissionais, clientes.
-- **Local (useState / localStorage)**: visão escolhida (lista/dia/semana), dia/semana em foco, filtro
-  de profissional, chip de slot selecionado no diálogo. Preferência de visão por **usuário** em
-  `localStorage` (a tarefa foi explícita: toggle por usuário, não config de tenant).
+Copy (pt-BR, voz do produto, sem floreio):
+- Título da tela: "Modelos de mensagem". Descrição: "Os textos que seus clientes recebem no
+  WhatsApp."
+- Dica de variáveis: "Use as variáveis para personalizar. Se um dado faltar, entra um texto padrão
+  no lugar."
+- Sucesso ao salvar: "Modelo atualizado." Erro: "Não foi possível salvar o modelo. Tente
+  novamente."
+- Nomes de ações consistentes ponta a ponta: botão "Salvar" → toast "Modelo atualizado".
 
 ---
 
-## 5. Acessibilidade (obrigatório)
+## 3. Acessibilidade (obrigatório)
 
-- **Contraste**: todos os textos usam pares de token já calibrados para **AA ≥ 4.5:1** (os `--status-*`
-  foram calibrados para isso; corpo em `foreground` sobre `background`/`card`). A **linha do agora**
-  em `--primary` é decoração — a informação de horário nunca depende só dela (há rótulos de hora e
-  o `starts_at` textual no bloco). Folga/fora-de-vigência **não** se comunicam só por cor: têm rótulo
-  textual ("Folga", "Fora do período de atendimento").
-- **Teclado**: o `AgendaViewToggle` é um grupo navegável por setas com `aria-pressed`. Os chips de
-  slot são `button`s tabuláveis com foco visível (o `focus-visible` do Button shadcn já entrega anel
-  de foco); `Enter`/`Espaço` selecionam. Blocos de agendamento no calendário são focáveis e abrem o
-  mesmo menu de ações da lista. Faixa vazia clicável do calendário também é alcançável por teclado
-  (role `button` + `aria-label` "Criar agendamento às HH:MM").
-- **Labels**: todo input de vigência/exceção tem `FormLabel` associado (o `Form` do shadcn já liga
-  `htmlFor`/`id` e `aria-describedby` do `FormMessage`). O `SlotPicker` é um `radiogroup`
-  (`role="radiogroup"` + `aria-label="Horários livres"`, chips como `radio`), para o leitor de tela
-  anunciar "opção X de N".
-- **Movimento**: a grade e a linha do agora respeitam `prefers-reduced-motion` (já global no
-  `index.css`); sem animação de scroll forçada.
-- **Estados comunicados a leitores de tela**: `aria-busy` nos esqueletos; slot indisponível **não é
-  renderizado desabilitado**, é omitido (menos ruído para o leitor), com a contagem de slots anunciada
-  no cabeçalho do grupo.
-- **Nota de conformidade**: declaro os alvos de contraste e os padrões ARIA; a validação WCAG plena
-  exige teste manual com tecnologia assistiva e revisão especializada — fica recomendado ao QA por ADR
-  conferir foco/leitor de tela além do visual.
-
----
-
-## 6. Copy (pt-BR, voz do produto)
-
-- Toggle: **Lista · Dia · Semana**.
-- Botão de criação inalterado: **Novo agendamento**.
-- SlotPicker vazio por serviço: **"Nenhum horário livre para este serviço neste dia."**
-- SlotPicker fora de vigência: **"Fora do período de atendimento do profissional."**
-- SlotPicker em folga: **"O profissional não atende nesta data."**
-- Sem grade: **"Este profissional ainda não tem grade de horários."** (+ link de configurar quando o
-  papel permite).
-- Vigência: rótulos **"Atende a partir de"** / **"Atende até"** + switch **"Sem data de término"**.
-- Exceção — tipos: **"Folga / feriado"** e **"Horário diferente neste dia"**. Título do diálogo:
-  **"Nova exceção na agenda"**. Erro de data duplicada: **"Já existe uma exceção para esta data."**
-- Toasts seguem o padrão existente: **"Exceção salva."**, **"Exceção removida."**, **"Vigência
-  salva."**, **"Agendamento criado."** (mesma voz dos toasts atuais).
-
-Erros são diretos e dizem o que fazer; nada de "ops" ou tom de desculpa — coerente com os textos já
-em tela.
+- **Labels associados:** `Textarea` com `FormLabel` via `FormField` (o `Form` do shadcn já liga
+  `htmlFor`/`id` e `aria-describedby` para a dica e a mensagem de erro). Chips de variável são
+  `<button type="button">` com texto visível (o próprio token) — nome acessível implícito; se o
+  visual for só ícone em algum ponto, usar `aria-label` ("Inserir variável nome").
+- **Foco visível:** herdado do `focus-visible:ring-2 ring-ring` já aplicado globalmente aos
+  primitivos; os cards-link do hub já têm o anel. Os chips, sendo `Button`, herdam o anel.
+- **Teclado:** inserir variável funciona por clique **e** por `Enter`/`Espaço` no chip (botão
+  nativo). O editor é um `Dialog` shadcn (foco preso, `Esc` fecha, retorna foco ao gatilho) — não
+  quebrar isso. A tela inteira é navegável por `Tab` na ordem: cards → Editar → (diálogo) chips →
+  textarea → Switch → Cancelar/Salvar.
+- **Região viva:** o contador de caracteres e, se útil, a mudança de preview podem ser anunciados
+  via `aria-live="polite"` discreto (seguir o padrão de `WhatsAppPage`, que usa `role="status"`).
+  Manter sóbrio para não poluir o leitor.
+- **Contraste (WCAG AA ≥ 4.5:1 para texto):**
+  - Texto do preview: `foreground` sobre `card`. No dark, `--foreground: 210 20% 96%` (L≈95%)
+    sobre `--card: 222 20% 13%` (L≈13%) → razão ≈ **15:1** (AAA). No claro, `222 30% 12%` sobre
+    `0 0% 100%` → ≈ **16:1** (AAA). OK.
+  - Token mono realçado: `text-primary` sobre `bg-primary/10`. `--primary` no dark é
+    `160 64% 45%` (verde jade, L≈45%); o texto jade sobre fundo jade a 10% de opacidade sobre card
+    escuro mantém o verde como cor de texto sobre fundo quase-card → razão do jade (L≈45%) vs card
+    (L≈13%) ≈ **3.2:1**. **Abaixo de 4.5:1 para texto normal.** Mitigação obrigatória: o token no
+    preview **não depende só da cor** — usar `font-medium` + as chaves `{}` como delimitadores
+    textuais (a informação "isto é variável" é carregada por forma, não só cor) e, para garantir
+    contraste de texto, renderizar o token com `text-foreground` + leve `bg-primary/15` como
+    *realce de fundo* (não como cor do texto). Decisão: **realce de fundo, texto em `foreground`**,
+    assim o contraste do texto fica no mesmo ≈15:1 do corpo e a cor jade entra só como camada
+    decorativa de fundo (não portadora de informação). O QA verifica.
+  - Badge Ativo (`variant="default"`, `primary`/`primary-foreground`): par já usado em
+    `ServicosPage`, calibrado pelo tema. OK.
+- **Reduced motion:** sem animação nova além de transições de hover já cobertas pelo
+  `prefers-reduced-motion` global.
+- **Nota de conformidade:** estimativas de contraste acima são calculadas a partir dos tokens HSL;
+  validação WCAG completa exige teste manual com ferramenta de contraste e leitor de tela — o QA
+  por ADR (Chrome DevTools) confere os pares reais renderizados.
 
 ---
 
-## 7. Critério de aceite visual (verificável via Chrome DevTools no QA por ADR)
+## 4. Arquitetura React
 
-Fluxo em `/app/agenda` e `/app/config/profissionais/:id/horarios` (tenant autenticado):
+### 4.1 Dados (TanStack Query, nunca `fetch` solto)
 
-1. **Toggle por usuário**: em `/app/agenda`, alternar **Lista → Dia → Semana** muda a renderização
-   na própria tela sem recarregar; recarregar a página mantém a última visão escolhida (localStorage),
-   sem flash para a lista.
-2. **Calendário desenha a grade**: a visão Dia mostra calha de horas (tabular-nums), faixa de
-   expediente distinta da faixa sem expediente, e a **linha do agora** em jade quando o dia em foco é
-   hoje. Agendamentos aparecem como blocos com altura proporcional à duração e borda-lateral da cor do
-   status (mesma do `StatusBadge`).
-3. **Slots refletem a grade + exceções + vigência + ocupados**: no "Novo agendamento", escolher
-   profissional + serviço de **1h** e um dia dentro da vigência → o `SlotPicker` lista inícios de 30 em
-   30 que caibam 1h e não sobreponham agendamentos existentes. Trocar para um serviço de **2h** reduz
-   as opções (só onde cabe o bloco de 2h). Escolher um dia marcado como **folga** → mensagem "O
-   profissional não atende nesta data." e nenhum chip. Escolher um dia **fora da vigência** → mensagem
-   de fora do período e nenhum chip.
-4. **Fuso do tenant**: os horários dos chips e dos blocos aparecem no fuso do tenant
-   (`America/Sao_Paulo` por padrão); um agendamento às 09:00 local aparece às 09:00 na grade e no chip,
-   não deslocado por UTC.
-5. **Criar a partir de um slot mantém a não-sobreposição**: selecionar um chip, confirmar → agendamento
-   criado e visível no calendário/lista; tentar criar outro que sobreponha o mesmo profissional/horário
-   → bloqueado com a **mesma** mensagem pt-BR de conflito (feedback local e, em corrida, a constraint do
-   banco). Clicar numa faixa vazia do calendário abre o diálogo já com profissional+início preenchidos.
-6. **Vigência e exceções (tela de horários)**: a grade semanal existente continua funcionando e salvando
-   igual; abaixo dela, a seção de **vigência** salva início/fim e a de **exceções** adiciona/edita/remove
-   uma data (folga ou horário atípico) com badge de tipo. Em papel sem permissão (recepção; ou professional
-   na grade de outro), as seções aparecem em **leitura** (sem botões de salvar), espelhando a grade.
-7. **Responsivo/mobile**: em viewport 360px, o default é Lista; a visão Dia é usável (scroll vertical das
-   horas); a visão Semana degrada para dia navegável por setas; nenhum overflow horizontal quebrado.
-8. **Acessibilidade observável**: foco visível ao tabular pelos chips de slot e pelos controles de visão;
-   o grupo de slots é anunciado como radiogroup; nenhuma informação de status/folga comunicada só por cor.
-9. **RBAC/guard**: um usuário `professional` vê só a própria agenda e edita só a própria vigência/exceções;
-   `receptionist` vê a agenda de todos mas as seções de vigência/exceção ficam em leitura; nenhum dado
-   financeiro aparece na agenda. (A trava real é o RLS; isto é a verificação de que a UI não oferece o que o
-   papel não pode.)
-10. **Build/typecheck limpos** e carregamento da agenda dentro do alvo (< 1,5s) na visão default.
+Novo hook `src/hooks/useMessageTemplates.ts`, espelhando `useServices`/`useMessages`:
+
+- `useMessageTemplates()` → `useQuery`, lê `message_templates` do tenant via PostgREST sob RLS
+  (cliente Supabase do browser, **anon key + sessão**; RLS isola por `tenant_id` do JWT — o
+  cliente **nunca** envia `tenant_id`). Projeção: `id, tenant_id, template_key, body, active,
+  created_at`. Resposta validada com **zod** antes do uso (dado externo não confiável), `template_key`
+  no enum `MESSAGE_TEMPLATES`.
+- `useUpsertMessageTemplate()` → `useMutation` que faz `upsert` por `(tenant_id, template_key)`
+  (ver dependência de dados: unique nessa dupla). Em sucesso, `invalidateQueries` da chave de
+  templates. Mensagens de erro traduzidas (sem vazar schema).
+- Chave de query dedicada: `MESSAGE_TEMPLATES_KEY = ["message-templates"]` em `src/lib/whatsapp.ts`
+  (fonte única de chaves do módulo, onde já moram `MESSAGES_KEY`/`WHATSAPP_INSTANCE_KEY`).
+
+A escrita de template é **do cliente sob RLS** (diferente de `messages`, cuja escrita é exclusiva
+da Edge Function). Templates são dado editorial do tenant, não operação privilegiada — o `admin`
+grava direto via PostgREST, a RLS garante o isolamento e o RBAC (política de escrita só para
+`admin`). Isso é coerente com como `services`/`professionals` são editados (cliente + RLS).
+
+### 4.2 Formulário (react-hook-form + zod)
+
+Schema novo em `src/lib/validations/whatsapp.ts` (ao lado de `sendMessageSchema`):
+
+```
+messageTemplateSchema = z.object({
+  templateKey: z.enum(MESSAGE_TEMPLATES),
+  body: z.string()
+         .trim()
+         .min(1, "Escreva o texto do modelo.")
+         .max(1000, "O texto do modelo é muito longo."),
+  active: z.boolean(),
+})
+```
+
+- `body` validado: obrigatório, limite de 1000 caracteres (coerente com mensagem de WhatsApp;
+  o planejador de dados confirma o limite da coluna). **Variáveis desconhecidas** no corpo (ex.:
+  `{foo}`) não quebram o save — são tratadas na renderização como "não resolvida" e substituídas
+  pelo fallback (ver §4.3); opcionalmente o editor pode avisar em pt-BR ("A variável {foo} não é
+  reconhecida e será removida no envio"), como ajuda, não como bloqueio.
+- Resolver `zodResolver`; mensagens em pt-BR.
+
+### 4.3 Renderização de variáveis (preview no cliente + contrato do servidor)
+
+Função pura utilitária `renderTemplate(body, vars)` em `src/lib/message-templates.ts` (novo),
+usada **só para o preview** no cliente. Contrato:
+
+- **Lista fechada de variáveis suportadas** (decisão desta fatia): `{nome}` (cliente),
+  `{servico}` (serviço do agendamento), `{dataHora}` (início do agendamento no fuso do tenant,
+  formatado pt-BR via `src/lib/datetime.ts`), `{empresa}` (`trade_name` do tenant), `{valor}`
+  (`price_cents` do agendamento formatado em R$ via `src/lib/money.ts`). Qualquer outro `{token}`
+  é desconhecido.
+- **Fallback previsível** quando o dado falta ou o token é desconhecido: substituir por um texto
+  neutro pt-BR por variável, **nunca** deixar `{token}` cru. Tabela de fallback:
+  - `{nome}` → "você"
+  - `{servico}` → "seu atendimento"
+  - `{dataHora}` → "o horário combinado"
+  - `{empresa}` → `trade_name` do tenant, ou "nossa equipe" se nulo
+  - `{valor}` → "o valor combinado"
+  - token desconhecido → remove (string vazia), nunca exibe `{...}`.
+- O preview **declara** que isto é também o comportamento esperado do servidor. **Dependência de
+  contrato:** a Edge Function `handleSend` hoje envia `text: input.template` (a string crua da
+  chave — bug funcional do ponto de vista do produto). A Fatia 1 muda isso para o servidor
+  **carregar o `message_templates` do tenant pela chave (sob service role) e renderizar com a
+  mesma tabela de fallback** antes de `adapter.sendText`. A UI e o servidor devem compartilhar a
+  **mesma lista fechada e a mesma tabela de fallback** — registrar como contrato na ADR para não
+  divergirem. O frontend não implementa o lado servidor; só desenha o preview coerente com ele.
+
+### 4.4 Componentes vs hooks vs estado
+
+- Estado de servidor: só via TanStack Query (templates, tenant atual para `{empresa}`).
+- Estado local de UI: qual template está em edição, abertura do diálogo (`useState` na página),
+  posição do cursor para inserir chip (ref do textarea no `TemplateBodyField`).
+- Nenhum `fetch`/efeito solto; o `TemplatePreview` deriva do estado do form (`form.watch("body")`)
+  — reatividade pura, sem efeito.
 
 ---
 
-## 8. Dependências de dados a confirmar com a análise de dados (bloqueiam a implementação plena)
+## 5. Dependências (sinalizadas para as etapas seguintes)
 
-1. **`schedule_overrides`** (D1): tabela nova multi-tenant, RLS + RBAC espelhando `working_hours`
-   (admin qualquer; professional só a própria; receptionist leitura). Campos sugeridos p/ o front:
-   `professional_id`, `date`, `type` (`folga`|`horario_atipico`) e, quando atípico, janela(s)
-   (start/end + break opcional). Unicidade por `(professional_id, date)` evita exceções duplicadas na
-   mesma data — o front mostra o erro "Já existe uma exceção para esta data."
-2. **Vigência** (D2): onde moram `valid_from`/`valid_until` do profissional (coluna em `professionals`
-   vs. tabela). O front consome como par de datas por profissional; a semântica é **data pura** no
-   fuso do tenant.
-3. **Passo-base/`slot_minutes`** (D4): se vira coluna em `professionals` nesta entrega ou fica como
-   constante de UI (default 30). O front funciona com default; preparado para receber por profissional.
-4. **Geração de slots** (D3): confirmar com dados se fica função pura no cliente (recomendação §4.3) ou
-   RPC/Edge sob sessão do usuário. Contrato do front é estável nos dois casos.
-5. **Não-sobreposição**: a constraint `tstzrange` por profissional **já existe** no banco — os slots a
-   refletem (slot ocupado some), e o submit a respeita. Nenhuma mudança de constraint pedida pelo front.
+1. **Dados — tabela nova `message_templates`** (`id, tenant_id, template_key, body, active,
+   created_at`), unique `(tenant_id, template_key)`, índice em `tenant_id`, **RLS habilitada**
+   (SELECT/INSERT/UPDATE para `admin` do tenant; escrita só `admin`). Migration versionada em
+   `supabase/migrations`. — *documento de dados / ADR de migration.*
+2. **Dados — seed dos 4 templates padrão pt-BR** por tenant (ao criar tenant e/ou backfill para
+   tenants existentes), para a tela não começar vazia. Textos padrão em pt-BR com as variáveis
+   corretas; `lembrete_d1` já redigido de forma a **comportar** a instrução "1 confirmar / 2
+   reagendar" (preparando a Fatia 2 **sem** acoplar webhook agora — só o texto). — *documento de
+   dados / ADR de seed.*
+3. **Servidor — `handleSend` passa a renderizar** o template do tenant (carrega por
+   `template_key` sob service role, aplica `renderTemplate` com a tabela de fallback acordada) em
+   vez de enviar `input.template` cru. — *ADR da Edge Function.* **Este é o ponto que cumpre o
+   critério de aceite central.**
+4. **RBAC — `canManageMessageTemplates`** em `usePermissions` (= `isAdmin`). — *ADR de frontend.*
+5. **UI primitiva — `src/components/ui/textarea.tsx`** (shadcn padrão). — *ADR de frontend.*
+6. **Util compartilhado — `src/lib/message-templates.ts`** (lista fechada de variáveis + tabela de
+   fallback + `renderTemplate`), reusável por preview (cliente) e espelhado no servidor. — *ADR de
+   frontend; o servidor replica a mesma tabela.*
+
+Fora de escopo (Fatia 2, **não** desenhar/implementar agora): confirmação interativa numérica,
+webhook de entrada da Evolution, pg_cron/agendador do `lembrete_d1`, fila de retentativa, botões
+interativos. O único preparo permitido é **o texto** do `lembrete_d1` comportar "1 confirmar / 2
+reagendar".
 
 ---
 
-## 9. Resumo para o planejamento
+## 6. Critérios de aceite visuais (verificáveis pelo QA Chrome DevTools)
 
-- **Toca tela em 3 frentes**, todas em `/app`: agenda (toggle calendário↔lista + criação por slot),
-  diálogo de criação (SlotPicker), e tela de horários (vigência + exceções), **reusando** grade
-  semanal, diálogo de agendamento, helpers de fuso, tokens de status e guards existentes.
-- **Decisão de slots (front-loaded, §1):** híbrido — passo-base de início (default **30 min**, pode
-  virar `professionals.slot_minutes` depois) ancorado na grade; o serviço consome o bloco da sua
-  duração; só vira slot o início cujo bloco caiba na janela e não sobreponha ocupados/exceções; fora
-  da vigência não há slot. **Sem materializar.**
-- **Geração no cliente por função pura** a partir de dados lidos por RLS (recomendação §4.3), com fuso
-  tratado nos helpers já testados; contrato estável se virar RPC.
-- **Visual:** dissolve-se no "painel de operação calmo" existente; a grade de calendário é o elemento
-  de destaque, mantida quieta em cor, com status como única cor saturada e a linha do agora em jade.
-- **Dependências de dados** (§8): `schedule_overrides`, vigência, passo-base e a decisão
-  cliente-vs-RPC da geração — sinalizadas; o front não inventa schema.
-- **Verificação:** build/typecheck + QA ao vivo no `/app/agenda` conforme §7. Entrega local-only
-  (branch + commit, sem push/PR).
+1. Em `/app/config` existe o atalho "Modelos de mensagem" (visível só para `admin`); clicar leva a
+   `/app/config/mensagens`.
+2. A tela lista os **4 cards** (Confirmação, Lembrete (24h antes), Cobrança, Comprovante), cada um
+   com rótulo pt-BR, badge Ativo/Inativo e prévia truncada do corpo. Mobile (<`sm`): 1 coluna, sem
+   overflow horizontal. Desktop: 2 colunas.
+3. "Editar" abre o `Dialog` com o corpo atual no `Textarea`, os chips de variável e o preview ao
+   vivo. Clicar um chip insere o `{token}` no texto; o preview atualiza substituindo variáveis por
+   dados de exemplo pt-BR e **nunca** exibe `{token}` cru (fallback visível quando o dado falta).
+4. Salvar mostra toast "Modelo atualizado", fecha o diálogo e a prévia do card reflete o novo
+   texto (cache invalidado).
+5. No diálogo de **Enviar mensagem** (Agenda/Clientes), ao escolher um template aparece o preview
+   do texto renderizado que será enviado; o envio continua funcionando (sucesso/duplicate/opt_out/
+   not_connected/send_failed inalterados) e o texto efetivo é o **template renderizado**, não a
+   string crua da chave. (Verificação de ponta: inspecionar o disparo de teste e confirmar o texto
+   renderizado — o lado servidor é da ADR da Edge Function, mas o critério é observável aqui.)
+6. **Isolamento por tenant:** logado em tenant A, a tela mostra só os templates de A; não há como
+   enviar `tenant_id` pelo cliente para ver os de outro (RLS). Editar em A não afeta B.
+7. Acessibilidade: `Tab` alcança cards → Editar → chips → textarea → Switch → Salvar/Cancelar;
+   foco visível em todos; `Esc` fecha o diálogo e devolve o foco ao gatilho; labels associados;
+   contraste do texto do preview e do realce de token conferidos (realce de token por **fundo**,
+   texto em `foreground`).
+8. Build/typecheck limpos (`tsc`/build do projeto) e verificação ao vivo (tela + envio) sem erro
+   de console.
+
+---
+
+## 7. Resumo das decisões de frontend (travadas após aprovação)
+
+- Rota: **`/app/config/mensagens`**, dentro do grupo de Configurações; atalho no hub.
+- Padrão de tela: **lista fixa de 4 cards** (domínio fechado), editor em `Dialog`, sem "novo"/
+  "excluir". Robusta a lacuna de seed (cards "a configurar" derivados de `MESSAGE_TEMPLATES`).
+- RBAC: escrita e acesso só para **`admin`** (`canManageMessageTemplates`), demais papéis veem
+  `AccessDenied`; a trava real é RLS.
+- Dados: **TanStack Query** (`useMessageTemplates`/`useUpsertMessageTemplate`), escrita do cliente
+  sob RLS (não via Edge Function). Formulário **rhf + zod**; `body` 1–1000 chars.
+- Variáveis: lista fechada `{nome} {servico} {dataHora} {empresa} {valor}`; **fallback previsível**
+  por variável, token desconhecido removido — **nunca** `{token}` cru para o cliente.
+- Preview no cliente via `renderTemplate` compartilhado; **renderização canônica é do servidor**
+  (`handleSend` passa a renderizar o template do tenant).
+- Visual: adere ao tema existente; único toque próprio é o **realce de token por fundo** (texto em
+  `foreground`, cor jade só decorativa) — escolha feita para não ferir contraste.
+- Stack travada: React + Vite + TS estrito + Tailwind + shadcn/ui + React Router + TanStack Query +
+  react-hook-form + zod. Novo primitivo shadcn: `Textarea`.
+```

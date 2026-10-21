@@ -1,5 +1,11 @@
 import { Link } from "react-router-dom";
-import { MessageCircle, Scissors, Users, type LucideIcon } from "lucide-react";
+import {
+  MessageCircle,
+  MessageSquareText,
+  Scissors,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -8,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
 
 interface ConfigShortcut {
@@ -15,28 +22,9 @@ interface ConfigShortcut {
   titulo: string;
   descricao: string;
   icon: LucideIcon;
+  /** Só aparece quando `true`; `undefined` = sempre visível. */
+  visible?: boolean;
 }
-
-const SHORTCUTS: ConfigShortcut[] = [
-  {
-    to: "/app/config/servicos",
-    titulo: "Serviços",
-    descricao: "O que você oferece: nome, duração, preço e quem executa.",
-    icon: Scissors,
-  },
-  {
-    to: "/app/config/profissionais",
-    titulo: "Profissionais",
-    descricao: "Quem atende na sua empresa e os horários de cada um.",
-    icon: Users,
-  },
-  {
-    to: "/app/config/whatsapp",
-    titulo: "WhatsApp",
-    descricao: "Conecte o número que fala com seus clientes.",
-    icon: MessageCircle,
-  },
-];
 
 /**
  * Hub de Configurações (`/app/config`). Substitui a casca anterior por atalhos
@@ -44,6 +32,36 @@ const SHORTCUTS: ConfigShortcut[] = [
  * chegam nas ADRs seguintes; o atalho de Profissionais já aponta para o destino.
  */
 export function ConfigHubPage() {
+  const { canManageMessageTemplates } = usePermissions();
+
+  const shortcuts: ConfigShortcut[] = [
+    {
+      to: "/app/config/servicos",
+      titulo: "Serviços",
+      descricao: "O que você oferece: nome, duração, preço e quem executa.",
+      icon: Scissors,
+    },
+    {
+      to: "/app/config/profissionais",
+      titulo: "Profissionais",
+      descricao: "Quem atende na sua empresa e os horários de cada um.",
+      icon: Users,
+    },
+    {
+      to: "/app/config/whatsapp",
+      titulo: "WhatsApp",
+      descricao: "Conecte o número que fala com seus clientes.",
+      icon: MessageCircle,
+    },
+    {
+      to: "/app/config/mensagens",
+      titulo: "Modelos de mensagem",
+      descricao: "Os textos que seus clientes recebem no WhatsApp.",
+      icon: MessageSquareText,
+      visible: canManageMessageTemplates,
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -51,7 +69,9 @@ export function ConfigHubPage() {
         descricao="O alicerce da sua operação: serviços, equipe e horários."
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        {SHORTCUTS.map(({ to, titulo, descricao, icon: Icon }) => (
+        {shortcuts
+          .filter((shortcut) => shortcut.visible !== false)
+          .map(({ to, titulo, descricao, icon: Icon }) => (
           <Link
             key={to}
             to={to}

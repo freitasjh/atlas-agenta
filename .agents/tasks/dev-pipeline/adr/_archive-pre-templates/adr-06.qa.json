@@ -1,0 +1,5 @@
+{
+  "test": "deferred",
+  "reason": "O SlotPicker é superfície verificável, mas seu comportamento de ponta a ponta (chips refletindo vigência/exceção/grade/break/duração/passo, estados vazios folga/fora-vigência/sem-grade) depende da cadeia-fundação ADR-01..05 — todas já em qaPending e ainda não exercidas ao vivo — e da configuração de grade cuja UI é a ADR-07. Testar ADR-06 isolada exigiria subir toda a stack (supabase start + seed de working_hours/overrides/validity) para cobrir parcialmente os AC. Mais econômico e coerente consolidar a QA ao vivo de ADR-06 junto com ADR-01..05 e ADR-07 (fluxo completo: configurar horários -> ver slots -> criar a partir do chip -> corrida 23P01 com mensagem pt-BR), antes do PR. AC-18 (corrida na constraint) e os estados de vazio só ficam plenamente verificáveis com a tela de horários (ADR-07) povoando os insumos.",
+  "evidence": null
+}

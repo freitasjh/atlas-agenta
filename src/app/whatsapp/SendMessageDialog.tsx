@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -32,13 +32,21 @@ import {
 } from "@/components/ui/select";
 
 import { useSendMessage } from "@/hooks/useMessages";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { useTenant } from "@/hooks/useTenant";
 import { mapSendOutcome, mapWhatsAppError } from "@/lib/whatsapp-errors";
 import { getMessageTemplateLabel } from "@/lib/whatsapp";
+import { MESSAGE_TEMPLATES } from "@/types/domain";
+import {
+  resolveEmpresa,
+  segmentTemplate,
+  type TemplateVars,
+} from "@/lib/message-templates";
+import { cn } from "@/lib/utils";
 import {
   sendMessageSchema,
   type SendMessageInput,
 } from "@/lib/validations/whatsapp";
-import { MESSAGE_TEMPLATES } from "@/types/domain";
 
 interface SendMessageDialogProps {
   open: boolean;
@@ -81,6 +89,8 @@ export function SendMessageDialog({
   appointmentId,
 }: SendMessageDialogProps) {
   const sendMessage = useSendMessage();
+  const templatesQuery = useMessageTemplates();
+  const tenantQuery = useTenant();
 
   const form = useForm<SendMessageInput>({
     resolver: zodResolver(sendMessageSchema),
@@ -100,6 +110,50 @@ export function SendMessageDialog({
       appointmentId,
     });
   }, [open, customerId, appointmentId, form]);
+
+  const selectedTemplate = form.watch("template");
+
+  // As OPÇÕES do `Select` vêm da lista FECHADA `MESSAGE_TEMPLATES` (domínio
+  // fixo das 4 chaves), NÃO da leitura de `message_templates`. Isso desacopla o
+  // envio da leitura de templates: a RLS concede SELECT só ao admin, então
+  // receptionist/professional (que PODEM disparar — `canSendWhatsAppMessage`)
+  // recebem zero linhas do fetch; derivar as opções do enum garante que eles
+  // vejam as 4 chaves e consigam enviar. A renderização canônica é do servidor
+  // (ADR-04), que cai em DEFAULT_TEMPLATE_BODIES quando a linha não existe.
+  const selectedRow = useMemo(
+    () =>
+      (templatesQuery.data ?? []).find(
+        (row) => row.template_key === selectedTemplate,
+      ),
+    [templatesQuery.data, selectedTemplate],
+  );
+
+  // Dados disponíveis no diálogo para o preview: `{nome}` = nome do cliente,
+  // `{empresa}` = nome fantasia do tenant. O diálogo recebe só o
+  // `appointmentId` (não os dados do agendamento), então `{servico}`/`{dataHora}`
+  // caem no fallback pt-BR do preview — o servidor resolverá serviço e data
+  // reais no envio (ADR-04 é a fonte da verdade). Decisão registrada na ADR-07:
+  // o preview cobre nome/empresa; servico/dataHora aparecem como fallback.
+  const previewVars = useMemo<TemplateVars>(
+    () => ({
+      nome: customerName,
+      // `{empresa}` segue o MESMO encadeamento do servidor
+      // (`resolveRenderedText`): trade_name → legal_name → null. Sem isso, o
+      // preview mostraria o fallback enquanto o cliente receberia a razão
+      // social — contradizendo o propósito do preview (ADR-07).
+      empresa: resolveEmpresa(
+        tenantQuery.data?.trade_name,
+        tenantQuery.data?.legal_name,
+      ),
+    }),
+    [customerName, tenantQuery.data?.trade_name, tenantQuery.data?.legal_name],
+  );
+
+  const previewSegments = useMemo(
+    () =>
+      selectedRow ? segmentTemplate(selectedRow.body, previewVars) : [],
+    [selectedRow, previewVars],
+  );
 
   async function onSubmit(values: SendMessageInput) {
     try {
@@ -137,6 +191,11 @@ export function SendMessageDialog({
     }
   }
 
+  // O envio só é bloqueado na borda por falta de opt-in (defesa em
+  // profundidade) ou enquanto pende. NUNCA por ausência de linha de template: a
+  // trava de ativo/inativo e o fallback de template ausente são do servidor
+  // (ADR-04 → DEFAULT_TEMPLATE_BODIES), senão receptionist/professional (sem
+  // SELECT por RLS) e admin de tenant legado ficariam travados (RF-T07/RF-T08).
   const sendDisabled = !whatsappOptIn || sendMessage.isPending;
 
   return (
@@ -172,9 +231,9 @@ export function SendMessageDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {MESSAGE_TEMPLATES.map((template) => (
-                        <SelectItem key={template} value={template}>
-                          {getMessageTemplateLabel(template)}
+                      {MESSAGE_TEMPLATES.map((templateKey) => (
+                        <SelectItem key={templateKey} value={templateKey}>
+                          {getMessageTemplateLabel(templateKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -187,6 +246,35 @@ export function SendMessageDialog({
                 </FormItem>
               )}
             />
+
+            {/* Preview: o texto renderizado que o cliente receberá. É só camada
+                de confiança — a renderização real é do servidor (ADR-04). */}
+            {whatsappOptIn && selectedRow ? (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Prévia da mensagem
+                </p>
+                <div
+                  aria-live="polite"
+                  className="min-h-[72px] whitespace-pre-wrap break-words rounded-md border border-border bg-muted/40 p-3 text-sm text-foreground"
+                >
+                  {previewSegments.map((segment, index) =>
+                    segment.kind === "var" ? (
+                      <span
+                        key={index}
+                        className={cn(
+                          "rounded bg-primary/15 px-1 font-medium text-foreground",
+                        )}
+                      >
+                        {segment.value}
+                      </span>
+                    ) : (
+                      <Fragment key={index}>{segment.value}</Fragment>
+                    ),
+                  )}
+                </div>
+              </div>
+            ) : null}
 
             {!whatsappOptIn ? (
               // Opt-in na borda: envio desabilitado, motivo em texto (não só

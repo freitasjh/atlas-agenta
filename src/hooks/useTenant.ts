@@ -12,6 +12,7 @@ import { useProfile } from "@/hooks/useProfile";
 const tenantSchema = z.object({
   id: z.string(),
   trade_name: z.string().nullable(),
+  legal_name: z.string().nullable(),
   subscription_status: z.enum(SUBSCRIPTION_STATUSES),
   timezone: z.string(),
 });
@@ -34,7 +35,7 @@ export function useTenant() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tenants")
-        .select("id, trade_name, subscription_status, timezone")
+        .select("id, trade_name, legal_name, subscription_status, timezone")
         .single();
       if (error) throw error;
       return tenantSchema.parse(data);

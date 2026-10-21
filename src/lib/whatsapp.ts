@@ -59,6 +59,9 @@ export const WHATSAPP_INSTANCE_KEY = ["whatsapp-instance"] as const;
 /** Chave de query do histórico de mensagens (ADR-06). */
 export const MESSAGES_KEY = ["messages"] as const;
 
+/** Chave de query dos templates editáveis do tenant (ADR-05/06). */
+export const MESSAGE_TEMPLATES_KEY = ["message-templates"] as const;
+
 /**
  * DTOs do contrato de resposta da Edge Function `whatsapp` (ADR-04 é a DONA do
  * contrato de fio). Espelham `supabase/functions/whatsapp/schemas.ts`: se o
