@@ -31,6 +31,16 @@
 // ISOLAMENTO MULTI-TENANT (RNF03): cada mensagem da fila carrega seu próprio `tenant_id`; todas as
 // leituras de customer/instância/tenant são filtradas por esse `tenant_id` da PRÓPRIA linha —
 // nunca de parâmetro/cliente. A drenadora é o worker do sistema, não uma sessão de usuário.
+//
+// IDEMPOTÊNCIA SOB CONCORRÊNCIA (correção de review, critério #4 da ADR / RNF04): a seleção NÃO é
+// mais um `select` solto em `fila`. A drenadora chama a RPC `whatsapp_claim_retry_batch`, que no
+// BANCO reclama (reclaim/TTL) o que ficou preso em `enviando`, trava as elegíveis com
+// `FOR UPDATE SKIP LOCKED` e as flipa `fila`→`enviando` atomicamente. Duas invocações sobrepostas
+// (cron + QA manual) JAMAIS pegam a mesma linha, então o provedor nunca é chamado duas vezes para
+// a mesma mensagem. A RPC já filtra `attempts < max_attempts` e `next_attempt_at <= now()` no SQL
+// (nada de descartar linhas maxadas em JS, nada de filtro `.or()` com timestamp citado). Após o
+// envio, a drenadora resolve `enviando` → `enviado` (sucesso) ou → `fila` com backoff (erro) ou
+// → `falha` (terminal).
 
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { createEvolutionAdapter } from "../whatsapp/evolution-adapter.ts";
@@ -175,9 +185,12 @@ async function recordFailureWithBackoff(
   reason: string,
 ): Promise<void> {
   const attemptsAfter = msg.attempts + 1;
+  // Devolve o claim para `fila` (a linha está em `enviando`): só assim a próxima passada da RPC /
+  // da função SQL (teto/janela) volta a enxergá-la. O backoff carimba o próximo instante elegível.
   const { error } = await service
     .from("messages")
     .update({
+      status: "fila",
       attempts: attemptsAfter,
       last_attempt_at: new Date().toISOString(),
       next_attempt_at: computeNextAttemptAt(attemptsAfter),
@@ -224,7 +237,6 @@ interface DispatchSummary {
  * resultado. Determinística por invocação; o cron (ou o QA) a chama periodicamente.
  */
 async function drainQueue(service: SupabaseClient): Promise<DispatchSummary> {
-  const nowIso = new Date().toISOString();
   const summary: DispatchSummary = {
     processed: 0,
     sent: 0,
@@ -232,28 +244,27 @@ async function drainQueue(service: SupabaseClient): Promise<DispatchSummary> {
     retry_scheduled: 0,
   };
 
-  // Elegíveis: em `fila`, dentro do teto e prontas agora (next_attempt_at<=now() ou NULL).
-  // `or` cobre o NULL (legado da Fatia 1, que insere sem next_attempt_at) e o backoff pendente.
-  // O timestamp vai entre aspas no filtro `or` do PostgREST porque contém `:` (reservado na
-  // sintaxe de filtros); `toISOString()` garante sufixo `Z` sem `+`/vírgula/parêntese.
-  const { data: rows, error } = await service
-    .from("messages")
-    .select("id, tenant_id, customer_id, appointment_id, template, attempts, max_attempts")
-    .eq("status", "fila")
-    .or(`next_attempt_at.is.null,next_attempt_at.lte."${nowIso}"`)
-    .order("next_attempt_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_LIMIT);
+  // CLAIM ATÔMICO (correção de review, idempotência sob concorrência): em vez de um `select` em
+  // `fila` seguido de envio não-atômico, a RPC `whatsapp_claim_retry_batch` reclama no banco o que
+  // ficou preso em `enviando` (TTL), trava as elegíveis com `FOR UPDATE SKIP LOCKED` e as flipa
+  // `fila`→`enviando` numa transação. As linhas retornadas JÁ são exclusivamente desta passada —
+  // nenhuma outra invocação concorrente as pega. A elegibilidade (`attempts < max_attempts`,
+  // `next_attempt_at <= now()` ou NULL) é resolvida no SQL, então nada de descartar linhas maxadas
+  // em JS nem filtro `.or()` com timestamp citado.
+  const { data: rows, error } = await service.rpc("whatsapp_claim_retry_batch", {
+    p_batch_limit: BATCH_LIMIT,
+  });
   if (error) {
-    console.error("dispatch: falha ao carregar fila", error.message);
+    console.error("dispatch: falha ao reivindicar fila", error.message);
     throw new Error("Não foi possível carregar a fila de retentativa.");
   }
 
   const queue = (rows ?? []) as QueuedMessage[];
   const adapter = createEvolutionAdapter();
 
+  // Cada `msg` já está em `enviando` (reivindicada por esta passada). O caminho de saída SEMPRE
+  // move o claim: sucesso → `enviado`; falha terminal → `falha`; falha temporária → `fila` (backoff).
   for (const msg of queue) {
-    // Guard de teto: o que já atingiu o limite não é enviado (a função SQL marca `falha`). Pula.
-    if (msg.attempts >= msg.max_attempts) continue;
     summary.processed++;
 
     // Resolve o customer DENTRO do tenant da mensagem (service role + filtro por tenant_id).
