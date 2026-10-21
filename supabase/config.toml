@@ -105,3 +105,10 @@ enabled = false
 enabled = true
 # Política de inspeção para depuração de Edge Functions.
 inspector_port = 8083
+
+# Webhook de ENTRADA da Evolution (ADR-03, Fatia 2): superfície PÚBLICA, sem JWT de usuário. A
+# autenticidade é feita pelo segredo compartilhado `WHATSAPP_WEBHOOK_SECRET` (comparação em tempo
+# constante dentro da função), não pelo GoTrue — por isso `verify_jwt = false` SÓ para esta
+# função. As demais Edge Functions (ex.: `whatsapp`) continuam exigindo JWT (default verify_jwt).
+[functions.whatsapp-inbound]
+verify_jwt = false
