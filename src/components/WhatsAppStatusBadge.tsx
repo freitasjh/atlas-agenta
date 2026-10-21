@@ -15,7 +15,8 @@ import type { MessageStatus, WhatsAppConnectionStatus } from "@/types/domain";
  *
  * Mapa de tokens (ADR-05):
  *  - conexão: conectado→confirmado, aguardando_qr→pendente, desconectado→cancelado.
- *  - mensagem: enviado/entregue→confirmado, fila→pendente, falha→cancelado.
+ *  - mensagem: enviado/entregue→confirmado, fila/enviando→pendente, falha→cancelado.
+ *    (`enviando` é o claim transitório da fila de retentativa, ADR-05.)
  */
 const CONNECTION_CLASSNAME: Record<WhatsAppConnectionStatus, string> = {
   conectado: "bg-status-confirmado text-status-confirmado-foreground",
@@ -27,6 +28,7 @@ const MESSAGE_CLASSNAME: Record<MessageStatus, string> = {
   enviado: "bg-status-confirmado text-status-confirmado-foreground",
   entregue: "bg-status-confirmado text-status-confirmado-foreground",
   fila: "bg-status-pendente text-status-pendente-foreground",
+  enviando: "bg-status-pendente text-status-pendente-foreground",
   falha: "bg-status-cancelado text-status-cancelado-foreground",
 };
 

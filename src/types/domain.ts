@@ -242,9 +242,17 @@ export const WHATSAPP_CONNECTION_STATUSES = [
 export type WhatsAppConnectionStatus =
   (typeof WHATSAPP_CONNECTION_STATUSES)[number];
 
-/** Estados de um disparo de mensagem (espelha `messages.status`, ADR-03). */
+/**
+ * Estados de um disparo de mensagem (espelha `messages.status`). `enviando` é o
+ * estado transitório de CLAIM da fila de retentativa (ADR-05, migration
+ * 20250223097000): a drenadora `whatsapp-dispatch` flipa `fila`→`enviando` ao
+ * reivindicar a linha para envio. Como o histórico lê as linhas mais recentes
+ * (`created_at desc`), esse estado chega ao cliente e precisa existir no enum —
+ * senão o `.parse()` do histórico (ADR-06) derruba a lista inteira.
+ */
 export const MESSAGE_STATUSES = [
   "fila",
+  "enviando",
   "enviado",
   "entregue",
   "falha",

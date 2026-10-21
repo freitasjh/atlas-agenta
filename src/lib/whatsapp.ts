@@ -30,6 +30,7 @@ const TEMPLATE_LABELS: Record<MessageTemplate, string> = {
  */
 const MESSAGE_STATUS_HINTS: Partial<Record<MessageStatus, string>> = {
   fila: "Aguardando reenvio automático",
+  enviando: "Envio em andamento",
   falha: "Falhou após várias tentativas",
 };
 
@@ -43,6 +44,7 @@ const CONNECTION_STATUS_LABELS: Record<WhatsAppConnectionStatus, string> = {
 /** Rótulo pt-BR do estado de um disparo de mensagem. */
 const MESSAGE_STATUS_LABELS: Record<MessageStatus, string> = {
   fila: "Na fila",
+  enviando: "Enviando…",
   enviado: "Enviado",
   entregue: "Entregue",
   falha: "Falha",
