@@ -154,18 +154,29 @@ export function AgendaCalendarDay({
     }
   }
 
-  /** Converte o clique numa faixa vazia em `HH:MM` arredondado a 30 min. */
-  function timeFromOffset(offsetY: number): string {
-    const rawMinutes = startMinutes + (offsetY / HOUR_HEIGHT) * 60;
+  /** Minutos desde a meia-noite → `HH:MM`. */
+  function minutesToHhmm(minutes: number): string {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    return `${hour.toString().padStart(2, "0")}:${minute
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  /**
+   * Converte o clique (pointer) numa faixa de uma hora em `HH:MM` arredondado a
+   * 30 min. `baseMinutes` é o início da faixa; `offsetY` é relativo a ela. Na
+   * ativação por teclado (Enter/Espaço), `offsetY` chega 0 e cai no início da
+   * faixa focada — por isso cada hora é um botão próprio, dando ao operador
+   * só-teclado um horário específico (o do botão em foco).
+   */
+  function timeFromHourOffset(baseMinutes: number, offsetY: number): string {
+    const rawMinutes = baseMinutes + (offsetY / HOUR_HEIGHT) * 60;
     const snapped = Math.max(
       startMinutes,
       Math.min(endHour * 60, Math.round(rawMinutes / 30) * 30),
     );
-    const hour = Math.floor(snapped / 60);
-    const minute = snapped % 60;
-    return `${hour.toString().padStart(2, "0")}:${minute
-      .toString()
-      .padStart(2, "0")}`;
+    return minutesToHhmm(snapped);
   }
 
   return (
@@ -233,22 +244,36 @@ export function AgendaCalendarDay({
               />
             ))}
 
-            {/* Faixa vazia clicável (criar agendamento). */}
-            {onCreateAt ? (
-              <button
-                type="button"
-                aria-label="Criar agendamento neste horário"
-                className="absolute inset-0 h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                onClick={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  const offsetY = event.clientY - rect.top;
-                  onCreateAt(
-                    column.professional?.id ?? null,
-                    timeFromOffset(offsetY),
+            {/* Faixas vazias clicáveis (criar agendamento): uma por hora, cada
+                uma alcançável por teclado e rotulada pelo horário. O pointer
+                afina o horário pelo offset do clique; o teclado usa o início da
+                hora focada. */}
+            {onCreateAt
+              ? hours.slice(0, -1).map((hour) => {
+                  const baseMinutes = hour * 60;
+                  return (
+                    <button
+                      key={`create-${hour}`}
+                      type="button"
+                      aria-label={`Criar agendamento às ${minutesToHhmm(baseMinutes)}`}
+                      className="absolute inset-x-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      style={{
+                        top: (hour - startHour) * HOUR_HEIGHT,
+                        height: HOUR_HEIGHT,
+                      }}
+                      onClick={(event) => {
+                        const rect =
+                          event.currentTarget.getBoundingClientRect();
+                        const offsetY = event.clientY - rect.top;
+                        onCreateAt(
+                          column.professional?.id ?? null,
+                          timeFromHourOffset(baseMinutes, offsetY),
+                        );
+                      }}
+                    />
                   );
-                }}
-              />
-            ) : null}
+                })
+              : null}
 
             {/* Blocos de agendamento. */}
             {column.appointments.map((appointment) => {

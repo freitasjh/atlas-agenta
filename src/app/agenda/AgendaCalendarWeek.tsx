@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AppointmentWithRelations } from "@/types/domain";
 
@@ -39,6 +41,16 @@ function dayNumber(day: string): number {
   return match ? Number(match[3]) : 0;
 }
 
+const WEEKDAY_LONG: Record<number, string> = {
+  0: "domingo",
+  1: "segunda-feira",
+  2: "terça-feira",
+  3: "quarta-feira",
+  4: "quinta-feira",
+  5: "sexta-feira",
+  6: "sábado",
+};
+
 interface AgendaCalendarWeekProps {
   /** Dia em foco (`YYYY-MM-DD`); a coluna dele é a que tem dados carregados. */
   day: string;
@@ -57,8 +69,9 @@ interface AgendaCalendarWeekProps {
  * Visão **semana**: 7 colunas de dia (segunda→domingo). Para não abrir sete
  * requests (RNF01), a semana compartilha a MESMA query do dia em foco — só a
  * coluna do dia selecionado mostra os agendamentos; clicar noutra coluna move o
- * foco e carrega aquele dia. No mobile a grade degrada para uma coluna de dia
- * navegável (7 colunas não cabem em 360px), com setas no `AgendaPage`.
+ * foco e carrega aquele dia. No mobile (abaixo de `sm`) a grade de 7 colunas
+ * não cabe em 360px, então degrada para **uma coluna de dia navegável por
+ * setas** (anterior/próximo movem o dia em foco e carregam aquele dia).
  *
  * O dia de hoje é destacado por peso + `text-primary` (nunca só por cor — há o
  * número do dia e o rótulo textual). Os horários dos blocos vêm no fuso do
@@ -92,8 +105,66 @@ export function AgendaCalendarWeek({
     [appointments],
   );
 
+  const focusedLane =
+    focusedAppointments.length > 0 ? (
+      focusedAppointments.map((appointment) => (
+        <div key={appointment.id} className="h-16">
+          <AppointmentBlock
+            appointment={appointment}
+            timeZone={timeZone}
+            compact
+            onOpen={onOpenAppointment}
+          />
+        </div>
+      ))
+    ) : (
+      <p className="px-1 py-2 text-xs text-muted-foreground">
+        Sem agendamentos.
+      </p>
+    );
+
+  const focusWeekdayLong = WEEKDAY_LONG[weekdayOf(day)] ?? "";
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
+    <>
+      {/* Mobile (abaixo de sm): dia único navegável por setas. */}
+      <div className="rounded-lg border border-border bg-card sm:hidden">
+        <div className="flex items-center justify-between border-b border-border p-2">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Dia anterior"
+            onClick={() => onSelectDay(shiftIsoDate(day, -1))}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </Button>
+          <div className="text-center">
+            <span className="block text-xs capitalize text-muted-foreground">
+              {focusWeekdayLong}
+            </span>
+            <span
+              className={cn(
+                "block font-mono text-sm tabular-nums",
+                day === todayIso ? "font-semibold text-primary" : "text-foreground",
+              )}
+            >
+              {dayNumber(day)}
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Próximo dia"
+            onClick={() => onSelectDay(shiftIsoDate(day, 1))}
+          >
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        </div>
+        <div className="flex flex-col gap-1 p-1">{focusedLane}</div>
+      </div>
+
+      {/* sm+: grade de 7 colunas (segunda→domingo). */}
+      <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block">
       <div className="grid min-w-[640px] grid-cols-7">
         {weekDays.map((columnDay) => {
           const isFocus = columnDay === day;
@@ -128,29 +199,13 @@ export function AgendaCalendarWeek({
               </button>
 
               <div className="flex flex-col gap-1 p-1">
-                {isFocus ? (
-                  focusedAppointments.length > 0 ? (
-                    focusedAppointments.map((appointment) => (
-                      <div key={appointment.id} className="h-16">
-                        <AppointmentBlock
-                          appointment={appointment}
-                          timeZone={timeZone}
-                          compact
-                          onOpen={onOpenAppointment}
-                        />
-                      </div>
-                    ))
-                  ) : (
-                    <p className="px-1 py-2 text-xs text-muted-foreground">
-                      Sem agendamentos.
-                    </p>
-                  )
-                ) : null}
+                {isFocus ? focusedLane : null}
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
