@@ -178,8 +178,24 @@ export interface Customer {
 }
 
 /**
+ * Origem da confirmação de um agendamento (coluna `appointments.confirmed_via`,
+ * migration 20250223091000). `cliente_whatsapp` = o cliente respondeu "1" no
+ * lembrete D-1 (gravado pelo webhook, Fatia 2); `manual` = confirmado pela UI
+ * (recepção/admin). `null` = ainda não confirmado OU linha legada da Fatia 1
+ * (a UI trata ausência como origem manual/desconhecida).
+ */
+export const APPOINTMENT_CONFIRMED_VIA = [
+  "cliente_whatsapp",
+  "manual",
+] as const;
+
+export type AppointmentConfirmedVia =
+  (typeof APPOINTMENT_CONFIRMED_VIA)[number];
+
+/**
  * Linha de `appointments`. `price_cents` é snapshot do serviço no ato;
  * `starts_at`/`ends_at`/`confirmed_at`/`created_at` são `timestamptz` UTC.
+ * `confirmed_via` registra a ORIGEM da confirmação (ver `AppointmentConfirmedVia`).
  */
 export interface Appointment {
   id: string;
@@ -192,6 +208,7 @@ export interface Appointment {
   price_cents: number;
   status: AppointmentStatus;
   confirmed_at: string | null;
+  confirmed_via: AppointmentConfirmedVia | null;
   created_at: string;
 }
 
@@ -235,12 +252,17 @@ export const MESSAGE_STATUSES = [
 
 export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
 
-/** Templates da régua de comunicação (espelha `messages.template`, dominio.md). */
+/**
+ * Templates da régua de comunicação (espelha `messages.template`, dominio.md).
+ * `reagendar_retorno` é o retorno enviado quando o cliente responde "2" ao
+ * lembrete D-1 (Fatia 2, migration 20250223093000).
+ */
 export const MESSAGE_TEMPLATES = [
   "confirmacao",
   "lembrete_d1",
   "cobranca",
   "comprovante",
+  "reagendar_retorno",
 ] as const;
 
 export type MessageTemplate = (typeof MESSAGE_TEMPLATES)[number];

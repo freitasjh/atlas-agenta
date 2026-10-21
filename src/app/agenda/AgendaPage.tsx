@@ -11,6 +11,7 @@ import {
 
 import { PageHeader } from "@/components/PageHeader";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
+import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,7 +179,10 @@ function AgendaItem({
         </div>
 
         <div className="flex items-center gap-2 sm:flex-col sm:items-end">
-          <StatusBadge status={appointment.status} />
+          <div className="flex items-center gap-1.5">
+            <StatusBadge status={appointment.status} />
+            <ClientConfirmedBadge appointment={appointment} />
+          </div>
           {canManage ? (
             <div className="flex gap-2">
               <Button

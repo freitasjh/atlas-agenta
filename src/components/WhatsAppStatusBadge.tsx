@@ -1,4 +1,5 @@
 import {
+  getMessageStatusHint,
   getMessageStatusLabel,
   getWhatsAppConnectionStatusLabel,
 } from "@/lib/whatsapp";
@@ -60,8 +61,15 @@ export function WhatsAppStatusBadge(props: WhatsAppStatusBadgeProps) {
     ? CONNECTION_CLASSNAME[props.connectionStatus]
     : MESSAGE_CLASSNAME[props.messageStatus];
 
+  // Estado de mensagem sob retentativa/falha ganha uma nota pt-BR no `title`
+  // (ex.: "Aguardando reenvio automático"), sem PII nem conteúdo cru.
+  const title = isConnection(props)
+    ? undefined
+    : getMessageStatusHint(props.messageStatus);
+
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
         className,

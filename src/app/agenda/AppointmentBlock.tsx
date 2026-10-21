@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
 import { formatTimeInTenantTz } from "@/lib/datetime";
@@ -55,8 +56,14 @@ export function AppointmentBlock({
     appointment.professionals?.name ?? "Profissional removido";
   const startLabel = formatTimeInTenantTz(appointment.starts_at, timeZone);
   const endLabel = formatTimeInTenantTz(appointment.ends_at, timeZone);
+  // Selo de origem é determinístico pela coluna `confirmed_via`.
+  const confirmedByClient =
+    appointment.status === "confirmado" &&
+    appointment.confirmed_via === "cliente_whatsapp";
 
-  const title = `${startLabel}–${endLabel} · ${customerName} · ${serviceName} · ${professionalName}`;
+  const title =
+    `${startLabel}–${endLabel} · ${customerName} · ${serviceName} · ${professionalName}` +
+    (confirmedByClient ? " · Confirmado pelo cliente no WhatsApp" : "");
 
   return (
     <button
@@ -76,7 +83,12 @@ export function AppointmentBlock({
         <span className="truncate text-xs font-semibold tabular-nums text-foreground">
           {startLabel}
         </span>
-        <StatusBadge status={appointment.status} className="shrink-0" />
+        <span className="flex shrink-0 items-center gap-1">
+          {!compact ? (
+            <ClientConfirmedBadge appointment={appointment} />
+          ) : null}
+          <StatusBadge status={appointment.status} className="shrink-0" />
+        </span>
       </span>
       <span className="truncate text-sm font-medium text-foreground">
         {customerName}

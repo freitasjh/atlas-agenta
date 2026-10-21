@@ -19,6 +19,18 @@ const TEMPLATE_LABELS: Record<MessageTemplate, string> = {
   lembrete_d1: "Lembrete (24h antes)",
   cobranca: "Cobrança",
   comprovante: "Comprovante",
+  reagendar_retorno: "Retorno de reagendamento",
+};
+
+/**
+ * Texto auxiliar (atributo `title`) do estado de um disparo sob a fila de
+ * retentativa (Fatia 2, RNF04). Explica o estado sem expor PII nem o conteúdo
+ * da resposta: `fila` = aguardando reenvio automático; `falha` = esgotou as
+ * tentativas. `enviado`/`entregue` não têm nota extra (o rótulo do badge basta).
+ */
+const MESSAGE_STATUS_HINTS: Partial<Record<MessageStatus, string>> = {
+  fila: "Aguardando reenvio automático",
+  falha: "Falhou após várias tentativas",
 };
 
 /** Rótulo pt-BR do estado da conexão de WhatsApp. */
@@ -51,6 +63,16 @@ export function getWhatsAppConnectionStatusLabel(
 /** Rótulo pt-BR do estado de um disparo (histórico, badge). */
 export function getMessageStatusLabel(status: MessageStatus): string {
   return MESSAGE_STATUS_LABELS[status];
+}
+
+/**
+ * Nota pt-BR (atributo `title`) do estado da fila de retentativa, ou `undefined`
+ * quando o estado não precisa de explicação extra. Sem PII, sem conteúdo cru.
+ */
+export function getMessageStatusHint(
+  status: MessageStatus,
+): string | undefined {
+  return MESSAGE_STATUS_HINTS[status];
 }
 
 /** Chave de query da instância de WhatsApp do tenant (ADR-06). */
