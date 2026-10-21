@@ -1,188 +1,350 @@
-# PRD — Evolução do módulo de Agenda: slots sob demanda, exceções/vigência e visão de calendário
+# PRD — WhatsApp Fase 2, Fatia 1: Templates de mensagem editáveis por tenant
 
-- **Projeto:** atlas-agenda (`/home/joao/fusionlf/wsProjeto/atlas-agenda`)
-- **Pipeline:** dev-pipeline · **Artefato:** contrato da demanda (O QUE existe + COMO se prova). Solução técnica detalhada vem nas ADRs, após a aprovação humana deste PRD.
-- **Tipo de rota:** Feature (pesada) · **Área:** `/app` (tenant). Nenhuma rota de `/admin`, marketing ou auth é tocada.
-- **Entrada:** `analysis-data.md` (dados/segurança) + `analysis-frontend.md` (frontend) + steerings (`produto`, `dominio`, `stack`, `seguranca-multitenant`, `convencoes-codigo`).
+Projeto: **atlas-agenda** · base: `master` (default branch) · tipo de rota: **Feature**
+Documento de **contrato da demanda** (o QUE precisa existir e COMO se prova). A solução técnica
+detalhada vem nas ADRs do planejamento, após a aprovação humana deste PRD.
 
-As duas análises convergem nas mesmas decisões de design; este PRD consolida sem reabrir o que ambas já fixaram, e registra em §7 e §9 os pontos que o gate humano deve confirmar.
+Fontes consolidadas: `analysis-data.md` (dados/segurança), `analysis-frontend.md` (frontend),
+steerings `produto.md` / `dominio.md` / `stack.md` / `seguranca-multitenant.md` /
+`convencoes-codigo.md`, e leitura do código atual (`supabase/functions/whatsapp/index.ts`,
+`src/types/domain.ts`, `src/lib/whatsapp.ts`, `src/hooks/usePermissions.ts`, `src/router.tsx`).
 
 ---
 
 ## 1. Problema e valor de negócio
 
-Hoje a `AgendaPage` (`src/app/agenda/AgendaPage.tsx`) é uma **lista vertical por profissional/dia** que **não gera slots** (comentário explícito no arquivo): o operador digita data+hora livre no `AppointmentFormDialog`. A grade semanal recorrente (`working_hours`) já existe e é configurável em `/app/config/profissionais/:id/horarios`, mas **não alimenta** a oferta de horários. Não há como registrar folga/feriado/horário atípico, nem o período em que o profissional atende.
+Hoje o disparo de WhatsApp sob demanda envia **texto cru**: em
+`supabase/functions/whatsapp/index.ts`, `handleSend` chama
+`adapter.sendText({ ..., text: input.template })` — ou seja, manda a **string da chave**
+(`"confirmacao"`, `"lembrete_d1"`, …) como se fosse o corpo da mensagem. O cliente final recebe
+literalmente a palavra-chave, não uma mensagem útil.
 
-**O que muda quando pronto:**
+Esta fatia entrega o **CRUD de templates de mensagem por tenant**, com **variáveis**, e troca a
+origem do texto enviado: o disparo passa a usar o **template renderizado do tenant** (variáveis
+substituídas, com fallback previsível). Valor quando estiver pronto:
 
-- A recepção e o profissional passam a **marcar a partir de horários livres gerados** (grade − exceções − vigência − ocupados), reduzindo erros de marcação (fora do expediente, em folga, sobre outro atendimento) e acelerando o fluxo — alinhado ao objetivo de produto de **reduzir no-show** e dar previsibilidade à agenda.
-- Clínicas passam a representar a realidade da operação: **folgas/feriados/horários atípicos por data** e o **período de vigência** em que cada profissional atende.
-- A agenda ganha uma **visão de calendário (dia/semana)** que o usuário alterna com a lista atual, mantendo a lista como opção (ótima no mobile).
+- **Comunicação personalizada e padronizada:** cada empresa envia mensagens com nome do cliente,
+  serviço, data/hora e nome da empresa, em vez de texto genérico/cru — o degrau que torna a régua
+  de comunicação (objetivo central do produto) utilizável e prepara a confirmação interativa da
+  Fatia 2.
+- **Autonomia do admin:** cada tenant edita seus próprios textos sem depender de deploy
+  ("mensagens personalizadas" é diferencial dos planos Clínica/Pro — produto.md).
+- **Nova superfície de domínio sob isolamento:** introduz uma tabela nova de dados do tenant; o
+  isolamento por RLS é requisito inegociável desde o primeiro registro.
 
-**Valor direto:** menos marcações inválidas, menos retrabalho/remarcação, leitura da agenda mais rápida. Nenhuma estrutura de planos/limites é alterada (o limite de 150 agendamentos/mês do plano Individual não é reaberto aqui).
+### Definição de defeito (do pedido do usuário — cada item vira critério de aceite nesta fatia)
+
+1. Template **vazar entre tenants** (falha de RLS).
+2. **Quebrar o envio sob demanda atual** (regressão do fluxo `send`).
+3. Renderizar **variável não resolvida sem controle** (ex.: enviar `{nome}` cru ao cliente final).
+4. **Expor segredo/PII em log** (telefone, texto renderizado com dado pessoal, token).
 
 ---
 
 ## 2. Escopo
 
-### 2.1 Dados / Supabase (migrations versionadas em `supabase/migrations`)
+### 2.1 Dados / Supabase (entra)
 
-- **Exceções por data** — nova tabela de domínio `schedule_overrides` (multi-tenant): sobrescreve a grade de um profissional num dia específico. Dois casos: **bloqueio total** (folga/feriado, nenhum slot) ou **janela atípica** (horário diferente do recorrente, com intervalo opcional). Unicidade por `(tenant_id, professional_id, override_date)`. Com `tenant_id`, índice, CHECKs de coerência de janela/break, RLS habilitado e RBAC espelhando `working_hours`.
-- **Vigência da grade + passo-base** — colunas novas em `professionals`: `schedule_start_date`, `schedule_end_date` (ambas opcionais; null = sem limite) e `slot_step_minutes` (int, default 30, CHECK 5..240), com CHECK de coerência (início ≤ fim quando ambos presentes).
-- **Sem materialização de slots** (restrição dura): nenhuma tabela/coluna de "slots" é criada. A disponibilidade é derivada sob demanda.
+- Nova tabela `message_templates` por tenant: uma linha por `(tenant_id, template_key)` para as 4
+  chaves padrão (`confirmacao`, `lembrete_d1`, `cobranca`, `comprovante`), com `body` pt-BR,
+  `active`, timestamps. `unique (tenant_id, template_key)`, índice em `tenant_id`, **RLS
+  habilitada**. Migration versionada em `supabase/migrations` (nova, idempotente, nunca editar
+  migration aplicada).
+- **Seed/baseline** dos 4 templates padrão pt-BR: ao criar tenant novo (acoplado a
+  `handle_new_user`, via função `security definer` idempotente) e backfill idempotente para
+  tenants existentes.
+- **Renderização no envio (server-side):** `handleSend` passa a carregar o `body` do template do
+  tenant (service role, dentro do tenant resolvido), resolver as variáveis e enviar o **texto
+  renderizado** ao adapter, em vez de `input.template` cru.
 
-### 2.2 Frontend (`/app`, React + Vite + TS + Tailwind + shadcn/ui)
+### 2.2 Frontend (entra)
 
-- **AgendaPage** (`src/app/agenda/`): toggle **Lista · Dia · Semana** controlado pelo usuário (preferência por usuário em `localStorage`, não config de tenant); visões de calendário dia/semana com blocos proporcionais à duração e cor por status; criação a partir de clique em faixa/slot vazio.
-- **Fluxo de criação** (`AppointmentFormDialog`, reusado e estendido): troca do `<input type="time">` cru por um **seletor de slots livres** (chips) gerados sob demanda a partir de profissional + serviço + dia; término e valor continuam derivados do serviço como hoje.
-- **Tela de horários** (`/app/config/profissionais/:id/horarios`, reusa `WeekScheduleForm`/`HorariosPage`): duas seções novas abaixo da grade semanal — **vigência** (início/fim) e **exceções por data** (criar/editar/remover folga ou horário atípico).
-- **Geração de slots**: função determinística (grade semanal + exceções + vigência + agendamentos ocupados + duração do serviço, no fuso do tenant), consumida via TanStack Query. Recomendação: **função pura no cliente** sobre dados já lidos por RLS (ver §9, ponto D3); contrato estável se virar RPC.
+- Nova sub-rota de Configurações `/app/config/mensagens` (ver decisão de rota em §7-D1): tela que
+  lista os **4 templates** do tenant em cards (domínio fechado, sem "novo"/"excluir") e abre um
+  `Dialog` de edição por chave.
+- Editor com **react-hook-form + zod**, `Textarea` (novo primitivo shadcn), **barra de chips de
+  variável** que inserem o token no cursor, contador de caracteres e **preview ao vivo** com dados
+  de exemplo pt-BR mostrando a substituição e o fallback.
+- `SendMessageDialog` (envio sob demanda) ganha um **bloco de preview** do texto renderizado que
+  será enviado; o contrato de fio de `send` **não muda** (payload `action|template|customerId|
+  appointmentId?`). O preview da UI é defesa em profundidade; a renderização canônica é do servidor.
+- Dados via **TanStack Query** (`useMessageTemplates` / `useUpsertMessageTemplate`), escrita do
+  cliente sob RLS (não via Edge Function — templates são conteúdo editorial, como `services`).
+- Nova capacidade `canManageMessageTemplates` (= `isAdmin`) em `usePermissions`, espelhando
+  `canManageWhatsAppConnection`.
 
-### 2.3 Fora de escopo
+### 2.3 Fora de escopo (Fatia 2, próximo run — contrato preparado, NÃO implementar)
 
-- Link público de **autoagendamento**, **taxa de reserva** antecipada e **painel de métricas** consolidadas — são **Fase 3** (produto.md). Não implementar.
-- **Feriado do tenant inteiro** (uma exceção que vale para todos os profissionais / tabela `tenant_holidays`): fora do MVP; exceção é por profissional/data.
-- **Webhooks, PIX, WhatsApp** e demais módulos: não tocados. Esta demanda não envolve service role, Edge Functions nem integrações externas.
-- **Reescrita** da grade semanal, do fluxo de criação de agendamento, da máquina de estados ou da constraint de não-sobreposição: tudo é reuso/extensão, sem mudança de contrato observável.
+Confirmação interativa, webhook de entrada da Evolution, `pg_cron`/agendador (lembrete D-1), fila
+de retentativa, botões interativos. **Decisões já tomadas** para a Fatia 2: resposta por **opção
+numérica** (`1 confirmar`) e lembrete D-1 via **pg_cron** do Supabase. Nesta fatia isso se traduz
+**apenas** em: o texto do `lembrete_d1` pode conter `1 confirmar / 2 reagendar` como texto livre,
+sem nenhuma lógica de parsing/webhook/cron acoplada.
+
+### 2.4 Fora de escopo (MVP — Fase 3, não antecipar)
+
+Link público de autoagendamento, taxa de reserva antecipada, métricas consolidadas (produto.md).
+Também fora desta fatia: variável `{valor}`/PIX (depende do módulo Asaas/cobranças —
+ver §7-D4), customização por plano, histórico/versionamento de templates.
 
 ---
 
 ## 3. Requisitos e critérios de aceite testáveis
 
-Cada requisito tem entrada → saída observável. Numeração alinhada às análises (RF-AG / AC).
+Cada requisito traz entrada → saída observável. Numeração alinhada às análises de origem.
 
-### 3.1 Exceções, vigência e passo-base (dados)
+### RF-T01 — Tabela de templates por tenant
+- **Entrada:** aplicar a migration (`supabase db reset` / `supabase start`).
+- **Saída (AC-01):** existe `message_templates` com as colunas de §8-dados, `unique (tenant_id,
+  template_key)`, índice em `tenant_id`, RLS habilitada; aplica sem erro.
 
-- **RF-AG-01 — Vigência da grade.** Entrada: profissional com `schedule_start_date`/`schedule_end_date`. Saída: fora de `[início, fim]` **nenhum** slot é ofertado, mesmo com grade semanal no dia; dentro, há slots quando grade/exceção permitem. *(AC-12)*
-- **RF-AG-02 — Exceções por data.** Entrada: exceção para `(profissional, data)`. Saída: `is_closed=true` → nenhum slot nesse dia; `is_closed=false` → slots seguem a **janela da exceção**, não a da grade. *(AC-10, AC-11)*
-- **Coerência e unicidade (banco).**
-  - AC-06: exceção `is_closed=true` com janela preenchida é rejeitada pelo CHECK; `is_closed=false` sem janela ou com break fora da janela é rejeitada.
-  - AC-07: dois inserts para o mesmo `(professional_id, override_date)` falham no `unique`.
-  - AC-08: `schedule_start_date > schedule_end_date` é rejeitado; `slot_step_minutes` fora de 5..240 é rejeitado.
+### RF-T02 — Baseline/seed dos 4 templates
+- **Entrada:** cadastro de empresa nova (`handle_new_user`); e re-execução da baseline em tenant
+  que já tem as 4 linhas.
+- **Saída (AC-02):** tenant novo nasce com exatamente **4 linhas** (uma por chave), textos padrão
+  pt-BR não vazios; re-executar **não duplica** (idempotência via `on conflict do nothing`).
 
-### 3.2 Geração de slots (app)
+### RF-T03 — Leitura dos templates
+- **Entrada:** admin abre `/app/config/mensagens`.
+- **Saída:** a tela lista os 4 templates do tenant com o texto atual. Leitura permitida a `admin`
+  (ver §5). Recepção/profissional **não** leem/editam (a renderização é server-side; não precisam).
 
-- **RF-AG-03 — Slots sob demanda.** Entrada: `(profissional, serviço, dia)`. Saída: lista de horários de início livres = janela do dia (exceção se houver, senão grade do `weekday`) − break − vigência − ocupados − passado (no fuso do tenant). *(AC-09, AC-13, AC-17)*
-  - AC-09: slots dentro da janela da grade e fora do break.
-  - AC-13: início cujo bloco `[início, início+duração)` sobrepõe agendamento **ativo** não é ofertado; `cancelado`/`nao_compareceu` não bloqueiam.
-  - AC-17: horários anteriores a "agora" (fuso do tenant) não são ofertados no dia corrente.
-- **RF-AG-04 — Encaixe pela duração.** Entrada: serviço de 1h vs 2h. Saída: o bloco ofertado tem `services.duration_minutes`; um início só é ofertado se o bloco inteiro **cabe** (não cruza fim de janela/break/próximo ocupado). Serviço de 2h oferta menos opções que o de 1h a partir da mesma grade. *(AC-14)*
-- **Passo-base.** AC-15: os inícios andam de `slot_step_minutes` em `slot_step_minutes` a partir do começo da janela (default 30).
-- **RF-AG-07 — Fuso do tenant.** AC-16: slots e exibição usam `tenants.timezone` (default `America/Sao_Paulo`); um agendamento às 09:00 local aparece às 09:00 e o slot correspondente some, independente do fuso do servidor. Instantes persistidos continuam `timestamptz` UTC.
-- **Sem materialização.** AC-21: nenhuma tabela/coluna de slots é criada; disponibilidade derivada sob demanda.
+### RF-T04 — Edição pelo admin
+- **Entrada:** admin edita o `body` de um template no editor e salva.
+- **Saída:** persiste em `message_templates` sob RLS do tenant; toast pt-BR "Modelo atualizado";
+  a prévia do card reflete o novo texto (cache invalidado).
 
-**Cascata de precedência (a documentar no design para o gerador não divergir):** vigência (fora → sem slots) → exceção (fechado → sem slots; janela → usa janela da exceção) → grade semanal do `weekday` (sem exceção e dentro da vigência). Casos de borda: DST (fatiar no fuso do tenant, persistir UTC, reusar `src/lib/datetime.ts`); duração > janela → vazio honesto; múltiplas faixas por `weekday` (`working_hours` é permissivo) → união das janelas; profissional sem grade → sem slots.
+### RF-T05 — Conjunto fechado de variáveis
+- **Entrada:** `body` com variáveis.
+- **Saída:** suporta o conjunto **fechado** `{nome}`, `{servico}`, `{dataHora}`, `{empresa}`
+  (ver §7-D4 sobre `{valor}` fora de escopo). Variável fora da lista (ex.: `{foo}`) **não quebra**
+  o save nem o envio — tratada na renderização (ver RF-T07). Lista travada em const/enum
+  compartilhado entre preview (cliente) e servidor.
 
-### 3.3 Criar agendamento a partir de slot (app)
+### RF-T06 — Renderização no envio (server-side) — cobre defeito #2/#3
+- **Entrada:** admin edita `confirmacao` para `"Olá {nome}, seu horário de {servico} é {dataHora}."`
+  e dispara "Enviar mensagem" para um cliente com opt-in.
+- **Saída (AC-05):** o `text` entregue ao adapter é o **texto renderizado** com `{nome}/{servico}/
+  {dataHora}` substituídos pelos dados reais — **nunca** a string `"confirmacao"`. Renderização
+  ocorre **no servidor** (Edge Function), dados resolvidos sob service role dentro do tenant.
 
-- **RF-AG-05 — Criar a partir de slot.** Entrada: seleção de um slot (chip ou faixa vazia do calendário). Saída: pré-preenche profissional/serviço/início no `AppointmentFormDialog`; submit continua sujeito à checagem local (`hasLocalConflict`) **e** à constraint `appointments_no_overlap` do banco. Em edição, o slot ocupado pelo próprio agendamento permanece ofertável (exclui o próprio ocupante do desconto). *(AC-18)*
-  - AC-18: em corrida, a constraint (23P01) barra a sobreposição com a **mesma** mensagem pt-BR já existente (`mapSchedulingError`).
+### RF-T07 — Fallback previsível — cobre defeito #3
+- **Entrada:** template com `{nome}` disparado para um caso em que o dado falta (ex.: sem
+  agendamento → sem `{servico}/{dataHora}`).
+- **Saída (AC-06):** a variável é substituída por um **fallback pt-BR definido** — nunca o
+  placeholder cru. Tabela de fallback (contrato compartilhado cliente↔servidor):
+  - `{nome}` → `cliente`
+  - `{servico}` → `seu atendimento`
+  - `{dataHora}` → `no horário combinado`
+  - `{empresa}` → `trade_name` do tenant, ou `nossa equipe` se nulo
+  - token **desconhecido** → mantido literal (decisão consciente — só as variáveis conhecidas têm
+    fallback), nunca exibindo um erro ao cliente.
+  - **Template ausente** (tenant legado sem baseline): servidor usa o **texto de sistema padrão**
+    da chave — nunca envia vazio nem a chave crua.
 
-### 3.4 Visão de calendário alternável (app)
+### RF-T08 — Preservar o envio atual — cobre defeito #2
+- **Entrada:** disparos nas condições atuais.
+- **Saída (AC-07):** os 5 `outcome` de `send` (`sent | duplicate | opt_out | not_connected |
+  send_failed`) continuam produzidos nas mesmas condições e com os mesmos status HTTP. Opt-in,
+  idempotência (`dedupe_key`) e checagem de instância conectada permanecem antes do envio. O
+  contrato de fio de `send` **não muda**.
 
-- **RF-AG-06 — Toggle por usuário.** Entrada: usuário escolhe Lista/Dia/Semana. Saída: a `AgendaPage` troca a renderização na própria tela sem recarregar; a preferência persiste **por usuário** (`localStorage`), nunca vira config de tenant; a lista atual permanece disponível (default no mobile). *(AC-19)*
+### RF-T09 — Contrato preparado para a Fatia 2 (sem implementar)
+- **Entrada:** `body` do `lembrete_d1` com `1 confirmar / 2 reagendar`.
+- **Saída (AC-09):** renderiza o texto sem erro; **nenhum** endpoint de webhook/entrada, job de
+  cron ou parsing é adicionado neste run (verificável pela ausência de arquivos/migrations
+  correspondentes). A modelagem não impede evolução aditiva futura.
 
-### 3.5 Não-regressão
+### RNF-T01 — Isolamento multi-tenant — cobre defeito #1
+- **Entrada:** dois tenants A e B; usuário autenticado de A (anon key + JWT, **não** service role).
+- **Saída (AC-03):** `select` em `message_templates` retorna **somente** linhas de A; `update` de
+  linha de B é **negado** por RLS. `tenant_id` deriva do JWT/`profiles` (`current_tenant_id()`),
+  nunca de parâmetro do cliente.
 
-- **RF-AG-08 — Reuso, sem regressão.** `WeekScheduleForm`/`HorariosPage` e o fluxo atual de criar/editar agendamento continuam funcionando sem mudança de contrato observável; máquina de estados e não-sobreposição intactas. *(AC-20)* **build/typecheck limpos.**
+### RNF-T02 — Segredos e PII em log — cobre defeito #4
+- **Saída (AC-08):** nenhum log da Edge Function imprime telefone do cliente nem o texto
+  renderizado em claro; `messages.payload` continua sem PII (pode registrar `template_key` e
+  metadados não sensíveis); nenhum segredo da Evolution em log/resposta/bundle; `grep` por `VITE_`
+  não encontra chave da Evolution.
+
+### RNF-T03 — TS estrito + validação zod
+- **Saída:** tipos novos sem `any`; `body` e payload de edição validados com zod no cliente; shape
+  lido do banco validado antes do uso; lista de variáveis como enum fechado.
+
+### RNF-T04 — Migration versionada e idempotente
+- **Saída:** mudança de schema em migration nova (timestamp posterior à última aplicada),
+  idempotente no re-apply (`create table if not exists` / `drop policy if exists` / `on conflict
+  do nothing`); nenhuma migration aplicada é editada.
+
+### RNF-T05 — Determinismo da renderização
+- **Saída:** a função de render é pura e determinística dado (template, dados resolvidos): mesma
+  entrada → mesma saída; testável isolada.
+
+### AC-10 — Build/typecheck + QA ao vivo
+- **Saída:** `npm run build` / typecheck limpos. QA ao vivo (chrome-devtools) em
+  `/app/config/mensagens`: admin edita um template, dispara "Enviar mensagem" (Agenda/Clientes) e
+  confirma que o texto enviado é o **renderizado**, não a string crua. Ambiente local:
+  `supabase start`; `supabase functions serve whatsapp --env-file supabase/functions/.env`;
+  `npm run dev` (porta a partir de 5173).
 
 ---
 
 ## 4. Regras de fronteira que a demanda arrisca
 
-| Fronteira | Regra | Como a demanda respeita |
-| --- | --- | --- |
-| **Isolamento multi-tenant (RLS)** | `tenant_id` sempre do JWT (`current_tenant_id()`), nunca do cliente; RLS habilitado em toda tabela de domínio. | `schedule_overrides` nasce com `tenant_id not null default current_tenant_id()`, índice, RLS habilitado, policies USING + WITH CHECK ancoradas em `current_tenant_id()`. A geração de slots lê `working_hours`/`appointments`/`schedule_overrides`/`services` **pelo cliente sob RLS** — o filtro é do banco, não de parâmetro. **Nunca** enviar `tenant_id` do cliente. *(AC-01, AC-02)* |
-| **RBAC** | `admin` tudo no tenant; `professional` só a própria agenda; `receptionist` agenda de todos, sem financeiro. | `schedule_overrides`: SELECT para qualquer papel do tenant (recepção precisa ver disponibilidade); WRITE admin para qualquer profissional; WRITE professional só do profissional com `profile_id = auth.uid()` (espelha `working_hours_write_own_professional`); receptionist **sem** policy de escrita (só leitura). Vigência/passo em `professionals`: **admin-only no MVP** (recomendação — ver §9). Nenhum acesso a `charges` é aberto. *(AC-03, AC-04, AC-05)* |
-| **Status de assinatura** | `bloqueado` → tela de quitação; `cancelado` → suspenso. | Herdado do guard de `/app`/`AppLayout`; a UI nova vive dentro do `/app` já protegido. Nenhuma mudança nesse guard. |
-| **Idempotência/autenticidade de webhook** | — | **Não se aplica**: esta demanda não envolve webhook, pagamento nem disparo. |
-| **Segredos fora do cliente** | Só `anon key` no bundle; service role só em Edge. | Nenhum segredo em SQL ou no cliente. Se a geração virar RPC, roda **sob a sessão do usuário** (RLS), nunca service role. |
-| **LGPD / PII** | `whatsapp_opt_in` antes de disparo; PII mínima em log. | Sem disparo e sem novo campo de PII; `schedule_overrides.reason` é rótulo opcional (ex.: "Feriado"), não PII. |
-| **Não-sobreposição** | Constraint de exclusão `tstzrange` por profissional é a fonte da verdade. | **Não é alterada.** Slots apenas refletem ocupados; criar a partir de slot ainda passa pela constraint (defesa contra corrida). *(RNF-SEG-04)* |
-| **Tempo** | `timestamptz` UTC no banco; exibição no fuso do tenant; grade/exceção em `HH:MM`. | Datas de vigência/exceção em `date` (dia de calendário no fuso do tenant); conversão para instantes UTC só na geração de slots, reusando `src/lib/datetime.ts`. *(RNF-SEG-05)* |
-| **Dados não confiáveis** | Validar entrada com zod espelhando CHECKs do banco. | Formulários de vigência/exceção e a query de slots validados por zod (pt-BR); a trava final é CHECK/RLS no Postgres. |
+Esta fatia introduz uma tabela de domínio nova e troca a origem do texto enviado — ambas tocam
+fronteiras de segurança inegociáveis.
+
+- **Isolamento multi-tenant por RLS:** `message_templates` com `tenant_id not null default
+  current_tenant_id()` + índice + **RLS habilitada**. `tenant_id` sempre do JWT/`profiles`,
+  **nunca** de parâmetro do cliente. Políticas de escrita com `WITH CHECK` espelhando o `USING`
+  (barra gravar linha de outro tenant). Reusar os helpers `current_tenant_id()` /
+  `current_role_name()` (security definer) — **não** reimplementar (evita recursão de RLS).
+- **RBAC admin/professional/receptionist:** edição e leitura de templates **somente `admin`**
+  (configuração do dono do tenant, espelha `whatsapp_instances`/`tenants`). O envio continua
+  disponível a admin/receptionist/professional (`canSendWhatsAppMessage`) porque quem lê o template
+  no envio é a Edge Function com service role, não o cliente — logo restringir a leitura dos
+  templates ao admin **não** quebra o envio. `super_admin` **sem** caminho cross-tenant pelo
+  cliente a esta tabela.
+- **Status de assinatura:** a trava de suspensão de disparo (`bloqueado`/`cancelado`) já existe em
+  `handleSend` e **permanece intacta**; esta fatia não a altera.
+- **Renderização server-side (fronteira única de envio):** o cliente **nunca** monta o texto final
+  — fecha a porta a forjar corpo/burlar log. O preview no cliente é só defesa em profundidade.
+- **Segredos fora do cliente:** token/URL da Evolution continuam só em env do servidor; nenhuma var
+  `VITE_` com segredo; `anon key` é a única chave no bundle.
+- **LGPD (opt-in + PII mínima em log):** opt-in (`whatsapp_opt_in`) permanece conferido antes do
+  envio; o **texto renderizado** (que contém o nome do cliente) e o telefone **não** vão a log em
+  claro; `messages.payload` segue sem PII. O `body` do template não é segredo nem PII (é texto com
+  placeholders).
+- **Idempotência / autenticidade de webhook:** não há webhook nesta fatia (Fatia 2). A
+  idempotência do `send` (`dedupe_key` + índice único parcial) **permanece intacta**.
+- **Dados não confiáveis:** o shape lido do banco e o payload de edição são validados com zod antes
+  do uso; variável desconhecida no `body` nunca vira erro enviado ao cliente.
 
 ---
 
-## 5. Perfis de acesso (quem executa cada ação)
+## 5. Perfis de acesso
 
 | Ação | super_admin | admin | professional | receptionist |
-| --- | --- | --- | --- | --- |
-| Ver agenda/calendário (lista/dia/semana) | — (sem caminho cross-tenant pelo cliente) | todos os profissionais | **só a própria** | todos os profissionais |
-| Ver disponibilidade/slots para marcar | — | sim | só a própria | sim |
-| Criar agendamento a partir de slot | — | para qualquer profissional | só o próprio | para qualquer profissional |
-| Ler grade/exceções/vigência | — | sim | sim | sim (leitura, vê disponibilidade) |
-| Escrever vigência + passo-base (`professionals`) | — | **sim (MVP: admin-only)** | leitura (ver §9) | leitura |
-| Escrever exceções (`schedule_overrides`) | — | qualquer profissional do tenant | **só as próprias** | **leitura** (sem policy de escrita) |
-| Dados financeiros (`charges`) na agenda | — | — | — | — (não há `charges` nesta tela; inalterado) |
+|---|---|---|---|---|
+| Ler templates do tenant (`select`) | — (sem caminho cross-tenant pelo cliente) | ✅ | ❌ | ❌ |
+| Criar/editar template (`insert`/`update`) | — | ✅ | ❌ | ❌ |
+| Acessar a tela `/app/config/mensagens` | — | ✅ | ❌ (`AccessDenied`) | ❌ (`AccessDenied`) |
+| Disparar "Enviar mensagem" (inalterado) | — | ✅ | ✅ | ✅ |
+| Renderizar o template no envio | — (feito pela Edge Function com service role, dentro do tenant) | — | — | — |
 
-A UI esconde/desabilita o que o papel não pode (defesa em profundidade); **o RLS é a trava real**.
-
----
-
-## 6. Enquadramento no roadmap e dependências
-
-- **Fase 1 / MVP (produto.md):** o core é agenda + régua de cobrança. Esta entrega amadurece o módulo de agenda (geração de slots, exceções, vigência, visão de calendário) — reforço direto do core, sem antecipar Fase 3.
-- **Respeita o fora-de-escopo do MVP:** autoagendamento público, taxa de reserva antecipada e métricas consolidadas permanecem **Fase 3**; não entram aqui.
-- **Dependências anteriores já existentes (reuso, não recriar):**
-  - `working_hours` — grade semanal por profissional (weekday 0-6, start/end `HH:MM`, break ambos-ou-nenhum). Tipos em `src/types/domain.ts`; validação em `src/lib/validations/catalog.ts`; hook `src/hooks/useWorkingHours.ts`; telas `HorariosPage` + `WeekScheduleForm`/`DayRow`.
-  - `services.duration_minutes` e `price_cents`; `appointments` deriva `ends_at`/`price_cents` do serviço no submit (ADR-02/08).
-  - `AgendaPage` + `AppointmentFormDialog`; `src/lib/datetime.ts` (conversão de fuso via `Intl`, trata DST); constraint `appointments_no_overlap` (`tstzrange` + `btree_gist`, partial `where status not in ('cancelado','nao_compareceu')`).
-  - Guards: `RequireAuth`, guard de status de assinatura do `AppLayout`, RBAC via `usePermissions`.
-- **Última migration aplicada:** `20250220091000_messages.sql` — migrations novas usam timestamps posteriores.
+A trava real de todas as linhas acima é **RLS** no banco; o gate de UI (`canManageMessageTemplates
+= isAdmin`, atalho no hub só para admin, `AccessDenied` por URL) é defesa em profundidade.
 
 ---
 
-## 7. Pontos levantados pelo usuário (nenhum descartado)
+## 6. Enquadramento no roadmap e dependências anteriores
 
-Mensagens 10–12 do usuário, cada uma como decisão tomada ou pergunta em aberto:
+| Fase | Entregue | Esta fatia |
+|---|---|---|
+| Fase 1 (MVP) | Conexão por QR, envio **sob demanda** (ADR-04/06/07/08), log `messages`, idempotência por `dedupe_key`, opt-in LGPD, E.164 | — |
+| **WhatsApp Fase 2 — Fatia 1** | — | **Templates editáveis por tenant + renderização no envio sob demanda** ← este run |
+| WhatsApp Fase 2 — Fatia 2 | — | Confirmação interativa numérica, webhook de entrada Evolution, pg_cron (lembrete D-1), fila de retentativa — **contrato preparado, não implementado** |
+| Fase 3 | — | Autoagendamento público, taxa de reserva, métricas (fora de escopo) |
 
-1. **"a agenda de cada profissional deve ser feita em todos os meses, cadastrando os dias trabalhados na semana e os horários, e o intervalo de dias que vai ser trabalhado."**
-   → **Decisão tomada:** dias da semana + horários = grade recorrente `working_hours` (reuso); "intervalo de dias que vai ser trabalhado" = **vigência** (`schedule_start_date`/`schedule_end_date`). Coberto por RF-AG-01, RF-AG-08.
-2. **"Busque sistemas de agendamento do mercado e avalia a sugestão que dei"** → **Decisão tomada:** modelo híbrido (passo-base + bloco = duração do serviço), padrão de agendas de clínica, documentado em §3.2 e justificado nas análises (§5 dados / §1 frontend).
-3. **(msg 11.1) "os dois"** [exceções por data E vigência] → **Decisão tomada:** ambos entram — exceções (`schedule_overrides`) **e** vigência. §2.1, RF-AG-01/02.
-4. **(msg 11.2) "sim"** [gerar/mostrar slots livres] → **Decisão tomada:** geração de slots sob demanda. RF-AG-03/04.
-5. **(msg 11.3) "trocar por uma visão de calendario, mas ter uma mais simples como a atual, e deve ser configurável"** → **Decisão tomada:** toggle calendário (dia/semana) ↔ lista atual, configurável. RF-AG-06.
-6. **(msg 12.1) "o usuário pode alterar a própria tela"** → **Decisão tomada:** a alternância é **preferência por usuário** (`localStorage`), não config de tenant. RF-AG-06, AC-19.
-7. **(msg 12.2) "Cada profissional vai ter o seu tempo de consulta... serviço que pode demorar uma hora ou duas, aí vai pegar os horários dos slots do profissional."** → **Decisão tomada:** a duração do **bloco** vem sempre do serviço (1h/2h consomem os slots); o "tempo de consulta do profissional" é modelado como o **passo-base** (`slot_step_minutes`, default 30, por profissional). Não se cria uma "duração padrão do profissional" concorrente à duração do serviço. RF-AG-04, AC-14/15. **Confirmar no gate** (§9, ponto 1).
+Dependências/reuso (não recriar):
+- `MESSAGE_TEMPLATES` (enum das 4 chaves) já existe em `src/types/domain.ts`; `getMessageTemplateLabel`
+  em `src/lib/whatsapp.ts`; `messages.template` já é esse enum no banco.
+- Edge Function `whatsapp` (service role, resolução de `tenant_id`/`role` do JWT, opt-in,
+  idempotência, checagem de instância conectada, normalização E.164) permanece intacta — esta
+  fatia só troca a origem do `text` enviado ao adapter.
+- Padrão de config sob `src/app/config/` (hub + sub-rotas `servicos`/`profissionais`/`whatsapp`) e
+  de RBAC por capacidade em `usePermissions` (`canManageWhatsAppConnection: isAdmin`).
+- ADR-08 "Enviar mensagem sob demanda" (diálogo com opt-in + idempotência + checagem de instância)
+  é a base preservada.
+
+---
+
+## 7. Pontos levantados pelo usuário e decisões (nenhum descartado)
+
+Pontos do usuário (mensagens 11–12) e divergências entre as duas análises — cada um registrado como
+decisão tomada ou pergunta em aberto.
+
+- **Usuário: "primeiro os templates, depois a interação."** → Decisão: esta fatia entrega **só os
+  templates + renderização**; a interação (confirmação) é Fatia 2. Respeitado.
+- **Usuário: resposta por opção numérica (`1 confirmar`).** → Decisão (Fatia 2, não implementar
+  agora): só o **texto** do `lembrete_d1` comporta `1 confirmar / 2 reagendar` como texto livre.
+  Nenhum parsing/webhook neste run (RF-T09).
+- **Usuário: lembrete D-1.** → Decisão (Fatia 2): via **pg_cron** do Supabase; não neste run.
+- **D1 — Rota da tela (divergência entre análises).** `analysis-frontend.md` propôs
+  `/app/config/mensagens` (sub-rota nova); `analysis-data.md` citou editar dentro de
+  `/app/config/whatsapp`. → **Decisão: `/app/config/mensagens`** (sub-rota nova no grupo de
+  Configurações). Razão: a tela de WhatsApp é a máquina de estados da **conexão** (parear QR,
+  status); templates são **conteúdo editorial** do tenant, ciclo de vida distinto. Rota dedicada
+  mantém cada tela com um trabalho só e evita inflar a tela de conexão. O hub de Configurações
+  ganha um 4º atalho, visível só para admin.
+- **D2 — Padrão da tela.** → Decisão: **lista fixa de 4 cards** (domínio fechado), editor em
+  `Dialog`, sem "novo"/"excluir"; robusta a lacuna de seed (cards "a configurar" derivados de
+  `MESSAGE_TEMPLATES` quando o fetch vier com < 4).
+- **D3 — Onde moram os templates.** → Decisão: **tabela própria `message_templates` por tenant**
+  (uma linha por `(tenant_id, template_key)`, seed dos 4 padrões), em vez de "defaults de sistema +
+  override difuso". Razão: caminho de leitura único (banco), tela mais simples (sem estado
+  "herdado vs customizado"), evolução mais fácil; o fallback de template ausente cobre tenant
+  legado até a baseline rodar.
+- **D4 — Variável `{valor}` (divergência entre análises).** `analysis-frontend.md` listou `{valor}`
+  nos chips; `analysis-data.md` excluiu (depende do módulo Asaas/cobranças). → **Decisão: fora de
+  escopo da Fatia 1.** A lista fechada desta fatia é `{nome} {servico} {dataHora} {empresa}`.
+  `{valor}` é evolução **aditiva** futura (não quebra a modelagem). Consequência para o
+  planejamento: **manter a lista fechada idêntica entre o chip-bar do editor, o `renderTemplate` do
+  preview e o render do servidor** — não introduzir `{valor}` em nenhum dos três nesta fatia.
+- **D5 — Onde a renderização acontece.** → Decisão: **100% no servidor** (`handleSend`). Renderizar
+  no cliente e enviar texto pronto foi **rejeitado** (abriria espaço para forjar corpo/burlar log;
+  o servidor é a fronteira única de envio). O preview no cliente é só defesa em profundidade.
+- **D6 — RBAC de leitura dos templates.** → Decisão: **leitura e escrita só `admin`**. Recepção/
+  profissional não precisam ler os templates para disparar (render é server-side), então restringir
+  reduz a superfície sem quebrar o envio.
+- **D7 — Primitivo `Textarea`.** → Decisão: adicionar `src/components/ui/textarea.tsx` (shadcn
+  padrão); hoje o projeto só tem `input.tsx`. Peça canônica, não primitivo caseiro.
+- **Pergunta em aberto (não bloqueante):** limite de caracteres do `body`. `analysis-frontend.md`
+  sugeriu zod `max(1000)`; `analysis-data.md` sugeriu `check (char_length between 1 and 2000)` na
+  coluna. → Assunção para o planejamento: **a coluna aceita até 2000; o form limita a 1000** (o
+  banco é o teto de segurança, a UI o limite prático). O planejamento confirma/ajusta na ADR de
+  schema — não bloqueia a aprovação do PRD.
 
 ---
 
 ## 8. Critério de aceite visual (verificável via Chrome DevTools)
 
-QA ao vivo em `/app/agenda` e `/app/config/profissionais/:id/horarios` (tenant autenticado; `supabase start`; `npm run dev`):
-
-1. **Toggle por usuário:** alternar Lista → Dia → Semana muda a renderização sem recarregar; recarregar a página mantém a última visão (localStorage), sem flash para a lista.
-2. **Calendário desenha a grade:** visão Dia com calha de horas (tabular-nums), faixa de expediente distinta da faixa sem expediente, **linha do agora** em jade quando o dia é hoje; agendamentos como blocos com altura proporcional à duração e borda-lateral da cor do status (mesma do `StatusBadge`).
-3. **Slots refletem grade + exceções + vigência + ocupados:** profissional + serviço de **1h** + dia na vigência → chips de 30 em 30 que caibam 1h e não sobreponham ocupados; trocar para **2h** reduz as opções; dia em **folga** → "O profissional não atende nesta data." e nenhum chip; dia **fora da vigência** → "Fora do período de atendimento do profissional." e nenhum chip.
-4. **Fuso do tenant:** horários de chips/blocos no fuso do tenant (`America/Sao_Paulo` por padrão); agendamento às 09:00 local aparece às 09:00, não deslocado por UTC.
-5. **Criar a partir de slot mantém não-sobreposição:** selecionar chip → agendamento criado e visível; tentar sobrepor o mesmo profissional/horário → bloqueado com a mesma mensagem pt-BR de conflito; clicar em faixa vazia abre o diálogo com profissional+início preenchidos.
-6. **Vigência e exceções (tela de horários):** grade semanal continua salvando igual; seção de vigência salva início/fim; seção de exceções adiciona/edita/remove data (folga ou horário atípico) com badge de tipo; em papel sem permissão (recepção; professional na grade de outro) as seções aparecem em **leitura**.
-7. **Responsivo/mobile (360px):** default Lista; visão Dia usável; visão Semana degrada para dia navegável por setas; sem overflow horizontal quebrado.
-8. **Acessibilidade observável:** foco visível ao tabular pelos chips e controles de visão; grupo de slots anunciado como `radiogroup`; nenhuma informação de status/folga só por cor. (Conformidade WCAG plena exige teste manual com tecnologia assistiva + revisão especializada — recomendado ao QA por ADR.)
-9. **RBAC/guard:** `professional` vê só a própria agenda e edita só a própria vigência/exceções; `receptionist` vê a agenda de todos mas vigência/exceção em leitura; nenhum dado financeiro na agenda.
-10. **Build/typecheck limpos** e carregamento da agenda na visão default dentro do alvo (< 1,5s, RNF01).
-
----
-
-## 9. Decisões de design a confirmar no gate humano
-
-As análises **recomendam** (não chutam); o planejamento registra a escolha final nas ADRs. A recomendação é a leitura mais fiel ao pedido do usuário:
-
-1. **Modelo de slots:** passo-base por profissional (`slot_step_minutes`, default **30**) + bloco = **duração do serviço**. *(recomendado; §3.2, §7 ponto 7)*
-2. **Onde moram vigência + passo-base:** colunas em **`professionals`** (`schedule_start_date`, `schedule_end_date`, `slot_step_minutes`), não em `working_hours` nem tabela de settings dedicada. *(recomendado — atributos do profissional, evita inconsistência entre dias)*
-3. **RBAC de escrita de vigência/passo-base:** **admin-only no MVP** (não ampliar a superfície de escrita em `professionals`, que carrega `profile_id`/`active`), com backlog para own-update granular do `professional`. *(recomendado)*
-4. **"Feriado do tenant inteiro":** **fora do MVP** — exceção é por profissional/data (`schedule_overrides`). *(recomendado)*
-5. **Onde roda a geração de slots:** **função pura no cliente** (`src/lib/scheduling-slots.ts`) sobre dados já lidos por RLS, reusando `src/lib/datetime.ts`; migrar para RPC `stable security invoker` só se a performance exigir. Contrato do front (`useAvailableSlots` → lista de inícios/`{startUtc,endUtc}`) é estável nos dois casos. *(recomendado)*
-
-Se o gate aprovar com ressalvas em qualquer ponto, o planejamento ajusta antes de abrir as ADRs. **Nenhum ponto do usuário foi descartado** (ver §7).
+1. Em `/app/config` existe o atalho "Modelos de mensagem", **visível só para `admin`**; clicar leva
+   a `/app/config/mensagens`. Papel não-admin que acessa a URL vê `AccessDenied`.
+2. A tela lista os **4 cards** (Confirmação, Lembrete (24h antes), Cobrança, Comprovante), cada um
+   com rótulo pt-BR, badge Ativo/Inativo e prévia truncada do corpo. Mobile (<`sm`): 1 coluna, sem
+   overflow horizontal; desktop: 2 colunas.
+3. "Editar" abre o `Dialog` com o corpo atual no `Textarea`, os chips de variável e o preview ao
+   vivo. Clicar um chip insere o `{token}` no texto; o preview atualiza substituindo variáveis por
+   dados de exemplo pt-BR e **nunca** exibe `{token}` cru (fallback visível quando o dado falta).
+4. Salvar mostra toast "Modelo atualizado", fecha o diálogo e a prévia do card reflete o novo texto.
+5. No diálogo de **Enviar mensagem** (Agenda/Clientes), ao escolher um template aparece o preview do
+   texto renderizado que será enviado; o envio continua funcionando (os 5 outcomes inalterados) e o
+   texto efetivo é o **template renderizado**, não a string crua da chave.
+6. **Isolamento por tenant:** logado em tenant A, a tela mostra só os templates de A; editar em A
+   não afeta B; não há como enviar `tenant_id` pelo cliente para ver os de outro (RLS).
+7. **Acessibilidade:** `Tab` alcança cards → Editar → chips → textarea → Switch → Salvar/Cancelar;
+   foco visível; `Esc` fecha o diálogo e devolve o foco ao gatilho; labels associados; contraste do
+   texto do preview e do realce de token conferidos (realce de token por **fundo**, texto em
+   `foreground` — não depender só da cor para marcar a variável). Validação WCAG completa exige
+   teste manual com ferramenta de contraste/leitor de tela; o QA por ADR confere os pares renderizados.
+8. Build/typecheck limpos e verificação ao vivo (tela + envio) **sem erro de console**.
 
 ---
 
-## 10. Observações de verificação (para o planejamento/QA)
+## 9. Verificação da fatia (resumo)
 
-- **Unit (app):** o gerador de slots é função pura — cobrir a cascata de precedência (vigência → exceção → grade), DST, duração > janela, break, passado, múltiplas faixas por weekday.
-- **Integração (banco):** RLS cross-tenant (AC-01/02), RBAC (AC-03..05), CHECKs e `unique` (AC-06..08) via `supabase start` com sessões de papéis distintos.
-- **E2E / QA ao vivo (`/app/agenda`, chrome-devtools):** AC-09..19 conforme §8.
-- **Entrega local-only:** branch nova + commit, **sem push/PR** (ambiente sem remote). `supabase start`; `supabase functions serve whatsapp --env-file supabase/functions/.env` se necessário; `npm run dev` (porta pode variar a partir de 5173).
-- **Migrations propostas (nomes de referência):** `<ts>_professionals_schedule_vigencia.sql` (ALTER `professionals`) e `<ts>_schedule_overrides.sql` (nova tabela + índices + CHECKs + RLS/RBAC). Opcional, só se o design optar por RPC: `<ts>_available_slots_fn.sql` (recomendação: **não** criar no MVP).
+- **Unit (render):** substituição correta, fallback por variável faltante, token desconhecido
+  mantido literal, template ausente cai no padrão de sistema (RNF-T05, AC-05/AC-06).
+- **Integração (RLS):** duas sessões autenticadas (dois tenants) — A não lê/edita template de B;
+  receptionist/professional não editam (AC-03/AC-04). Via anon key + JWT, não service role.
+- **Integração (envio):** adapter mock recebe o texto **renderizado**; os 5 outcomes continuam
+  corretos (AC-05/AC-07).
+- **Migration/baseline:** `supabase db reset` aplica; tenant novo nasce com 4 templates; backfill
+  não duplica (AC-01/AC-02).
+- **Build/QA ao vivo:** `npm run build`/typecheck limpos; QA chrome-devtools em
+  `/app/config/mensagens` (AC-10).
+
+Entrega sobre `master`, em **branch nova + commit**. O repo tem remote (origin github
+freitasjh/atlas-agenta) e a default é `master` — pode pushar para branch de feature, mas **não**
+fazer merge em `master` sem pedido; PR opcional.
