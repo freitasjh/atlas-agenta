@@ -11,8 +11,18 @@
 // estado — o único ponto não puro (formatar `{dataHora}` no fuso) é isolado em `formatDataHora`,
 // que recebe o fuso explícito e usa só `Intl`.
 
-/** Templates da régua — espelha `messages.template` / `schemas.ts#templateSchema`. */
-export type TemplateKey = "confirmacao" | "lembrete_d1" | "cobranca" | "comprovante";
+/**
+ * Templates da régua — espelha `messages.template` / `schemas.ts#templateSchema`.
+ * `reagendar_retorno` (Fatia 2, ADR-01/03): resposta "2" do cliente enfileira esta mensagem; a
+ * drenadora de retentativa (ADR-05) a renderiza e envia. PARIDADE: a mesma lista de 5 chaves
+ * existe no CHECK de `messages.template` e em `message_templates.template_key`.
+ */
+export type TemplateKey =
+  | "confirmacao"
+  | "lembrete_d1"
+  | "cobranca"
+  | "comprovante"
+  | "reagendar_retorno";
 
 /**
  * Lista fechada das variáveis suportadas (sem as chaves `{}`). Espelha
@@ -52,6 +62,10 @@ export const DEFAULT_TEMPLATE_BODIES: Record<TemplateKey, string> = {
     "Oi {nome}, lembrete do seu {servico} na {empresa} em {dataHora}. Responda 1 para confirmar ou 2 para reagendar.",
   cobranca: "Olá {nome}, segue a cobrança do seu {servico} na {empresa}.",
   comprovante: "Recebemos o pagamento do seu {servico} na {empresa}. Obrigado, {nome}!",
+  // Espelha o seed/backfill de `20250223093000_reagendar_retorno_template.sql`. Mudar lá obriga
+  // mudar aqui (a drenadora da ADR-05 usa este fallback quando o tenant não tem a linha ativa).
+  reagendar_retorno:
+    "Oi {nome}, recebemos seu pedido de reagendamento do {servico} na {empresa}. Em breve entramos em contato para encontrar um novo horário.",
 };
 
 /** Valores das variáveis resolvidas para a renderização. */

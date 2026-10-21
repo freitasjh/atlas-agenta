@@ -1,460 +1,337 @@
-# Design de Frontend — Templates de mensagem WhatsApp por tenant (Fatia 1, WhatsApp Fase 2)
+# Análise de Frontend — Fatia 2 do WhatsApp (Confirmação interativa D-1)
 
-Papel: DESIGNER DEDICADO de frontend. Este documento define telas, componentes, rotas/guards,
-direção visual, acessibilidade, arquitetura React e critérios de aceite visuais para a entrega da
-**Fatia 1**: CRUD de templates de mensagem editáveis por tenant, com variáveis, consumidos no
-disparo sob demanda existente. Não contém código de aplicação — ele é produzido nas etapas de
-codificação, uma ADR por vez.
+> Papel: Designer dedicado de frontend do pipeline. Stack travada: React + Vite +
+> TypeScript + Tailwind + shadcn/ui, React Router, TanStack Query, react-hook-form + zod.
+> Base: branch `feat/message-templates-schema-rls` (Fatia 1 já entregue: `message_templates`
+> + render server-side no `handleSend`; `lembrete_d1` já carrega "1 confirmar / 2 reagendar").
 
-> Contexto de fronteira: esta fatia **toca tela** (nova sub-rota de Configurações +
-> alteração mínima no `SendMessageDialog`). O documento cobre o front; o modelo de dados,
-> migrations e RLS/RBAC são do documento de dados; a renderização server-side das variáveis no
-> disparo é da Edge Function. Aqui eu sinalizo essas peças como **dependências** e desenho a UI
-> contra o contrato esperado.
->
-> Nota: `.agents/tasks/dev-pipeline/analysis-data.md` e a `adr/` ainda refletem o run anterior
-> (evolução da Agenda). Este arquivo foi reescrito para a demanda atual (templates WhatsApp).
+## 0. Veredito de escopo — esta fatia é BACKEND-pesada, com superfície de frontend PEQUENA mas real
 
----
+A Fatia 2 entrega quatro peças de servidor: (1) cron `pg_cron` do lembrete D-1,
+(2) Edge Function de **webhook de entrada** da Evolution, (3) casamento resposta→agendamento
+com marcação `confirmado`, (4) fila de retentativa. Nenhuma delas é uma tela. O usuário final
+(cliente do tenant) interage **dentro do WhatsApp**, não no app.
 
-## 0. Decisão de escopo: isto toca tela?
+Mas a fatia **toca o frontend** por efeito colateral observável, e aqui está o trabalho de
+design que importa — não inventar telas, e sim tornar o efeito do backend **legível** na UI
+que já existe:
 
-Sim. A Fatia 1 precisa de:
+1. **Agenda** — um agendamento que era `pendente` vira `confirmado` + ganha `confirmed_at`
+   quando o cliente responde "1". Hoje a UI mostra o badge `Confirmado`, mas **não distingue**
+   uma confirmação feita pelo próprio cliente (via WhatsApp D-1) de uma feita manualmente pela
+   recepção. Essa distinção é o valor de negócio da fatia (reduzir no-show provando que o
+   cliente confirmou). **Precisa aparecer.**
+2. **Histórico de mensagens** (`/app/config/whatsapp`) — passa a receber linhas novas:
+   `lembrete_d1` disparado pelo cron, e (decisão c) a mensagem automática de retorno quando o
+   cliente responde "2". Hoje a lista assume disparo **sob demanda** e não tem conceito de
+   origem (automático/cron) nem de **mensagem recebida**. Precisa de ajuste de leitura e de
+   rótulo, sem virar um inbox.
+3. **Estado `fila`/`falha`** — a fila de retentativa muda a semântica de `messages.status`:
+   `fila` agora pode significar "aguardando retentativa" e `falha` só aparece após o limite N.
+   O badge já existe; o texto de apoio precisa refletir a nova realidade para não assustar o
+   admin ("Na fila" por 2h é normal agora).
 
-1. **Uma tela nova de CRUD** para o admin criar/editar os 4 templates do tenant (`confirmacao`,
-   `lembrete_d1`, `cobranca`, `comprovante`), cada um com corpo pt-BR e variáveis.
-2. **Uma alteração cirúrgica no fluxo de envio existente** (`SendMessageDialog`): em vez de só
-   escolher a chave do template, o usuário passa a ver um **preview do texto renderizado** que
-   será enviado (variáveis substituídas, com fallback), confirmando o que o cliente final receberá.
-   O texto renderizado de verdade é resolvido **no servidor** (ADR da Edge Function); o preview da
-   UI é derivado do mesmo template + dados já disponíveis do agendamento/cliente, como camada de
-   confiança e defesa em profundidade — nunca a fonte da verdade do envio.
-
-O restante (renderização canônica, idempotência, opt-in, service role) permanece no servidor e não
-é redesenhado aqui — só preservado.
+Conclusão: **documento de frontend com escopo contido**. Zero rota nova, zero módulo novo.
+Ajustes cirúrgicos em componentes existentes + um elemento de design novo (o selo de
+"confirmado pelo cliente"). Tudo o mais é dependência de dados/contrato do backend que o
+planejador deve honrar para que a UI possa ler o efeito.
 
 ---
 
 ## 1. Telas, componentes, rotas e guards
 
-### 1.1 Rota nova
+### 1.1 Rotas — NENHUMA nova
 
-Dentro do grupo de Configurações do tenant (`/app/config`), espelhando `servicos` e `whatsapp`:
+Todas as mudanças vivem em rotas e layouts já existentes, sob os guards já montados
+(`RequireAuth → RequireActiveSubscription → AppLayout`, mais os gates por capacidade de
+`usePermissions`). Não há rota pública, de auth, de admin ou de tenant nova.
 
-```
-/app/config
-  ├─ /servicos                      (existe)
-  ├─ /profissionais                 (existe)
-  ├─ /whatsapp                      (existe — conexão)
-  └─ /mensagens        ← NOVA       (templates de mensagem)
-```
+| Superfície | Rota existente | Guard de acesso |
+| --- | --- | --- |
+| Agenda (selo de confirmação pelo cliente) | `/app/agenda` | auth + assinatura ativa; leitura por qualquer papel do tenant |
+| Histórico de mensagens (lembrete/recebida/retorno) | `/app/config/whatsapp` | auth + assinatura ativa; `RecentMessagesList` já é PII-safe e lida por qualquer papel |
+| Config de template `lembrete_d1` (já existe) | `/app/config/mensagens` | `canManageMessageTemplates` (admin) — **sem mudança nesta fatia** |
 
-Registro em `src/router.tsx`, como filha de `config`:
+### 1.2 RBAC — quem vê o quê
 
-```
-{ path: "mensagens", element: <TemplatesMensagemPage /> }
-```
+- **admin / receptionist / professional** — todos veem o badge `Confirmado` e o selo de origem
+  na agenda (é informação operacional, não financeira). `receptionist` continua **sem** telas
+  de cobrança; esta fatia não toca financeiro, então nada a esconder a mais.
+- **professional** — vê o selo apenas nos próprios agendamentos (o RLS/escopo da agenda já
+  resolve isso; o selo herda o mesmo recorte de linhas).
+- O histórico de `/app/config/whatsapp` já é legível por qualquer papel do tenant com projeção
+  **sem PII** (ver `RecentMessagesList`/`useRecentMessages`). As mensagens novas (lembrete,
+  recebida, retorno) herdam a mesma projeção — **nunca** expor telefone nem o texto recebido
+  do cliente.
 
-Diretório novo: `src/app/config/mensagens/`.
+### 1.3 Status de assinatura
 
-**Por que sub-rota de `config` e não dentro de `/app/config/whatsapp`:** a tela de WhatsApp hoje é
-a máquina de estados da *conexão* (parear QR, status). Templates são *conteúdo editorial* do
-tenant, conceito distinto e de ciclo de vida próprio. Colocá-los numa rota dedicada mantém cada
-tela com um trabalho só (princípio do design system do projeto) e evita inflar a tela de conexão.
-O hub de Configurações ganha um 4º atalho.
+Guard central já cobre: `bloqueado` → tela de quitação (`BillingGateLayout`), `cancelado` →
+acesso suspenso. Nenhum tratamento novo. Observação de produto para o planejador (não é
+frontend): o **cron** do lembrete D-1 deve respeitar o status do tenant no servidor
+(`bloqueado`/`cancelado` suspendem disparos, por `seguranca-multitenant.md`). A UI não dispara
+o cron; só não há onde mostrar isso além do histórico ficar vazio — aceitável.
 
-### 1.2 Guards (herdados, sem rota especial)
+### 1.4 Componentes tocados / criados
 
-A rota nasce dentro de `RequireAuth → RequireActiveSubscription → AppLayout`, então herda:
+**Alterados (mínimo):**
 
-- **Autenticação:** sem sessão Supabase → `/login`.
-- **Status de assinatura:** `bloqueado` → redireciona para `/app/quitacao`; `cancelado` →
-  conta cancelada. O guard central (`RequireActiveSubscription`) já intercepta antes de montar
-  qualquer módulo de `/app`. A tela de templates **não** precisa de lógica de assinatura própria.
-- **RBAC por capacidade (defesa em profundidade, a trava real é RLS):** a escrita é gate por uma
-  **nova capacidade** `canManageMessageTemplates` em `usePermissions`, seguindo o padrão
-  `canManageCatalog`/`canManageWhatsAppConnection`. Decisão de papéis:
-  - `admin`: **cria/edita** templates (é configuração do dono do tenant, mesmo nível de
-    `canManageWhatsAppConnection`).
-  - `professional` / `receptionist`: **não** gerenciam templates nesta fatia. Como a tela é de
-    configuração editorial do tenant (não operação do dia a dia), e para manter o escopo enxuto,
-    estes papéis **não acessam a tela** — o atalho no hub de Configurações só aparece para quem
-    tem `canManageMessageTemplates`, e a página renderiza `AccessDenied` (componente existente em
-    `src/components/AccessDenied.tsx`) para quem entrar pela URL. Isso espelha como o projeto trata
-    telas de escrita exclusiva de admin.
-  - Observação para o planejador de dados: a RLS de leitura pode ser mais ampla que a de escrita
-    (a Edge Function lê o template sob service role no envio, então os demais papéis não precisam
-    de SELECT no cliente para a Fatia 1). Mantido fechado por padrão.
+- `src/app/agenda/AppointmentBlock.tsx` e a lista em `AgendaPage.tsx` — acrescentar o
+  **selo de "confirmado pelo cliente"** ao lado do `StatusBadge` quando o status for
+  `confirmado` **e** a confirmação tiver vindo do cliente (ver §1.5 sobre a fonte do dado).
+- `src/app/config/whatsapp/RecentMessagesList.tsx` — (a) suportar a direção
+  recebida/enviada; (b) distinguir disparo automático (cron) de sob demanda no rótulo;
+  (c) texto de apoio para `fila` sob retentativa.
+- `src/lib/whatsapp.ts` — acrescentar rótulos pt-BR dos novos estados/origens (fonte única de
+  vocabulário; nada de literais soltos nos componentes).
 
-> Dependência de RBAC: adicionar `canManageMessageTemplates: boolean` a `Permissions` e ao retorno
-> de `usePermissions()` (`= isAdmin`). É mudança de 1 linha no hook, mas é contrato — registrar na
-> ADR.
+**Criado (1 componente pequeno, reaproveitando primitivos):**
 
-### 1.3 Árvore de componentes
+- `src/components/ConfirmationSourceBadge.tsx` (ou um prop no `StatusBadge` existente — ver
+  §2.4 para a decisão) — o selo visual "✓ pelo cliente" / "✓ pela recepção". **Decisão:**
+  componente irmão dedicado, no molde do `WhatsAppStatusBadge` (que já foi criado como irmão
+  do `StatusBadge` justamente para não inchar o existente). Reusa os tokens de status já
+  calibrados AA; não cria token de cor novo.
 
-```
-src/app/config/mensagens/
-  TemplatesMensagemPage.tsx        # página: lista os 4 templates, abre o editor
-  TemplateEditorDialog.tsx         # diálogo criar/editar 1 template (rhf + zod)
-  TemplateBodyField.tsx            # textarea do corpo + barra de variáveis + contador
-  TemplatePreview.tsx              # preview do texto renderizado com dados de exemplo
-  VariableChips.tsx                # chips clicáveis que inserem {variavel} no cursor
-```
+Nenhum primitivo de `src/components/ui` é recriado. Tudo consome o que já existe
+(`Badge`/`span` tokenizado, `Table`, `Skeleton`, `Tooltip` para o detalhe de origem).
 
-Reaproveitamento (nunca recriar):
+### 1.5 Dependência de dados crítica (o frontend NÃO pode resolver sozinho)
 
-- `PageHeader`, `Button`, `Card`, `Badge`, `Dialog*`, `Form*`, `Input`, `Switch`, `Skeleton`,
-  `Separator`, `Table*` (de `src/components` e `src/components/ui`).
-- `StatePanel` local (o mesmo molde já repetido em `ServicosPage`/`WhatsAppPage`): manter a cópia
-  local por consistência com o projeto (ainda não foi extraído para compartilhado; não extrair
-  agora para não alargar o escopo).
-- `getMessageTemplateLabel` de `src/lib/whatsapp.ts` para os rótulos pt-BR das 4 chaves.
+Para a agenda distinguir "confirmado pelo cliente" de "confirmado manualmente", a UI precisa de
+um dado que hoje **não existe** no shape lido. `appointments.confirmed_at` existe mas é só um
+timestamp — não diz **quem** confirmou. Duas opções para o planejador (decisão de contrato,
+sinalizada como **dependência de dados**):
 
-#### Dependência de UI primitiva: `Textarea`
+- **Opção A (preferida):** coluna nova `appointments.confirmed_via` (enum
+  `cliente_whatsapp | manual`, nullable), gravada pelo webhook (service role) quando casa a
+  resposta "1", e deixada `manual` quando a recepção muda o status pela UI. É uma coluna de
+  domínio, versionada em migration, sob o RLS já existente de `appointments`. O frontend lê e
+  escolhe o selo. **Barata, determinística, legível.**
+- **Opção B (sem migration de appointments):** derivar a origem cruzando `appointments` com a
+  última `messages` do tipo `lembrete_d1`/resposta daquele `appointment_id`. **Rejeitada:** é
+  um join frágil, exige expor mais de `messages` na leitura da agenda (risco de PII/escopo) e
+  não é determinístico se houver reenvio. O selo é informação de agenda; deve morar em
+  `appointments`.
 
-O corpo do template é **multilinha** e hoje **não existe** `src/components/ui/textarea.tsx` no
-projeto (só `input.tsx`). É preciso adicionar o primitivo `Textarea` do shadcn/ui (arquivo padrão,
-sem customização além dos tokens já existentes). Sinalizado como dependência de componente; é a
-peça shadcn canônica, não um primitivo caseiro.
+> **Decisão de design:** adotar **Opção A**. O planejador cria `confirmed_via`; o hook
+> `useAppointments` passa a selecioná-lo; o selo da agenda é função pura de
+> `(status, confirmed_via)`. Se o planejador decidir não criar a coluna nesta fatia, o selo de
+> origem **sai de escopo do frontend** e fica só o badge `Confirmado` já existente — registrar
+> isso explicitamente como corte, não implementar a Opção B.
 
-### 1.4 Layout da tela (`TemplatesMensagemPage`)
+Dependências de dados que o planejador deve garantir para a leitura PII-safe do histórico:
 
-Os templates são um **conjunto fixo e conhecido de 4 chaves** — não é uma lista de tamanho
-variável como serviços/clientes. Isso muda o padrão: em vez de "tabela + botão Novo", a tela é uma
-**lista dos 4 cards de template**, cada um sempre presente, com ação **Editar**. Não há "criar do
-zero" nem "excluir" na UI — as 4 chaves são o domínio fechado (seed garante a existência; ver §4 e
-dependência de dados). Isso também evita o risco de o tenant ficar sem um template obrigatório.
-
-ASCII (desktop → o mobile empilha os cards):
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│  Modelos de mensagem                                            │
-│  Os textos que seus clientes recebem no WhatsApp.               │
-├───────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────┐  ┌──────────────────────────┐ │
-│  │ ● Confirmação      [Ativo]  │  │ ● Lembrete (24h antes)   │ │
-│  │ "Olá {nome}, confirmando…"  │  │ "Oi {nome}, seu horário…"│ │
-│  │                    [Editar] │  │                 [Editar] │ │
-│  └─────────────────────────────┘  └──────────────────────────┘ │
-│  ┌─────────────────────────────┐  ┌──────────────────────────┐ │
-│  │ ● Cobrança         [Ativo]  │  │ ● Comprovante   [Ativo]  │ │
-│  │ "{nome}, o valor de…"       │  │ "Recebemos o pagamento…" │ │
-│  │                    [Editar] │  │                 [Editar] │ │
-│  └─────────────────────────────┘  └──────────────────────────┘ │
-└───────────────────────────────────────────────────────────────┘
-```
-
-Cada card mostra: rótulo pt-BR da chave, um **badge de estado** (Ativo/Inativo via `Switch` no
-editor), e as **primeiras ~2 linhas do corpo** (`line-clamp`, texto truncado) como prévia rápida.
-Grade `grid gap-4 sm:grid-cols-2` (mobile-first: 1 coluna no pequeno, 2 a partir de `sm`),
-reusando o padrão do `ConfigHubPage`.
-
-Estados da tela: `Skeleton` enquanto carrega; `StatePanel` de erro com "Tentar novamente"; **não
-há estado vazio** real (o seed garante as 4 chaves) — mas se o fetch vier com menos de 4 (tenant
-antigo sem seed), a tela **mostra os que faltam como cards "a configurar"** derivados de
-`MESSAGE_TEMPLATES`, com um default honesto, em vez de sumir. Isso torna a UI robusta a lacuna de
-seed.
-
-### 1.5 Editor (`TemplateEditorDialog`)
-
-Diálogo (não rota), espelhando `ServiceFormDialog`: `Dialog` + `Form` (react-hook-form + resolver
-zod), rodapé Cancelar/Salvar com `Loader2` em `isPending`, `toast` de sucesso/erro em pt-BR.
-Campos:
-
-- **Chave (read-only):** título do diálogo = "Editar modelo: {rótulo}". A chave não é editável
-  (domínio fechado).
-- **Corpo (`TemplateBodyField`):** `Textarea` controlado pelo rhf. Acima dele, a
-  **barra de variáveis** (`VariableChips`): chips clicáveis `{nome}`, `{servico}`, `{dataHora}`,
-  `{empresa}`, `{valor}` que inserem o token na posição do cursor. Abaixo, um contador de
-  caracteres e dica pt-BR ("Use as variáveis para personalizar — se faltar o dado, um texto padrão
-  entra no lugar").
-- **Ativo (`Switch`):** template inativo não é oferecido no envio. (Decisão de produto conservadora:
-  manter sempre pelo menos as 4 chaves existindo no banco; o `Switch` controla *oferta*, não
-  *existência*.)
-- **Preview (`TemplatePreview`):** renderização ao vivo do corpo com um **conjunto de dados de
-  exemplo fixo** pt-BR (ex.: nome "Maria Silva", serviço "Consulta", dataHora "qui, 15/02 às
-  14:00", empresa = `trade_name` do tenant atual, valor "R$ 150,00"), mostrando exatamente a
-  substituição e o **fallback** quando um token não resolve. O preview usa a **mesma função de
-  renderização** que o servidor conceitualmente aplica, mas implementada no cliente só para
-  pré-visualização (ver §4.3). Deixa claro ao admin o que o cliente verá.
-
-ASCII do editor (mobile-first, uma coluna; o preview vai abaixo do campo no mobile e ao lado em
-`md`):
-
-```
-┌──────────────────────────────────────────────┐
-│ Editar modelo: Confirmação                [x] │
-│ O texto enviado ao cliente para este modelo.   │
-├──────────────────────────────────────────────┤
-│ Variáveis:  [{nome}] [{servico}] [{dataHora}]  │
-│             [{empresa}] [{valor}]              │
-│ ┌──────────────────────────────────────────┐ │
-│ │ Olá {nome}, confirmando seu {servico} em   │ │
-│ │ {dataHora}. Até lá!                        │ │
-│ │                                            │ │
-│ └──────────────────────────────────────────┘ │
-│ 72/1000 caracteres                             │
-│                                                │
-│ Prévia (com dados de exemplo):                 │
-│ ┌──────────────────────────────────────────┐ │
-│ │ Olá Maria Silva, confirmando seu Consulta  │ │
-│ │ em qui, 15/02 às 14:00. Até lá!            │ │
-│ └──────────────────────────────────────────┘ │
-│                      [ Cancelar ]  [ Salvar ]  │
-└──────────────────────────────────────────────┘
-```
-
-### 1.6 Alteração no `SendMessageDialog` (preservar o envio atual)
-
-O diálogo de envio **continua funcionando igual** (escolhe template, confirma, invoca a Edge
-Function). Única adição: ao selecionar um template, mostrar um **bloco de preview** com o texto
-renderizado que será enviado àquele cliente/agendamento (variáveis resolvidas com os dados reais
-disponíveis + fallback). Isso cumpre o critério de aceite "o envio sob demanda usa o template
-renderizado" de forma **visível e verificável** na UI, sem mudar o contrato de `send` (o corpo
-continua `{ action, template, customerId, appointmentId? }` — o servidor resolve o texto).
-
-- O preview lê o template do tenant via a mesma query de templates (`useMessageTemplates`) e
-  resolve as variáveis com os dados do cliente/agendamento já presentes no contexto do diálogo
-  (nome do cliente já é passado como prop; serviço/dataHora vêm do agendamento quando
-  `appointmentId` existe).
-- Quando faltar dado (ex.: envio a partir de Clientes, sem agendamento → sem `{dataHora}`),
-  o preview mostra o **mesmo fallback** que o servidor aplicará, deixando explícito que não haverá
-  `{dataHora}` cru no texto.
-- Se o template da chave estiver **inativo**, o select não o oferece; se nenhum template ativo
-  existir para a chave, a UI explica em pt-BR e desabilita o envio daquela chave (defesa em
-  profundidade; a trava final é do servidor).
-
-Risco coberto (do role): **nunca renderizar `{variavel}` cru para o cliente** — o preview e o
-fallback tornam isso visível ao admin antes do disparo, e a renderização canônica do servidor é a
-garantia real.
+- `messages` precisa de uma forma de distinguir **direção** (recebida vs enviada) e **origem**
+  (automática/cron vs sob demanda). Sinalizado como dependência: coluna `direction`
+  (`inbound | outbound`) e/ou `origin` (`cron | on_demand | webhook_reply`) em `messages`,
+  ou um `template`/`payload` que já carregue isso. O frontend só **lê e rotula**; não infere
+  direção de texto (o texto recebido não deve nem chegar ao cliente por PII).
+- A mensagem recebida do cliente **não deve** trazer o conteúdo bruto para a UI. O histórico
+  mostra "Cliente respondeu (confirmação)" / "Cliente respondeu (reagendar)" como rótulo
+  derivado do efeito, **nunca** o texto literal digitado.
 
 ---
 
 ## 2. Direção visual e design system
 
-A linguagem visual já está estabelecida (tema "painel de operação calmo": ardósia/azul-noite +
-acento jade, display Space Grotesk, corpo Inter, mono JetBrains, raio 0.75rem, dark por padrão).
-Esta tela **adere** a essa linguagem — não é lugar de introduzir uma nova direção. O que ela traz
-de próprio, com intenção, é o tratamento do **texto do template como artefato editável**:
+A régua visual já está estabelecida pelas fatias anteriores (tokens `--status-*` calibrados AA,
+`StatusBadge`/`WhatsAppStatusBadge`, `font-display` nos títulos, mobile-first, dark mode). Esta
+fatia **não abre direção nova** — seria ruído. O trabalho é integrar o único elemento novo (o
+selo de origem da confirmação) com a mesma disciplina.
 
-- **O corpo do template é código-como-conteúdo.** Tokens de variável (`{nome}`, `{dataHora}`) são
-  renderizados no preview com a **família mono (JetBrains Mono, já carregada)** e um leve realce
-  (`bg-primary/10 text-primary rounded px-1`) para distinguir visualmente "slot que será
-  substituído" de texto fixo. É o único toque de personalidade da tela, e é derivado do assunto
-  (templates com variáveis), não decoração.
-- **Chips de variável** usam `Badge`/`Button` `variant="secondary"` em tamanho pequeno, com o nome
-  da variável em mono — consistente com o realce do preview, de modo que o admin associa o chip
-  que clica ao token que aparece.
-- **Cards de template** reusam `Card` com o mesmo hover de borda (`group-hover:border-primary/50`)
-  do `ConfigHubPage`, mantendo a família visual de Configurações.
-- **Tokens:** nenhum token novo de cor. Estado Ativo/Inativo usa o `Badge` padrão
-  (`variant="default"` / `"secondary"`) como em `ServicosPage` (não os tokens `--status-*`, que são
-  da máquina de estados do agendamento — reusá-los aqui seria incoerente semanticamente).
-- **Espaçamento/raio/tipografia:** herdados (`space-y-6` nas páginas, `font-display` nos títulos,
-  `--radius`). Mobile-first: cards empilham em 1 coluna, editor em coluna única no pequeno.
+### 2.1 Tokens — reuso total, zero token novo
 
-Copy (pt-BR, voz do produto, sem floreio):
-- Título da tela: "Modelos de mensagem". Descrição: "Os textos que seus clientes recebem no
-  WhatsApp."
-- Dica de variáveis: "Use as variáveis para personalizar. Se um dado faltar, entra um texto padrão
-  no lugar."
-- Sucesso ao salvar: "Modelo atualizado." Erro: "Não foi possível salvar o modelo. Tente
-  novamente."
-- Nomes de ações consistentes ponta a ponta: botão "Salvar" → toast "Modelo atualizado".
+Cor, tipografia, espaçamento e raio saem do que já existe:
+
+- **Status** — tokens `--status-confirmado` / `--status-confirmado-foreground` (já AA) para o
+  badge `Confirmado`. O selo de origem **não** ganha cor própria: é uma variação de **peso e
+  ícone** sobre o mesmo token confirmado, para não competir com o badge nem criar um segundo
+  sistema de cor de status.
+- **Tipografia** — `text-xs font-medium` dos badges existentes; `font-display` só nos títulos
+  de seção já estabelecidos. Nada novo.
+- **Espaçamento/raio** — `rounded-full px-2.5 py-0.5` dos badges; gap `gap-1` ao alinhar selo +
+  badge, como o `AppointmentBlock` já faz entre horário e `StatusBadge`.
+
+### 2.2 O elemento de assinatura desta fatia: o selo "confirmado pelo cliente"
+
+O valor de negócio da fatia é **a prova de que o cliente confirmou sozinho**. O design deve
+tornar isso instantâneo no scan da agenda, sem poluir. Proposta:
+
+- Badge `Confirmado` (verde, como hoje) **mais** um micro-selo discreto adjacente: um ícone
+  `MessageCircle` (lucide, já usado na agenda para "enviar mensagem") pequeno, cor
+  `text-status-confirmado-foreground` sobre fundo transparente, com `title`/`aria-label`
+  "Confirmado pelo cliente no WhatsApp". Quando a confirmação foi manual, **nenhum** micro-selo
+  — a ausência é o sinal, e o `title` do badge diz "Confirmado pela recepção".
+- Em `AppointmentBlock` (bloco de calendário, espaço apertado): o micro-selo aparece **só** no
+  modo não-compacto; no compacto ele cai no `title` junto do resto (o bloco já joga detalhe no
+  `title` quando é baixo). Na **lista** da `AgendaPage` há espaço para selo + badge lado a lado.
+
+Isso respeita "gaste a ousadia num lugar só": o selo é o único elemento novo, e é deliberado —
+ícone que já pertence ao vocabulário do WhatsApp no app, não um enfeite genérico.
+
+### 2.3 Histórico de mensagens — legibilidade dos novos tipos
+
+- **Rótulo de template** — `lembrete_d1` já tem rótulo "Lembrete (24h antes)". Acrescentar, via
+  `src/lib/whatsapp.ts`, o rótulo da **resposta recebida** ("Confirmação do cliente" /
+  "Pedido de reagendamento") e da **mensagem de retorno automática** ("Retorno de
+  reagendamento"). Sempre pt-BR, sentence case, voz do produto.
+- **Direção** — uma linha recebida ganha um indicador visual leve (ex.: ícone de seta de
+  entrada + rótulo "Recebida"), distinto do disparo "Enviada". **Não** usar cor para isso (cor
+  é reservada ao status); usar ícone + rótulo textual (a11y: nunca cor como único sinal).
+- **Estado `fila` sob retentativa** — o badge `Na fila` continua, mas a célula ganha um
+  `title`/tooltip "Aguardando reenvio automático" quando a mensagem está em retentativa, para
+  o admin não interpretar como travada. `falha` (após N tentativas) ganha o `title` "Falhou
+  após várias tentativas". Textos de `src/lib/whatsapp.ts`.
+
+### 2.4 Decisão: componente irmão vs prop no `StatusBadge`
+
+Duas abordagens para o selo de origem:
+
+- **Prop no `StatusBadge`** — acopla a um componente já consumido por Agenda/Clientes/
+  assinatura; inchar com uma preocupação específica de WhatsApp fere o padrão que o próprio
+  projeto estabeleceu (o `WhatsAppStatusBadge` foi criado irmão justamente para evitar isso).
+- **Componente irmão `ConfirmationSourceBadge`** — isolado, testável, só aparece onde faz
+  sentido (agenda). **Escolhido.** Fica em `src/components/`, recebe `confirmed_via` e `status`,
+  e renderiza o micro-selo só quando `status === "confirmado" && confirmed_via === "cliente_whatsapp"`.
+
+### 2.5 Dark mode
+
+Todos os tokens usados são theme-aware (trocam com `.dark`), herdados sem ajuste. O micro-selo,
+por usar `text-status-confirmado-foreground`, acompanha o tema automaticamente. Verificar
+contraste do ícone em ambos os temas no QA (§5).
 
 ---
 
-## 3. Acessibilidade (obrigatório)
+## 3. Acessibilidade
 
-- **Labels associados:** `Textarea` com `FormLabel` via `FormField` (o `Form` do shadcn já liga
-  `htmlFor`/`id` e `aria-describedby` para a dica e a mensagem de erro). Chips de variável são
-  `<button type="button">` com texto visível (o próprio token) — nome acessível implícito; se o
-  visual for só ícone em algum ponto, usar `aria-label` ("Inserir variável nome").
-- **Foco visível:** herdado do `focus-visible:ring-2 ring-ring` já aplicado globalmente aos
-  primitivos; os cards-link do hub já têm o anel. Os chips, sendo `Button`, herdam o anel.
-- **Teclado:** inserir variável funciona por clique **e** por `Enter`/`Espaço` no chip (botão
-  nativo). O editor é um `Dialog` shadcn (foco preso, `Esc` fecha, retorna foco ao gatilho) — não
-  quebrar isso. A tela inteira é navegável por `Tab` na ordem: cards → Editar → (diálogo) chips →
-  textarea → Switch → Cancelar/Salvar.
-- **Região viva:** o contador de caracteres e, se útil, a mudança de preview podem ser anunciados
-  via `aria-live="polite"` discreto (seguir o padrão de `WhatsAppPage`, que usa `role="status"`).
-  Manter sóbrio para não poluir o leitor.
-- **Contraste (WCAG AA ≥ 4.5:1 para texto):**
-  - Texto do preview: `foreground` sobre `card`. No dark, `--foreground: 210 20% 96%` (L≈95%)
-    sobre `--card: 222 20% 13%` (L≈13%) → razão ≈ **15:1** (AAA). No claro, `222 30% 12%` sobre
-    `0 0% 100%` → ≈ **16:1** (AAA). OK.
-  - Token mono realçado: `text-primary` sobre `bg-primary/10`. `--primary` no dark é
-    `160 64% 45%` (verde jade, L≈45%); o texto jade sobre fundo jade a 10% de opacidade sobre card
-    escuro mantém o verde como cor de texto sobre fundo quase-card → razão do jade (L≈45%) vs card
-    (L≈13%) ≈ **3.2:1**. **Abaixo de 4.5:1 para texto normal.** Mitigação obrigatória: o token no
-    preview **não depende só da cor** — usar `font-medium` + as chaves `{}` como delimitadores
-    textuais (a informação "isto é variável" é carregada por forma, não só cor) e, para garantir
-    contraste de texto, renderizar o token com `text-foreground` + leve `bg-primary/15` como
-    *realce de fundo* (não como cor do texto). Decisão: **realce de fundo, texto em `foreground`**,
-    assim o contraste do texto fica no mesmo ≈15:1 do corpo e a cor jade entra só como camada
-    decorativa de fundo (não portadora de informação). O QA verifica.
-  - Badge Ativo (`variant="default"`, `primary`/`primary-foreground`): par já usado em
-    `ServicosPage`, calibrado pelo tema. OK.
-- **Reduced motion:** sem animação nova além de transições de hover já cobertas pelo
-  `prefers-reduced-motion` global.
-- **Nota de conformidade:** estimativas de contraste acima são calculadas a partir dos tokens HSL;
-  validação WCAG completa exige teste manual com ferramenta de contraste e leitor de tela — o QA
-  por ADR (Chrome DevTools) confere os pares reais renderizados.
+- **Cor nunca é o único sinal.** O selo de origem tem ícone **e** `aria-label`/`title` textual
+  ("Confirmado pelo cliente no WhatsApp"). A direção recebida/enviada no histórico usa ícone +
+  rótulo textual, não cor. Alinha ao que `WhatsAppStatusBadge`/`StatusBadge` já fazem (rótulo
+  pt-BR sempre presente).
+- **Contraste WCAG.** O badge `Confirmado` usa tokens já calibrados AA nas fatias anteriores
+  (≥ 4,5:1 para texto). O micro-selo é um ícone decorativo-informativo: como ícone pequeno,
+  mirar **3:1** (WCAG 1.4.11, componentes gráficos) de `--status-confirmado-foreground` contra
+  o fundo do bloco (`bg-card`). O cálculo numérico exato depende dos valores de token e deve
+  ser **verificado no QA** com os hex resolvidos (claro e escuro) — não afirmo o número aqui
+  sem medir; é critério de aceite §5.
+- **Foco visível e teclado.** O `AppointmentBlock` já é um `<button>` focável com
+  `focus-visible:ring-2`. O selo é conteúdo dentro dele (não um novo alvo de foco) — não
+  adiciona ordem de tab nem armadilha. Se o selo virar um `Tooltip` do shadcn, o gatilho precisa
+  ser alcançável por teclado e o conteúdo anunciável; preferir `title` nativo + `aria-label`
+  para não introduzir alvo de foco redundante dentro do botão.
+- **Região viva.** A `WhatsAppPage` já tem `role="status" aria-live="polite"` para a conexão.
+  A agenda **não** precisa de live region para a confirmação (a mudança chega via refetch do
+  TanStack Query, não é um evento que o leitor precise ouvir em tempo real). Não adicionar
+  ruído de a11y.
+- **Labels associados.** Nenhum formulário novo nesta fatia. O template `lembrete_d1` já é
+  editado na tela de mensagens existente (labels já associados). Nada a fazer.
 
 ---
 
 ## 4. Arquitetura React
 
-### 4.1 Dados (TanStack Query, nunca `fetch` solto)
-
-Novo hook `src/hooks/useMessageTemplates.ts`, espelhando `useServices`/`useMessages`:
-
-- `useMessageTemplates()` → `useQuery`, lê `message_templates` do tenant via PostgREST sob RLS
-  (cliente Supabase do browser, **anon key + sessão**; RLS isola por `tenant_id` do JWT — o
-  cliente **nunca** envia `tenant_id`). Projeção: `id, tenant_id, template_key, body, active,
-  created_at`. Resposta validada com **zod** antes do uso (dado externo não confiável), `template_key`
-  no enum `MESSAGE_TEMPLATES`.
-- `useUpsertMessageTemplate()` → `useMutation` que faz `upsert` por `(tenant_id, template_key)`
-  (ver dependência de dados: unique nessa dupla). Em sucesso, `invalidateQueries` da chave de
-  templates. Mensagens de erro traduzidas (sem vazar schema).
-- Chave de query dedicada: `MESSAGE_TEMPLATES_KEY = ["message-templates"]` em `src/lib/whatsapp.ts`
-  (fonte única de chaves do módulo, onde já moram `MESSAGES_KEY`/`WHATSAPP_INSTANCE_KEY`).
-
-A escrita de template é **do cliente sob RLS** (diferente de `messages`, cuja escrita é exclusiva
-da Edge Function). Templates são dado editorial do tenant, não operação privilegiada — o `admin`
-grava direto via PostgREST, a RLS garante o isolamento e o RBAC (política de escrita só para
-`admin`). Isso é coerente com como `services`/`professionals` são editados (cliente + RLS).
-
-### 4.2 Formulário (react-hook-form + zod)
-
-Schema novo em `src/lib/validations/whatsapp.ts` (ao lado de `sendMessageSchema`):
-
-```
-messageTemplateSchema = z.object({
-  templateKey: z.enum(MESSAGE_TEMPLATES),
-  body: z.string()
-         .trim()
-         .min(1, "Escreva o texto do modelo.")
-         .max(1000, "O texto do modelo é muito longo."),
-  active: z.boolean(),
-})
-```
-
-- `body` validado: obrigatório, limite de 1000 caracteres (coerente com mensagem de WhatsApp;
-  o planejador de dados confirma o limite da coluna). **Variáveis desconhecidas** no corpo (ex.:
-  `{foo}`) não quebram o save — são tratadas na renderização como "não resolvida" e substituídas
-  pelo fallback (ver §4.3); opcionalmente o editor pode avisar em pt-BR ("A variável {foo} não é
-  reconhecida e será removida no envio"), como ajuda, não como bloqueio.
-- Resolver `zodResolver`; mensagens em pt-BR.
-
-### 4.3 Renderização de variáveis (preview no cliente + contrato do servidor)
-
-Função pura utilitária `renderTemplate(body, vars)` em `src/lib/message-templates.ts` (novo),
-usada **só para o preview** no cliente. Contrato:
-
-- **Lista fechada de variáveis suportadas** (decisão desta fatia): `{nome}` (cliente),
-  `{servico}` (serviço do agendamento), `{dataHora}` (início do agendamento no fuso do tenant,
-  formatado pt-BR via `src/lib/datetime.ts`), `{empresa}` (`trade_name` do tenant), `{valor}`
-  (`price_cents` do agendamento formatado em R$ via `src/lib/money.ts`). Qualquer outro `{token}`
-  é desconhecido.
-- **Fallback previsível** quando o dado falta ou o token é desconhecido: substituir por um texto
-  neutro pt-BR por variável, **nunca** deixar `{token}` cru. Tabela de fallback:
-  - `{nome}` → "você"
-  - `{servico}` → "seu atendimento"
-  - `{dataHora}` → "o horário combinado"
-  - `{empresa}` → `trade_name` do tenant, ou "nossa equipe" se nulo
-  - `{valor}` → "o valor combinado"
-  - token desconhecido → remove (string vazia), nunca exibe `{...}`.
-- O preview **declara** que isto é também o comportamento esperado do servidor. **Dependência de
-  contrato:** a Edge Function `handleSend` hoje envia `text: input.template` (a string crua da
-  chave — bug funcional do ponto de vista do produto). A Fatia 1 muda isso para o servidor
-  **carregar o `message_templates` do tenant pela chave (sob service role) e renderizar com a
-  mesma tabela de fallback** antes de `adapter.sendText`. A UI e o servidor devem compartilhar a
-  **mesma lista fechada e a mesma tabela de fallback** — registrar como contrato na ADR para não
-  divergirem. O frontend não implementa o lado servidor; só desenha o preview coerente com ele.
-
-### 4.4 Componentes vs hooks vs estado
-
-- Estado de servidor: só via TanStack Query (templates, tenant atual para `{empresa}`).
-- Estado local de UI: qual template está em edição, abertura do diálogo (`useState` na página),
-  posição do cursor para inserir chip (ref do textarea no `TemplateBodyField`).
-- Nenhum `fetch`/efeito solto; o `TemplatePreview` deriva do estado do form (`form.watch("body")`)
-  — reatividade pura, sem efeito.
+- **Dados sempre via TanStack Query.** O selo de origem lê de `useAppointments` (já é um
+  `useQuery`); basta o `select` passar a trazer `confirmed_via` e o schema zod do hook validar
+  o novo campo. O histórico lê de `useRecentMessages` (já `useQuery`); o schema zod passa a
+  aceitar os novos campos (`direction`/`origin` ou equivalente) como **dado não confiável
+  validado** antes do uso. **Nada de `fetch` em `useEffect`.**
+- **Cliente Supabase do browser com anon key + sessão.** A leitura da agenda e do histórico
+  segue sob RLS; o cliente **nunca** envia `tenant_id` para filtrar — o isolamento é do banco.
+  O webhook e o cron são operações privilegiadas de **servidor** (service role em Edge
+  Function/SQL), fora do bundle — o frontend só **lê o efeito** já persistido.
+- **Componentes vs hooks vs estado de servidor.**
+  - Estado de servidor: `useAppointments`, `useRecentMessages` (existentes, estendidos no
+    schema).
+  - Lógica pura: o selo é função pura de `(status, confirmed_via)`; o rótulo de mensagem é
+    função pura no `src/lib/whatsapp.ts` (fonte única, testável sem render).
+  - Componentes: `ConfirmationSourceBadge` (apresentação pura), `RecentMessagesList`
+    (apresentação + leitura), `AppointmentBlock`/lista (composição).
+- **Invalidação de cache.** Nenhuma mutação nova no cliente nesta fatia (confirmação vem do
+  webhook, não de ação do usuário). A agenda e o histórico atualizam no refetch normal do
+  TanStack Query (foco/intervalo). Se o produto quiser a confirmação "aparecer sozinha" sem
+  reload, reaproveitar o padrão de **polling condicional** já usado em `useWhatsAppInstance`
+  (ex.: refetch da agenda com `refetchInterval` curto só quando há agendamentos ~24h à frente
+  e `pendente`). **Decisão:** não adicionar polling nesta fatia — é otimização, não requisito;
+  o refetch on-focus já cobre o fluxo real (a recepção abre a agenda e vê o estado atual).
+  Registrar como melhoria futura.
+- **Zod como guarda de dado externo.** Mesmo os dados vindos do próprio banco sob RLS passam
+  pelo schema zod dos hooks (o projeto já faz isso). Os campos novos entram no schema com tipo
+  estrito (enums fechados), não `string` solta — mantém `strict: true` honrado.
+- **Performance (RNF01, agenda < 1,5s).** O selo não adiciona request (vem no mesmo
+  `select` da agenda). O histórico continua limitado a 20 linhas (`DEFAULT_LIMIT`). Nenhum
+  waterfall novo. Skeletons já existentes cobrem o loading.
 
 ---
 
-## 5. Dependências (sinalizadas para as etapas seguintes)
+## 5. Critério de aceite visual verificável (QA por ADR, Chrome DevTools MCP)
 
-1. **Dados — tabela nova `message_templates`** (`id, tenant_id, template_key, body, active,
-   created_at`), unique `(tenant_id, template_key)`, índice em `tenant_id`, **RLS habilitada**
-   (SELECT/INSERT/UPDATE para `admin` do tenant; escrita só `admin`). Migration versionada em
-   `supabase/migrations`. — *documento de dados / ADR de migration.*
-2. **Dados — seed dos 4 templates padrão pt-BR** por tenant (ao criar tenant e/ou backfill para
-   tenants existentes), para a tela não começar vazia. Textos padrão em pt-BR com as variáveis
-   corretas; `lembrete_d1` já redigido de forma a **comportar** a instrução "1 confirmar / 2
-   reagendar" (preparando a Fatia 2 **sem** acoplar webhook agora — só o texto). — *documento de
-   dados / ADR de seed.*
-3. **Servidor — `handleSend` passa a renderizar** o template do tenant (carrega por
-   `template_key` sob service role, aplica `renderTemplate` com a tabela de fallback acordada) em
-   vez de enviar `input.template` cru. — *ADR da Edge Function.* **Este é o ponto que cumpre o
-   critério de aceite central.**
-4. **RBAC — `canManageMessageTemplates`** em `usePermissions` (= `isAdmin`). — *ADR de frontend.*
-5. **UI primitiva — `src/components/ui/textarea.tsx`** (shadcn padrão). — *ADR de frontend.*
-6. **Util compartilhado — `src/lib/message-templates.ts`** (lista fechada de variáveis + tabela de
-   fallback + `renderTemplate`), reusável por preview (cliente) e espelhado no servidor. — *ADR de
-   frontend; o servidor replica a mesma tabela.*
+Escrito para ser conferível na tela, não no código:
 
-Fora de escopo (Fatia 2, **não** desenhar/implementar agora): confirmação interativa numérica,
-webhook de entrada da Evolution, pg_cron/agendador do `lembrete_d1`, fila de retentativa, botões
-interativos. O único preparo permitido é **o texto** do `lembrete_d1` comportar "1 confirmar / 2
-reagendar".
-
----
-
-## 6. Critérios de aceite visuais (verificáveis pelo QA Chrome DevTools)
-
-1. Em `/app/config` existe o atalho "Modelos de mensagem" (visível só para `admin`); clicar leva a
-   `/app/config/mensagens`.
-2. A tela lista os **4 cards** (Confirmação, Lembrete (24h antes), Cobrança, Comprovante), cada um
-   com rótulo pt-BR, badge Ativo/Inativo e prévia truncada do corpo. Mobile (<`sm`): 1 coluna, sem
-   overflow horizontal. Desktop: 2 colunas.
-3. "Editar" abre o `Dialog` com o corpo atual no `Textarea`, os chips de variável e o preview ao
-   vivo. Clicar um chip insere o `{token}` no texto; o preview atualiza substituindo variáveis por
-   dados de exemplo pt-BR e **nunca** exibe `{token}` cru (fallback visível quando o dado falta).
-4. Salvar mostra toast "Modelo atualizado", fecha o diálogo e a prévia do card reflete o novo
-   texto (cache invalidado).
-5. No diálogo de **Enviar mensagem** (Agenda/Clientes), ao escolher um template aparece o preview
-   do texto renderizado que será enviado; o envio continua funcionando (sucesso/duplicate/opt_out/
-   not_connected/send_failed inalterados) e o texto efetivo é o **template renderizado**, não a
-   string crua da chave. (Verificação de ponta: inspecionar o disparo de teste e confirmar o texto
-   renderizado — o lado servidor é da ADR da Edge Function, mas o critério é observável aqui.)
-6. **Isolamento por tenant:** logado em tenant A, a tela mostra só os templates de A; não há como
-   enviar `tenant_id` pelo cliente para ver os de outro (RLS). Editar em A não afeta B.
-7. Acessibilidade: `Tab` alcança cards → Editar → chips → textarea → Switch → Salvar/Cancelar;
-   foco visível em todos; `Esc` fecha o diálogo e devolve o foco ao gatilho; labels associados;
-   contraste do texto do preview e do realce de token conferidos (realce de token por **fundo**,
-   texto em `foreground`).
-8. Build/typecheck limpos (`tsc`/build do projeto) e verificação ao vivo (tela + envio) sem erro
-   de console.
+1. **Selo na agenda — confirmado pelo cliente.** Um agendamento com
+   `status=confirmado` e `confirmed_via=cliente_whatsapp` mostra o badge `Confirmado` **mais**
+   o micro-selo (ícone WhatsApp + `aria-label` "Confirmado pelo cliente no WhatsApp"), tanto na
+   lista quanto no bloco de calendário (modo não-compacto). Verificável por inspeção do DOM
+   (presença do `aria-label`) e visual.
+2. **Selo na agenda — confirmado manualmente.** Um agendamento `confirmado` com
+   `confirmed_via=manual` mostra **só** o badge `Confirmado`, sem micro-selo; o `title` do badge
+   diz "Confirmado pela recepção". A ausência do selo é o sinal.
+3. **Histórico — lembrete automático.** Após o cron disparar, a linha `lembrete_d1` aparece
+   no histórico com rótulo "Lembrete (24h antes)" e indicador "Enviada", sem PII (sem telefone,
+   sem texto bruto).
+4. **Histórico — resposta recebida.** A resposta do cliente aparece como linha "Recebida" com
+   rótulo derivado ("Confirmação do cliente" ou "Pedido de reagendamento"), **nunca** o texto
+   digitado. Indicador de direção é ícone + texto, não cor.
+5. **Histórico — estado fila/retentativa.** Uma mensagem em retentativa mostra badge `Na fila`
+   com `title` "Aguardando reenvio automático"; após o limite, badge `Falha` com `title`
+   "Falhou após várias tentativas".
+6. **Contraste (claro e escuro).** Medir no DevTools o contraste do texto do badge `Confirmado`
+   (mirar ≥ 4,5:1) e do ícone do micro-selo contra `bg-card` (mirar ≥ 3:1), nos dois temas.
+   Registrar os números medidos; ajustar o token/opacidade do ícone se ficar abaixo.
+7. **Teclado/foco.** Tab chega ao bloco do agendamento com anel de foco visível; o selo não
+   cria alvo de foco extra nem quebra a ordem de tab. O `aria-label` do selo é lido pelo leitor
+   de tela junto do bloco.
+8. **Mobile (~375px).** Lista e blocos não estouram horizontalmente com selo + badge; no bloco
+   compacto o selo cai no `title`. Histórico em cards no mobile (padrão atual preservado).
+9. **PII.** Em nenhuma superfície (agenda, histórico, tooltip, DOM) aparece telefone do cliente
+   ou o texto literal recebido. Confirma a invariante LGPD no cliente.
 
 ---
 
-## 7. Resumo das decisões de frontend (travadas após aprovação)
+## 6. Dependências de dados / contrato (sinalizadas ao planejador)
 
-- Rota: **`/app/config/mensagens`**, dentro do grupo de Configurações; atalho no hub.
-- Padrão de tela: **lista fixa de 4 cards** (domínio fechado), editor em `Dialog`, sem "novo"/
-  "excluir". Robusta a lacuna de seed (cards "a configurar" derivados de `MESSAGE_TEMPLATES`).
-- RBAC: escrita e acesso só para **`admin`** (`canManageMessageTemplates`), demais papéis veem
-  `AccessDenied`; a trava real é RLS.
-- Dados: **TanStack Query** (`useMessageTemplates`/`useUpsertMessageTemplate`), escrita do cliente
-  sob RLS (não via Edge Function). Formulário **rhf + zod**; `body` 1–1000 chars.
-- Variáveis: lista fechada `{nome} {servico} {dataHora} {empresa} {valor}`; **fallback previsível**
-  por variável, token desconhecido removido — **nunca** `{token}` cru para o cliente.
-- Preview no cliente via `renderTemplate` compartilhado; **renderização canônica é do servidor**
-  (`handleSend` passa a renderizar o template do tenant).
-- Visual: adere ao tema existente; único toque próprio é o **realce de token por fundo** (texto em
-  `foreground`, cor jade só decorativa) — escolha feita para não ferir contraste.
-- Stack travada: React + Vite + TS estrito + Tailwind + shadcn/ui + React Router + TanStack Query +
-  react-hook-form + zod. Novo primitivo shadcn: `Textarea`.
-```
+Frontend **bloqueado** nestes itens até o backend definir — são decisões de contrato, não de
+UI:
+
+- **`appointments.confirmed_via`** (enum `cliente_whatsapp | manual`, nullable) — migration +
+  gravação pelo webhook e pela mutação manual de status. Sem isso, o selo de origem (§2.2) sai
+  de escopo e fica só o badge `Confirmado`.
+- **Distinção de direção/origem em `messages`** — forma de a leitura PII-safe rotular
+  recebida/enviada e cron/sob-demanda (coluna `direction`/`origin` ou template dedicado). Sem
+  isso, o histórico não distingue os novos tipos e fica só com o rótulo de template atual.
+- **Garantia PII** — o backend **não** deve persistir o texto bruto recebido do cliente em
+  campo que a leitura PII-safe de `messages` traga para a UI. O rótulo exibido é derivado do
+  efeito (confirmou/pediu reagendar), não do conteúdo.
+- **Enums novos no `src/types/domain.ts`** — assim que o contrato do banco fechar, espelhar os
+  enums (`confirmed_via`, `direction`/`origin`) como `const` tipados, no padrão dos enums
+  existentes, para alimentar os schemas zod e os mapas de rótulo.
+
+Itens **fora de escopo do frontend** nesta fatia (confirmando o brief): botões interativos do
+WhatsApp (a resposta é numérica), reagendamento automático, autoagendamento público, métricas
+(Fase 3), módulo Asaas/PIX. A fila de retentativa, o cron e o webhook são servidor — a UI só
+reflete o resultado.
+
+---
+
+## 7. Resumo do que o frontend entrega
+
+- 1 componente novo pequeno: `ConfirmationSourceBadge` (micro-selo de origem), irmão do
+  `StatusBadge`, sem token de cor novo.
+- Ajuste em `AppointmentBlock` + lista da `AgendaPage` para compor o selo quando a confirmação
+  veio do cliente.
+- Ajuste em `RecentMessagesList` + `src/lib/whatsapp.ts` para rotular lembrete automático,
+  resposta recebida (sem PII), retorno de reagendamento e estado de retentativa.
+- Extensão dos schemas zod de `useAppointments` e `useRecentMessages` para validar os campos
+  novos como dado não confiável, com enums fechados.
+- Zero rota nova, zero módulo novo, zero `fetch` solto, zero `tenant_id` no cliente, zero PII
+  na UI. Tudo sob os guards e tokens existentes, mobile-first, dark mode, pt-BR.

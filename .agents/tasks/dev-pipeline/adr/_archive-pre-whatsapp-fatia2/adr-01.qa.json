@@ -1,0 +1,4 @@
+{
+  "test": "deferred",
+  "reason": "ADR-01 é fundação de dados sem superfície testável ponta a ponta: cria a tabela message_templates vazia sob RLS, sem seed (seed é ADR-02) e sem tela ou fluxo utilizável. Não há nada para navegar no Chrome DevTools. O teste de isolamento multi-tenant real (dois tenants A/B) exige dados (ADR-02) e será exercido no QA ao vivo consolidado da fatia (ADR-07). Contraprova estática já coberta: os dois revisores rodaram npm run build / typecheck / test (exit 0, 16/16); o Revisor B aplicou a migration num Supabase local real (migration up limpo, RLS ativa, with_check presente, insert sem JWT barrado, idempotência confirmada). QA ao vivo adiado para a verificação consolidada antes do PR."
+}

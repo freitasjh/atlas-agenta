@@ -7,6 +7,7 @@ import { mapSchedulingError } from "@/lib/scheduling-errors";
 import { isTransitionAllowed } from "@/lib/scheduling-status";
 import { useTenant } from "@/hooks/useTenant";
 import {
+  APPOINTMENT_CONFIRMED_VIA,
   APPOINTMENT_STATUSES,
   type AppointmentStatus,
   type AppointmentWithRelations,
@@ -40,6 +41,7 @@ const appointmentRowSchema = z.object({
   price_cents: z.number().int(),
   status: z.enum(APPOINTMENT_STATUSES),
   confirmed_at: z.string().nullable(),
+  confirmed_via: z.enum(APPOINTMENT_CONFIRMED_VIA).nullable(),
   created_at: z.string(),
   customers: z
     .object({ name: z.string(), whatsapp_opt_in: z.boolean() })
@@ -58,7 +60,7 @@ const appointmentListSchema = z.array(appointmentRowSchema);
 
 /** `select` com o join embutido — uma request só, nomes legíveis inclusos. */
 const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name)";
+  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 
@@ -190,9 +192,18 @@ export function useChangeAppointmentStatus() {
         throw { code: "check_violation" };
       }
 
+      // Ao confirmar pela UI, grava a ORIGEM explícita (`confirmed_via='manual'`)
+      // para o selo da agenda distinguir determinísticamente confirmação do
+      // cliente (webhook → `cliente_whatsapp`) de confirmação manual. O trigger
+      // de transição só valida `status`, então não conflita.
+      const patch =
+        to === "confirmado"
+          ? { status: to, confirmed_via: "manual" as const }
+          : { status: to };
+
       const { data, error } = await supabase
         .from("appointments")
-        .update({ status: to })
+        .update(patch)
         .eq("id", id)
         .select(APPOINTMENT_SELECT)
         .single();

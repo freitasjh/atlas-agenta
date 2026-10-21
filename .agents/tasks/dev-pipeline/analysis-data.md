@@ -1,297 +1,421 @@
-# Análise de Dados e Segurança — WhatsApp Fase 2, Fatia 1: Templates de mensagem editáveis por tenant
+# Análise de Dados e Segurança — Fatia 2 do WhatsApp (Fase 2)
 
-Autor: Analisador de Dados e Segurança (dev-pipeline)
-Projeto: atlas-agenda · base: `master` (default branch)
-Escopo deste documento: requisitos verificáveis, critérios de aceite testáveis, modelo de dados + migrations e políticas RLS/RBAC. **Não** contém código de aplicação.
+Confirmação interativa D-1: lembrete numérico automático (cron) + webhook de entrada da Evolution
++ marcar agendamento `confirmado` + fila de retentativa.
 
----
-
-## 1. Resumo e valor de negócio
-
-### 1.1 O que entra
-
-Entregar o **CRUD de templates de mensagem WhatsApp por tenant**, com **variáveis**, consumido pelo **envio sob demanda já existente** (Edge Function `whatsapp`, operação `send`). Hoje o disparo manda **texto cru**: em `supabase/functions/whatsapp/index.ts`, `handleSend` chama `adapter.sendText({ ..., text: input.template })` — ou seja, envia a **string da chave do template** (`"confirmacao"`, `"lembrete_d1"`, …) como se fosse o corpo da mensagem. Esta fatia introduz o **texto real renderizado** a partir de um template pertencente ao tenant, com variáveis substituídas e fallback previsível.
-
-Escopo concreto:
-- Modelar e armazenar templates por tenant para as 4 chaves padrão: `confirmacao`, `lembrete_d1`, `cobranca`, `comprovante` — texto pt-BR com variáveis (`{nome}`, `{servico}`, `{dataHora}`, `{empresa}`, …).
-- Tela de configuração em `/app/config/whatsapp` para o **admin** criar/editar o texto de cada template.
-- Renderização das variáveis no momento do envio (no servidor, dentro da Edge Function).
-- O disparo sob demanda passa a usar o **template renderizado do tenant** em vez do texto cru.
-
-### 1.2 O que NÃO entra (Fatia 2, próximo run)
-
-Confirmação interativa, webhook de entrada da Evolution, `pg_cron`/agendador, fila de retentativa, botões interativos. **Decisões já tomadas** para a Fatia 2 (não implementar agora, só deixar o contrato preparado): resposta por **opção numérica** (`1 confirmar`) e lembrete D-1 via **pg_cron** do Supabase. Nesta fatia isso se traduz apenas em: o texto do template `lembrete_d1` pode conter a instrução `1 confirmar / 2 reagendar` como **texto livre**, sem nenhuma lógica de parsing/webhook acoplada.
-
-### 1.3 Valor de negócio
-
-- **Reduzir no-show e padronizar a comunicação:** o tenant deixa de depender de um texto genérico/cru e passa a enviar mensagens personalizadas com o nome do cliente, serviço, data/hora e nome da empresa — o objetivo central do produto (régua de comunicação). É o degrau que torna o `lembrete_d1` útil e prepara a confirmação interativa da Fatia 2.
-- **Autonomia do admin:** cada empresa edita seus próprios textos sem depender de deploy, dentro do que os planos permitem (produto.md: "mensagens personalizadas" é diferencial dos planos Clínica/Pro).
-- **Segurança como requisito inegociável:** isolamento por tenant (RLS), nada de PII em log, nenhum segredo no cliente. Esta fatia introduz uma nova tabela de domínio — e, portanto, uma nova superfície onde vazamento entre tenants seria defeito grave.
-
-### 1.4 Definição de defeito (do pedido do usuário — cada um vira critério de aceite)
-
-1. Template **vazar entre tenants** (falha de RLS).
-2. **Quebrar o envio sob demanda atual** (regressão do fluxo `send`).
-3. Renderizar **variável não resolvida sem controle** (ex.: enviar `{nome}` cru ao cliente final).
-4. **Expor segredo/PII em log** (telefone, texto com dado pessoal, token).
+> Papel deste documento: requisitos verificáveis, critérios de aceite testáveis, **modelo de
+> dados + migrations + RLS**, e enquadramento no roadmap. Não contém código de aplicação. As
+> decisões de arquitetura de runtime (desenho do webhook, backoff, cron) são refinadas pelo
+> passo de design; aqui fixo o que o schema e as invariantes de segurança **exigem**.
 
 ---
 
-## 2. Enquadramento no roadmap
+## 1. Resumo
 
-| Fase | Entregue | Esta fatia |
-|---|---|---|
-| Fase 1 (MVP) | Conexão por QR, envio **sob demanda** (ADR-04/06/07/08), log `messages`, idempotência por `dedupe_key`, opt-in LGPD | — |
-| **WhatsApp Fase 2 — Fatia 1** | — | **Templates editáveis por tenant + renderização no envio sob demanda** ← este run |
-| WhatsApp Fase 2 — Fatia 2 | — | Confirmação interativa numérica, webhook de entrada Evolution, pg_cron (lembrete D-1), fila de retentativa — **contrato preparado, não implementado** |
-| Fase 3 | — | Link público de autoagendamento, taxa de reserva, métricas (fora de escopo) |
+Hoje o projeto só dispara WhatsApp **sob demanda** (Edge Function `whatsapp`, operação `send`,
+Fatia 1). Esta fatia introduz, pela **primeira vez no projeto**, dois mecanismos novos:
 
-Reuso explícito (não recriar): a coluna `messages.template` **já existe** como enum (`confirmacao|lembrete_d1|cobranca|comprovante`); o conceito de "chave de template" já é usado. A infra privilegiada (Edge Function `whatsapp` com service role, resolução de `tenant_id`/`role` do JWT, opt-in, idempotência, checagem de instância conectada, normalização E.164) **permanece intacta** — esta fatia só troca a origem do `text` enviado ao adapter.
+1. **Disparo automático agendado** (pg_cron) do lembrete D-1 (`lembrete_d1`), varrendo
+   agendamentos com `starts_at` ~24h à frente, ainda não lembrados, com opt-in.
+2. **Webhook de ENTRADA** da Evolution (nova Edge Function) que recebe a resposta do cliente,
+   valida (zod), verifica autenticidade, é idempotente, casa a resposta ao agendamento certo do
+   tenant certo e aplica a transição de estado: `1` → `confirmado` + `confirmed_at`; `2` →
+   mensagem automática de retorno, **sem** alterar o agendamento (decisão "c" do usuário).
+3. **Fila de retentativa** para `messages.status = 'fila'`: reenvio com backoff e limite N,
+   marcando `falha` só após o limite e **nunca** reenviando após a janela útil do lembrete
+   (depois de `starts_at`).
 
----
+O texto do `lembrete_d1` já traz "Responda 1 para confirmar ou 2 para reagendar" (baseline da
+Fatia 1, migration `20250222091000`). A régua de templates server-side, opt-in, idempotência de
+**envio** (`dedupe_key` + índice único parcial), checagem de instância conectada, normalização
+E.164 e o adapter Evolution (mock/real) já existem e **devem ser reusados, não recriados**.
 
-## 3. Requisitos funcionais (verificáveis)
+### Fronteiras invioláveis aplicadas a esta fatia
 
-**RF-T01 — Tabela de templates por tenant.** Existe `message_templates` com uma linha por `(tenant_id, template_key)` para as 4 chaves padrão. `template_key` restrito ao mesmo enum de `messages.template`.
-
-**RF-T02 — Baseline/seed.** Ao criar um tenant novo, os 4 templates padrão em pt-BR são populados automaticamente (o tenant nunca começa sem templates). Para tenants já existentes, uma rotina de baseline idempotente garante as 4 linhas.
-
-**RF-T03 — Leitura dos templates.** A tela de configuração lista os 4 templates do tenant com o texto atual. Papéis que podem **ler**: `admin`. (Decisão de RBAC em §7; recepção/profissional **não** editam e não precisam ler os templates para o envio, pois a renderização é server-side.)
-
-**RF-T04 — Edição pelo admin.** O admin edita o `body` (texto pt-BR) de cada template via tela (`react-hook-form` + `zod`, TanStack Query, mobile-first). A edição persiste em `message_templates` sob RLS do tenant.
-
-**RF-T05 — Conjunto fechado de variáveis.** O corpo suporta um conjunto **fechado e documentado** de variáveis: `{nome}`, `{servico}`, `{dataHora}`, `{empresa}`. Variáveis fora da lista são tratadas como texto literal (não quebram o envio) — ver §6.
-
-**RF-T06 — Renderização no envio (server-side).** No `handleSend`, o `text` enviado ao adapter passa a ser o **body do template do tenant renderizado** (variáveis substituídas), nunca a string crua da chave. A renderização ocorre **no servidor** (Edge Function), com os dados resolvidos sob service role dentro do tenant.
-
-**RF-T07 — Fallback previsível.** Quando um dado de variável faltar (ex.: cliente sem nome, agendamento ausente), a variável é substituída por um fallback pt-BR definido (§6.3) — **nunca** se envia o placeholder cru (`{nome}`) ao cliente final.
-
-**RF-T08 — Preservar o envio atual.** Todos os caminhos atuais de `send` (opt-out, duplicate, not_connected, send_failed, sent) continuam funcionando com os mesmos `outcome`/status HTTP. O contrato de fio de `send` (payload `action|template|customerId|appointmentId?`) **não muda**.
-
-**RF-T09 — Contrato preparado para a Fatia 2 (sem implementar).** O texto do template `lembrete_d1` aceita a instrução numérica `1 confirmar / 2 reagendar` como texto livre. Nenhuma lógica de webhook/parsing/cron é adicionada. A modelagem de `message_templates` não impede evoluir para variações por canal/opção numérica depois.
-
----
-
-## 4. Requisitos não-funcionais
-
-**RNF-T01 — Isolamento multi-tenant (inegociável, RNF03).** `message_templates` tem `tenant_id not null` + índice + RLS habilitado. `tenant_id` deriva do JWT/`profiles` (`current_tenant_id()`), **nunca** de parâmetro do cliente. Um usuário do tenant A nunca lê/edita template do tenant B.
-
-**RNF-T02 — Segredos e PII em log.** A renderização e o envio não logam telefone nem o texto renderizado em claro (mantém a invariante de `messages`: `payload` sem PII, `failure_reason` técnico curto). Token/URL da Evolution continuam só em env do servidor. O body do template **não** é segredo (é conteúdo do tenant), mas o **texto renderizado** (que contém o nome do cliente) **não** vai para log em claro.
-
-**RNF-T03 — TS estrito + validação zod.** Novos tipos tipados (sem `any`). O body do template e o payload de edição são validados com zod no cliente (UX) e o shape lido do banco é validado antes do uso. A lista de variáveis é um enum fechado.
-
-**RNF-T04 — Migration versionada.** Toda mudança de schema é uma migration nova em `supabase/migrations`, nunca editando migration já aplicada. Idempotente no re-apply (`create table if not exists` / `drop policy if exists`).
-
-**RNF-T05 — Determinismo da renderização.** A função de render é pura e determinística dado (template, dados resolvidos): mesma entrada → mesma saída, sem relógio/rede além da resolução de dados do tenant.
+- RLS habilitado em **toda** tabela de domínio nova; nenhuma tabela de tenant sem política.
+- `tenant_id` **nunca** vem do payload do webhook. Na superfície de webhook (pré-autenticação,
+  sem JWT de usuário) o tenant é resolvido **pela instância** (`whatsapp_instances`
+  `.evolution_instance_name` → `tenant_id`), no servidor, com service role.
+- Operações privilegiadas (webhook, cron, transição de status, escrita em `messages`) rodam em
+  Edge Function / função SQL `security definer` com service role. Segredos (token Evolution,
+  service role, segredo de webhook) **só** no servidor/env, nunca no bundle do cliente.
+- Idempotência obrigatória: processar o mesmo evento de entrada duas vezes **não** confirma em
+  duplicidade nem gera efeito repetido. Chave de dedupe = id da mensagem/evento da Evolution.
+- Autenticidade do webhook verificada **antes** de qualquer efeito.
+- Disparo só com `whatsapp_opt_in = true` (LGPD). Sem telefone/texto em claro em log.
 
 ---
 
-## 5. Critérios de aceite (testáveis e numerados)
+## 2. Requisitos funcionais
 
-**AC-01 (RF-T01/RNF-T04).** Aplicada a migration, `message_templates` existe com colunas de §8, `unique (tenant_id, template_key)`, índice em `tenant_id`, RLS habilitado. `supabase db reset`/`supabase start` aplica sem erro.
+**RF-S2-01 — Lembrete D-1 automático (cron).** Um job agendado (pg_cron) executa periodicamente
+e dispara o template `lembrete_d1` para todo agendamento elegível: `status in ('pendente',
+'confirmado')`, `starts_at` dentro da janela ~24h à frente (faixa configurável, p.ex. 23h–25h),
+cliente com `whatsapp_opt_in = true`, instância do tenant `conectado`, e que ainda **não** teve
+lembrete D-1 enfileirado/enviado. O job **não** reenvia após `starts_at` (janela útil vencida).
 
-**AC-02 (RF-T02).** Após `handle_new_user` (cadastro de empresa nova), o novo tenant tem exatamente 4 linhas em `message_templates` (uma por chave), com textos padrão pt-BR não vazios. Reexecutar a baseline em tenant que já tem as 4 linhas **não** duplica (idempotência).
+**RF-S2-02 — Marcação idempotente de "lembrado".** Cada agendamento recebe no máximo um lembrete
+D-1 por ciclo. A elegibilidade deriva da existência (ou não) de uma `messages` com
+`template = 'lembrete_d1'` viva para aquele `appointment_id` — reusando a `dedupe_key` existente
+(`lembrete_d1:a:<appointmentId>`). Rodar o cron duas vezes seguidas não gera dois lembretes.
 
-**AC-03 (RNF-T01 — isolamento, cobre defeito #1).** Com dois tenants A e B: um usuário autenticado do tenant A executa `select * from message_templates` e vê **somente** as linhas de A; tentativa de `update` de uma linha de B é negada por RLS. Teste comprovado via sessão autenticada (anon key + JWT), não service role.
+**RF-S2-03 — Webhook de entrada (nova Edge Function).** Uma Edge Function pública recebe o POST
+de mensagem recebida da Evolution. Ela: (a) verifica autenticidade; (b) valida o payload com zod
+(dado não confiável); (c) deduplica pelo id do evento/mensagem; (d) resolve o tenant pela
+instância; (e) casa a resposta ao agendamento; (f) aplica o efeito. Payload inválido ou não
+autêntico é **rejeitado sem efeito**.
 
-**AC-04 (RF-T03/RF-T04 — RBAC).** Admin consegue `select` e `update` os templates do seu tenant. Um usuário `receptionist`/`professional` **não** consegue `update` (negado por RLS). (Leitura: ver decisão §7 — por padrão só admin lê.)
+**RF-S2-04 — Casamento resposta → agendamento (determinístico).** A partir do telefone do
+remetente normalizado em E.164 + o tenant resolvido pela instância, encontrar o **agendamento
+alvo**: o agendamento do cliente (via `customers.phone` no tenant) com `status in ('pendente',
+'confirmado')`, que teve `lembrete_d1` enviado, cujo `starts_at` está no futuro (janela útil
+ainda aberta), escolhendo o de **`starts_at` mais próximo**. Se não casar nenhum, o evento é
+**logado e ignorado** (sem erro ao provedor, sem efeito).
 
-**AC-05 (RF-T06 — renderização no envio, cobre defeito #2).** Admin edita o template `confirmacao` para `"Olá {nome}, seu horário de {servico} é {dataHora}."`. Dispara "Enviar mensagem" para um cliente com opt-in. O `text` entregue ao adapter é o **texto renderizado** com `{nome}/{servico}/{dataHora}` substituídos pelos dados reais — **não** a string `"confirmacao"`. Verificado ao vivo (mock loga/retorna o que recebeu) e/ou em teste da função de render.
+**RF-S2-05 — Resposta "1" confirma.** Com um agendamento casado e resposta interpretada como
+`1` (confirmar), a Edge Function transiciona `appointments.status → 'confirmado'` via UPDATE
+(respeitando o trigger `appointments_transition_guard`, que carimba `confirmed_at`). Transição
+inválida (ex.: agendamento já `cancelado`) é tratada sem erro fatal e logada.
 
-**AC-06 (RF-T07 — fallback, cobre defeito #3).** Disparo de um template com `{nome}` para um cliente/caso em que o dado falta → o texto enviado contém o **fallback pt-BR** (ex.: "você"/"cliente"), nunca a string literal `{nome}`. Variável fora da lista fechada (ex.: `{foo}`) é mantida como texto literal e não quebra o envio.
+**RF-S2-06 — Resposta "2" retorna mensagem automática (decisão c).** Resposta interpretada como
+`2` (reagendar): a função **não** altera o agendamento. Enfileira uma mensagem automática de
+retorno ("entramos em contato para reagendar") — via `messages` + adapter. Nenhum reagendamento
+automático, nenhuma mudança de horário.
 
-**AC-07 (RF-T08 — sem regressão).** Os 5 `outcome` de `send` (`sent|duplicate|opt_out|not_connected|send_failed`) continuam produzidos nas mesmas condições e com os mesmos status HTTP após a mudança. Opt-in, idempotência (`dedupe_key`) e checagem de instância conectada permanecem antes do envio.
+**RF-S2-07 — Resposta não reconhecida.** Texto que não casa `1`/`2` (após normalização: trim,
+primeiro token, tolerância a "1 confirmar") é logado e ignorado — sem efeito e sem resposta
+automática obrigatória (o design decide se há uma resposta "não entendi"; mínimo: ignorar).
 
-**AC-08 (RNF-T02 — PII/segredo, cobre defeito #4).** Nenhum log da Edge Function imprime telefone do cliente nem o texto renderizado em claro; `messages.payload` continua sem PII; nenhum segredo da Evolution aparece em log/resposta/bundle. `grep` por `VITE_` não encontra chave da Evolution.
+**RF-S2-08 — Fila de retentativa.** Um worker agendado (pg_cron) varre `messages.status = 'fila'`
+cujo disparo via adapter não concluiu, e reenvia com **backoff** respeitando um **limite N** de
+tentativas. Atingido N, marca `status = 'falha'` com `failure_reason`. **Nunca** reenvia um
+lembrete D-1 após o `starts_at` do agendamento associado (janela útil vencida → marca `falha`
+com motivo de janela, não tenta mais).
 
-**AC-09 (RF-T09 — contrato Fatia 2).** O body do `lembrete_d1` aceita e renderiza texto com `1 confirmar / 2 reagendar` sem erro; nenhum endpoint de webhook/entrada nem job de cron é adicionado neste run (verificável por ausência de arquivos/migrations correspondentes).
-
-**AC-10 (build/typecheck + QA ao vivo).** `npm run build` / typecheck limpos. QA ao vivo (chrome-devtools) em `/app/config/whatsapp`: admin edita um template, dispara "Enviar mensagem" (Agenda/Clientes) e confirma que o texto enviado é o renderizado.
-
----
-
-## 6. Modelo de variáveis (lista fechada + fallback)
-
-### 6.1 Lista fechada suportada (Fatia 1)
-
-| Variável | Origem (resolvida no servidor, dentro do tenant) | Observação |
-|---|---|---|
-| `{nome}` | `customers.name` | nome do cliente final |
-| `{servico}` | `services.name` via `appointments.service_id` | só quando há `appointmentId` |
-| `{dataHora}` | `appointments.starts_at` formatado no **timezone do tenant** (`tenants.timezone`, default `America/Sao_Paulo`) | armazenado em UTC, exibido no fuso do tenant (dominio.md) |
-| `{empresa}` | `tenants.trade_name` (fallback `legal_name`) | nome fantasia da empresa |
-
-Recomendação: **lista fechada** travada em um enum/const compartilhado. Variável desconhecida no texto (`{foo}`) **não** é substituída e permanece literal — não quebra o envio e não vaza erro ao cliente. Isso evita que o admin "invente" uma variável e receba um placeholder cru enviado ao cliente.
-
-### 6.2 Onde a renderização acontece
-
-**Decisão: renderização 100% no servidor (Edge Function `whatsapp`, dentro de `handleSend`).** Alternativa considerada — renderizar no cliente e enviar o texto pronto — é **rejeitada**: o cliente não deve resolver dados do tenant para montar o corpo (abriria espaço para o front forjar texto/burlar o log, e o servidor é a fronteira única de envio, ADR-04). O servidor já resolve `customer` sob service role; passa a resolver também `service`/`appointment`/`tenant.trade_name`/`tenant.timezone` e o `body` do template, renderiza e envia. Mantém a invariante "o envio é um ponto privilegiado único e testável".
-
-Fluxo dentro de `handleSend` (após as travas atuais — opt-in, idempotência, instância conectada):
-1. Carregar o `body` do template `message_templates` por `(tenant_id, template_key = input.template)`. Se não houver linha (tenant legado sem baseline), aplicar o **texto padrão de sistema** da chave (fallback de template — §6.4) para nunca enviar vazio nem a chave crua.
-2. Resolver as variáveis necessárias (customer já resolvido; service/appointment/tenant conforme as variáveis presentes no texto).
-3. Renderizar (substituição das variáveis da lista fechada, com fallback por variável faltante).
-4. `adapter.sendText({ ..., text: <renderizado> })`.
-
-### 6.3 Fallback por variável faltante (comportamento previsível)
-
-| Variável | Fallback pt-BR quando o dado falta |
-|---|---|
-| `{nome}` | `cliente` |
-| `{servico}` | `seu atendimento` |
-| `{dataHora}` | `no horário combinado` |
-| `{empresa}` | `nossa equipe` |
-
-Regra invariável (cobre defeito #3): **nunca** renderizar o placeholder cru (`{nome}`) para o cliente final. Se faltar dado, usa o fallback; se a variável for desconhecida, mantém literal (decisão consciente — só as 4 variáveis conhecidas têm fallback).
-
-### 6.4 Fallback de template ausente
-
-Se o tenant não tiver a linha do template (ex.: tenant criado antes da baseline), o servidor usa o **texto de sistema padrão** daquela chave (constante no servidor) — garante que o envio nunca mande a string crua da chave nem texto vazio. A baseline (§4/RF-T02) deve zerar esse caso para tenants existentes.
+**RF-S2-09 — Confirmação enviada registrada.** Toda mensagem de resposta automática (RF-S2-06) é
+registrada em `messages` com opt-in, idempotência e PII mínima, igual ao fluxo `send` da Fatia 1.
 
 ---
 
-## 7. RBAC — quem lê e quem edita templates
+## 3. Requisitos não funcionais
 
-Fronteira do projeto (seguranca-multitenant.md): `admin` = tudo no tenant; `professional` = só a própria agenda; `receptionist` = agendamentos sem dados financeiros.
-
-Template de mensagem **não** é dado financeiro, mas é **configuração do tenant** (como serviços, horários, conexão de WhatsApp). O padrão do projeto para configuração é "só admin edita" (ex.: `whatsapp_instances_write_admin`, `tenants_update_own_admin`).
-
-**Decisão recomendada:**
-- **Edição (`insert`/`update`/`delete`): somente `admin`.** Espelha `whatsapp_instances` e `tenants` (configuração do dono). Alinha com o pedido ("RBAC admin edita").
-- **Leitura (`select`): somente `admin`.** Justificativa: a renderização é server-side (service role), então recepção/profissional **não precisam** ler `message_templates` para disparar — o envio funciona sem que esses papéis vejam/editem o texto. Restringir a leitura ao admin reduz a superfície e mantém a configuração como assunto do dono do tenant. Isto **não** quebra o envio sob demanda (que continua disponível a admin/receptionist/professional via `canSendWhatsAppMessage`), porque quem lê o template no envio é a Edge Function com service role, não o cliente.
-
-Consequência de UI: a tela de edição de templates fica sob guard de `admin` (novo permission flag, ex.: `canManageWhatsAppTemplates = isAdmin`), coerente com `canManageWhatsAppConnection`. `super_admin` **sem** caminho cross-tenant pelo cliente a esta tabela (coerente com as demais tabelas de domínio).
+- **RNF-S2-01 (isolamento multi-tenant, inegociável).** Webhook e cron nunca cruzam tenants. No
+  webhook, o tenant vem da instância; o casamento filtra por `tenant_id`. No cron, cada linha
+  processada carrega seu `tenant_id`.
+- **RNF-S2-02 (idempotência).** Evento de entrada processado no máximo uma vez (dedupe por id do
+  evento). Lembrete D-1 enfileirado no máximo uma vez por agendamento/ciclo.
+- **RNF-S2-03 (autenticidade).** Webhook verifica token/assinatura antes de qualquer leitura de
+  negócio. Segredo do webhook em env, nunca no cliente.
+- **RNF-S2-04 (LGPD / PII).** Disparo só com opt-in. `messages.payload` e logs **sem** telefone,
+  documento ou texto em claro. O telefone recebido do webhook não é persistido em claro em
+  `webhook_events` — só o necessário para dedupe/diagnóstico, e preferencialmente hasheado ou
+  omitido.
+- **RNF-S2-05 (segredos no servidor).** Token Evolution, service role e segredo do webhook só em
+  Edge Functions / secrets. Nenhum `VITE_*`.
+- **RNF-S2-06 (resiliência).** Falha temporária não perde mensagem (fila + retentativa). Erros do
+  provedor/rede são não-fatais e registrados.
+- **RNF-S2-07 (versionamento).** Todo schema e todo agendamento de cron em **migration** nova;
+  nunca editar migration já aplicada. Mudança ao enum de `messages.template` (ver §5) é migration
+  nova.
 
 ---
 
-## 8. Modelo de dados
+## 4. Enquadramento no roadmap
 
-### 8.1 Decisão: tabela própria `message_templates` (não "defaults de sistema + override difuso")
+Produto (produto.md): a confirmação interativa D-1 é objetivo central — **reduzir no-show**.
+A skill whatsapp-evolution lista isto como RF10/RF11 + RNF04 (fila de retentativa). Esta é a
+**Fatia 2 da Fase 2 do WhatsApp**, logo após a Fatia 1 (templates + render server-side, já em
+`master`).
 
-Duas abordagens consideradas:
+- **Entra agora:** lembrete D-1 automático (cron), webhook de entrada, confirmação por resposta
+  numérica `1`, resposta `2` = mensagem automática de retorno (tratamento manual), fila de
+  retentativa.
+- **Fora (Fase 3 / outras fatias):** botões interativos (resposta é **numérica**),
+  reagendamento automático, autoagendamento público e métricas consolidadas, módulo Asaas/PIX
+  (`cobranca`/`comprovante` seguem só sob demanda nesta fatia).
 
-- **(A) Tabela `message_templates` por tenant com uma linha por `(tenant_id, template_key)`**, semeada com os 4 padrões no cadastro. ✅ **Escolhida.**
-- (B) Defaults de sistema em código + tabela de override só quando o tenant customiza. ❌ Rejeitada: cria dois caminhos de leitura (código vs. banco), complica a tela (estado "herdado" vs "customizado") e dificulta a evolução (planos que permitem/limitam customização, histórico). A simplicidade de "sempre há 4 linhas por tenant" vence, e o fallback de template ausente (§6.4) cobre o tenant legado até a baseline rodar.
+Precedência correta: a máquina de estados de `appointments` (confirmado + `confirmed_at`) e a
+tabela `messages` com idempotência de envio já existem — esta fatia **consome** essas fundações.
 
-A convenção do projeto (tabelas com `tenant_id not null default current_tenant_id()` + RLS) favorece (A) e reusa todo o padrão já estabelecido em `whatsapp_instances`/`messages`.
+---
 
-### 8.2 Tabela `message_templates`
+## 5. Modelo de dados e migrations
 
-| Coluna | Tipo | Regras |
-|---|---|---|
-| `id` | `uuid` | PK, `default gen_random_uuid()` |
-| `tenant_id` | `uuid` | `not null default current_tenant_id()`, FK `tenants(id) on delete cascade`, indexado |
-| `template_key` | `text` | `not null`, `check (template_key in ('confirmacao','lembrete_d1','cobranca','comprovante'))` — espelha `messages.template` |
-| `body` | `text` | `not null`, `check (char_length(body) between 1 and 2000)` — texto pt-BR com variáveis |
-| `active` | `boolean` | `not null default true` — permite desativar um template sem apagar (reservado; Fatia 1 mantém sempre `true`) |
-| `updated_at` | `timestamptz` | `not null default now()` (UTC) |
-| `created_at` | `timestamptz` | `not null default now()` (UTC) |
+Princípio de reuso: **não** recriar `messages`, `appointments`, `whatsapp_instances`,
+`message_templates` nem seus helpers RLS. As migrations novas são **aditivas**.
 
-Restrições/índices:
-- `unique (tenant_id, template_key)` — uma linha por chave por tenant (trava no banco, não só na UI).
-- `create index message_templates_tenant_id_idx on message_templates (tenant_id)`.
+### 5.0 Convenção de nomes das migrations
+Continuar a sequência de timestamp. Sugestão (o design/planejador fixa os nomes exatos):
+`20250223090000_messages_retry_fields.sql`, `20250223091000_webhook_events.sql`,
+`20250223092000_pg_cron_setup.sql`, `20250223093000_lembrete_d1_job.sql`,
+`20250223094000_retry_worker_job.sql`. Uma responsabilidade por migration (padrão do projeto).
 
-Notas de convenção: inglês/snake_case/plural; sem dinheiro; tempo em `timestamptz` UTC; nenhum segredo no SQL. **Sem** coluna de telefone/PII (o template é texto com placeholders, não dado pessoal).
+### 5.1 Nova tabela: `webhook_events` (idempotência + auditoria de entrada)
 
-> Observação sobre o contrato da Fatia 2: `template_key` como enum de 4 chaves é suficiente agora. Se a confirmação interativa exigir variações (ex.: versão com opções numéricas), isso será uma mudança **aditiva** futura (coluna/variante nova), não uma quebra — a modelagem atual não impede.
-
-### 8.3 Migrations (SQL versionado — não editar migrations aplicadas)
-
-Duas migrations novas em `supabase/migrations`, com timestamp posterior à última aplicada (`20250221091000_schedule_overrides.sql`):
-
-**Migration 1 — `<timestamp>_message_templates.sql`** (esboço de schema, não é código de app):
+**Por que uma tabela própria** (e não uma coluna em `messages`): o evento de entrada é um objeto
+distinto de um disparo de saída — chega **antes** de sabermos a qual agendamento casa, pode não
+casar nenhum, e precisa de uma chave de dedupe própria (id da mensagem da Evolution). Persistir o
+evento recebido é o que garante a idempotência do webhook (defeito #1 do papel): se o mesmo
+evento chegar de novo, a 2ª gravação viola o índice único e o processamento para antes de
+qualquer efeito.
 
 ```sql
--- message_templates — texto editável por tenant da régua de comunicação (WhatsApp Fase 2 Fatia 1).
--- Isolamento multi-tenant (RNF03): tenant_id default current_tenant_id() (deriva do JWT/profiles,
--- NUNCA do cliente), índice por tenant, RLS habilitado. Helpers current_tenant_id()/
--- current_role_name() (security definer) reutilizados — NÃO recriados.
--- RBAC: só admin lê e edita (configuração do dono do tenant, espelha whatsapp_instances/tenants).
--- A renderização do envio é server-side (service role, Edge Function) — recepção/profissional
--- não precisam ler esta tabela para disparar.
-
-create table if not exists message_templates (
-  id           uuid primary key default gen_random_uuid(),
-  tenant_id    uuid not null default current_tenant_id() references tenants (id) on delete cascade,
-  template_key text not null
-               check (template_key in ('confirmacao','lembrete_d1','cobranca','comprovante')),
-  body         text not null check (char_length(body) between 1 and 2000),
-  active       boolean not null default true,
-  updated_at   timestamptz not null default now(),
-  created_at   timestamptz not null default now(),
-  constraint message_templates_tenant_key_unique unique (tenant_id, template_key)
+create table if not exists webhook_events (
+  id                   uuid primary key default gen_random_uuid(),
+  -- resolvido pela instância (whatsapp_instances), NUNCA do payload. Pode ser null se a
+  -- instância não casar nenhum tenant (evento órfão) — ainda assim registrado p/ auditoria.
+  tenant_id            uuid references tenants (id) on delete cascade,
+  -- origem do evento; hoje só 'evolution'.
+  source               text not null default 'evolution' check (source in ('evolution')),
+  -- id da mensagem/evento da Evolution — CHAVE DE DEDUPE. Único por (source, external_event_id).
+  external_event_id    text not null,
+  -- nome da instância que recebeu (liga ao tenant); sem segredo.
+  instance_name        text,
+  -- 'recebido' | 'processado' | 'ignorado' | 'rejeitado' (autenticidade/schema) | 'erro'.
+  status               text not null default 'recebido'
+                       check (status in ('recebido','processado','ignorado','rejeitado','erro')),
+  -- agendamento casado quando houver (FK composta por tenant, igual a messages).
+  appointment_id       uuid,
+  -- resultado interpretado: 'confirmar' | 'reagendar' | 'nao_reconhecido' | null.
+  parsed_intent        text check (parsed_intent in ('confirmar','reagendar','nao_reconhecido')),
+  -- metadados SEM PII: telefone NÃO em claro (hash ou omitido); sem texto cru da mensagem.
+  payload              jsonb not null default '{}'::jsonb,
+  failure_reason       text,
+  created_at           timestamptz not null default now(),
+  -- FK composta por tenant: evento só liga a agendamento do MESMO tenant (MATCH SIMPLE: só
+  -- valida quando appointment_id não é nulo).
+  constraint webhook_events_appointment_fk
+    foreign key (tenant_id, appointment_id) references appointments (tenant_id, id) on delete set null
 );
 
-create index if not exists message_templates_tenant_id_idx on message_templates (tenant_id);
-
-alter table message_templates enable row level security;
-
--- SELECT: só admin do tenant (configuração do dono). super_admin sem caminho pelo cliente.
-drop policy if exists message_templates_select_admin on message_templates;
-create policy message_templates_select_admin on message_templates for select
-  using (tenant_id = current_tenant_id() and current_role_name() = 'admin');
-
--- WRITE (insert/update/delete): só admin do tenant. WITH CHECK espelha o USING para barrar
--- gravar linha de outro tenant (com o default, o INSERT do cliente — sem tenant_id — recebe o
--- tenant do JWT e passa; cross-tenant barrado). A baseline roda via service role (bypassa RLS).
-drop policy if exists message_templates_write_admin on message_templates;
-create policy message_templates_write_admin on message_templates for all
-  using (tenant_id = current_tenant_id() and current_role_name() = 'admin')
-  with check (tenant_id = current_tenant_id() and current_role_name() = 'admin');
+-- DEDUPE real sob concorrência: o mesmo evento da Evolution só entra uma vez.
+create unique index if not exists webhook_events_dedupe_uidx
+  on webhook_events (source, external_event_id);
+create index if not exists webhook_events_tenant_idx on webhook_events (tenant_id);
+create index if not exists webhook_events_tenant_appointment_idx
+  on webhook_events (tenant_id, appointment_id);
 ```
 
-**Migration 2 — `<timestamp>_message_templates_baseline.sql`** (seed/baseline, RF-T02/AC-02):
+**RLS de `webhook_events`.** Habilitar RLS. Esta tabela é escrita **só** pela Edge Function de
+webhook (service role, bypassa RLS) — nenhuma política de INSERT/UPDATE/DELETE para o cliente
+(mesmo padrão de `messages`). Para leitura: é **log operacional de comunicação** (não financeiro),
+então segue o padrão de `messages` — `admin`/`receptionist`/`professional` do tenant leem via
+`tenant_id = current_tenant_id()` e `current_role_name() in (...)`. `super_admin` sem caminho pelo
+cliente.
 
-Responsabilidades:
-1. Uma função `security definer` `seed_message_templates(tenant_id)` que insere as 4 chaves com textos padrão pt-BR, `on conflict (tenant_id, template_key) do nothing` (idempotente). Roda fora do RLS, como as demais funções de signup.
-2. Backfill idempotente para tenants existentes: `insert ... select` cruzando `tenants` com as 4 chaves, `on conflict do nothing`.
-3. Acoplar a baseline ao cadastro de empresa: estender `handle_new_user()` (ou chamar `seed_message_templates(v_tenant_id)` a partir dele) para popular os 4 templates no mesmo fluxo atômico do signup. **Reusar o padrão** da migration `20250216092000_signup_trigger.sql`; esta migration 2 **recria** `handle_new_user` com `create or replace` (nunca editando a migration antiga).
+```sql
+alter table webhook_events enable row level security;
 
-Textos padrão pt-BR (esboço — o planejamento/implementação fixa a redação final; manter `{nome}/{servico}/{dataHora}/{empresa}` e, no `lembrete_d1`, o `1 confirmar / 2 reagendar` como texto livre):
-
+drop policy if exists webhook_events_select_same_tenant on webhook_events;
+create policy webhook_events_select_same_tenant on webhook_events for select
+  using (
+    tenant_id = current_tenant_id()
+    and current_role_name() in ('admin','receptionist','professional')
+  );
+-- Sem policy de INSERT/UPDATE/DELETE: gravação exclusiva da Edge Function (service role).
 ```
-confirmacao:  "Olá {nome}! Seu horário de {servico} na {empresa} está marcado para {dataHora}."
-lembrete_d1:  "Oi {nome}, lembrete do seu {servico} na {empresa} em {dataHora}. Responda 1 para confirmar ou 2 para reagendar."
-cobranca:     "Olá {nome}, segue a cobrança do seu {servico} na {empresa}."
-comprovante:  "Recebemos o pagamento do seu {servico} na {empresa}. Obrigado, {nome}!"
+
+> **Alternativa considerada e descartada:** coluna `external_event_id` em `messages`. Descartada
+> porque o evento de entrada frequentemente **não** gera uma linha de `messages` (resposta que
+> não casa, evento duplicado, resposta `1` que só muda `appointments`), então pendurar dedupe de
+> entrada em `messages` acopla dois ciclos de vida distintos e deixa buracos na idempotência.
+
+### 5.2 Campos de retentativa em `messages` (migration aditiva — ALTER)
+
+`messages` já tem `status in ('fila','enviado','entregue','falha')`, `dedupe_key`,
+`failure_reason`, `provider_message_id`. Falta o estado de **retentativa**. Adicionar por ALTER
+(migration nova — nunca editar a migration `20250220091000` já aplicada):
+
+```sql
+alter table messages
+  add column if not exists attempts        int not null default 0,
+  add column if not exists max_attempts     int not null default 5,
+  add column if not exists next_attempt_at  timestamptz,       -- quando o worker pode reenviar
+  add column if not exists last_attempt_at  timestamptz;
+
+-- Índice para o worker varrer a fila elegível sem full scan:
+create index if not exists messages_retry_due_idx
+  on messages (status, next_attempt_at)
+  where status = 'fila';
 ```
 
-> `cobranca`/`comprovante` referem valores/PIX; a Fatia 1 só renderiza as 4 variáveis da lista fechada. Variáveis de valor (ex.: `{valor}`) são fora de escopo desta fatia (dependem do módulo Asaas/cobranças) — ficam como evolução aditiva futura, não bloqueiam este run.
+- `attempts` / `max_attempts` (N): limite de tentativas.
+- `next_attempt_at`: agenda o próximo reenvio (backoff exponencial calculado pelo worker).
+- **Janela útil:** o worker reusa o vínculo `appointment_id` → `appointments.starts_at`. Se
+  `now() >= starts_at` para `template = 'lembrete_d1'`, marca `falha` (motivo `janela_vencida`),
+  não tenta mais.
 
-### 8.4 Impacto na Edge Function (contrato de dados — não é código aqui)
+> O índice único parcial de idempotência de envio (`messages_dedupe_uidx` sobre `fila|enviado|
+> entregue`) permanece válido — a retentativa atualiza a mesma linha `fila`, sem criar nova.
 
-- `handleSend` passa a, após as travas atuais, **ler o `body`** de `message_templates` por `(tenant_id, template.input)` (service role, dentro do tenant já resolvido), **resolver** as variáveis e **renderizar**, enviando o texto ao adapter.
-- Resolução adicional sob service role: `services.name` (via `appointments.service_id` quando `appointmentId` presente), `appointments.starts_at`, `tenants.trade_name` + `tenants.timezone`. Tudo filtrado por `tenant_id` derivado do JWT.
-- `messages.payload` continua sem PII: pode registrar `template_key` e metadados não sensíveis, **nunca** o texto renderizado com o nome do cliente nem o telefone.
-- O contrato de fio de `send` (payload e `SendResponse`) **não muda** — logo, os schemas zod do frontend e os DTOs em `src/lib/whatsapp.ts` não precisam alterar por causa do envio (a mudança de UI é a nova tela de templates, não o diálogo de envio).
+### 5.3 Enum `messages.template`: resposta automática de reagendamento
+
+O `check` atual de `messages.template` é `('confirmacao','lembrete_d1','cobranca','comprovante')`.
+A mensagem automática do RF-S2-06 ("entramos em contato para reagendar") precisa de uma chave.
+
+**Decisão:** adicionar um novo valor de template, `reagendar_retorno`, ao `check` de
+`messages.template` **e** a `message_templates` (nova chave de baseline/seed). Migration nova que:
+(1) recria o `check` de `messages.template` incluindo `reagendar_retorno` (via
+`drop constraint` + `add constraint`, idempotente); (2) estende `message_templates.template_key`
+e as funções `seed_message_templates` / `handle_new_user` (via `create or replace`, preservando o
+corpo) + backfill idempotente com o texto padrão pt-BR do novo template.
+
+Texto padrão sugerido (pt-BR, sem PII, variáveis da lista fechada):
+`'Oi {nome}, recebemos seu pedido de reagendar o {servico} na {empresa}. Nossa equipe entra em contato para marcar um novo horário.'`
+
+> **Alternativa descartada:** reusar `confirmacao` para o retorno de reagendamento. Descartada
+> porque polui a semântica do log e do dedupe, e o texto é diferente. Um template próprio mantém
+> o render server-side e a idempotência coerentes.
+
+### 5.4 pg_cron: disponibilidade e agendamento
+
+**Disponibilidade.** `pg_cron` **não** está habilitado hoje (grep não encontrou referência; as
+únicas extensões são `pgcrypto` e `btree_gist`). No Supabase hospedado, `pg_cron` roda no schema
+`cron` e é habilitável por `create extension`. No ambiente **local** (CLI, Postgres 15 do
+`config.toml`), `pg_cron` precisa estar na imagem; pode não estar disponível. **Decisão de
+schema:** a migration de setup usa `create extension if not exists pg_cron;` e, para a chamada
+HTTP à Edge Function, `create extension if not exists pg_net;` (ou `http`). O **design** decide o
+mecanismo de invocação (pg_net POST para a Edge Function vs. função SQL local); este documento
+exige apenas que:
+
+- o agendamento seja **versionado em migration** (nunca criado só pela UI do Supabase);
+- o cron chame uma **Edge Function com service role** (ou função `security definer`), nunca lógica
+  no cliente;
+- a granularidade seja a cada poucos minutos (p.ex. `*/5 * * * *`) tanto para o lembrete D-1
+  quanto para o worker de retentativa (dois jobs distintos);
+- se `pg_cron` não estiver disponível no ambiente local, a migration **não** pode quebrar o
+  `db reset` — envolver o `cron.schedule` em bloco condicional (`do $$ ... if exists(select from
+  pg_extension where extname='pg_cron') ...`) e **documentar** que o agendador real só é
+  verificado em ambiente com a extensão; a lógica de seleção (a query SQL/função que lista
+  elegíveis) é testada isoladamente.
+
+**Isolamento por tenant no cron.** O job varre **todos** os tenants, mas cada linha candidata
+carrega seu `tenant_id`; o disparo é por agendamento, e a resolução de instância/opt-in/janela é
+por tenant. Nenhum `tenant_id` de parâmetro externo.
+
+### 5.5 Resolução de tenant no webhook (sem JWT de usuário)
+
+O webhook de entrada **não** tem JWT de usuário — a autenticidade é por token/assinatura do
+provedor. O `tenant_id` é resolvido assim, no servidor, com service role:
+
+1. A Evolution entrega o evento identificando a **instância** (`instance`/`instanceName` no
+   payload). Validar com zod.
+2. `select tenant_id from whatsapp_instances where evolution_instance_name = <instance>` →
+   `tenant_id`. Se não casar, evento **órfão**: registrar em `webhook_events` com `tenant_id` null
+   e `status = 'ignorado'`.
+3. Todo o resto (busca de `customers` por telefone, agendamento, UPDATE) filtra por esse
+   `tenant_id`. **Nunca** confiar em `tenant_id` do payload.
+
+> Isto espelha a convenção da skill whatsapp-evolution: "resolver o tenant pela instância, nunca
+> por parâmetro do cliente".
+
+### 5.6 Autenticidade do webhook (Evolution v2.3.7)
+
+A versão em uso (v2.3.7, confirmada no adapter) autentica chamadas de saída com header `apikey`.
+Para o **webhook de entrada**, a Evolution não assina HMAC por padrão; o mecanismo prático e
+recomendado é um **segredo compartilhado** que o Atlas controla:
+
+- **Decisão:** exigir um token secreto na borda — ou um header fixo configurado na Evolution
+  (`Authorization`/`apikey` custom) **ou** um segredo embutido no path/query da URL de webhook
+  registrada na instância (ex.: `/whatsapp-inbound?token=<segredo>`), comparado em
+  **tempo constante** contra `WHATSAPP_WEBHOOK_SECRET` do env. Sem match → `401`, registra
+  `rejeitado`, nenhum efeito.
+- O segredo vive **só** em env/secret do servidor (`supabase/functions/.env.example` ganha
+  `WHATSAPP_WEBHOOK_SECRET=` e `EVOLUTION_WEBHOOK_*` conforme o design). Nunca `VITE_*`, nunca no
+  bundle.
+- O design **deve confirmar na doc da Evolution v2.3.7** o formato exato do payload de
+  `messages.upsert`/webhook de entrada (campos `key.id`, `key.remoteJid`, `message.conversation`
+  / `extendedTextMessage.text`, `instance`) e validar tudo com zod antes de usar.
+
+### 5.7 Checklist de migration (por migration nova)
+
+- [ ] `webhook_events`: `tenant_id` + índice + RLS habilitado + dedupe único
+      `(source, external_event_id)`; sem policy de write p/ cliente.
+- [ ] `messages` ALTER: campos de retentativa + índice da fila; não editar a migration original.
+- [ ] enum `messages.template` + `message_templates` estendidos para `reagendar_retorno` (drop/add
+      constraint idempotente; `create or replace` nas funções; backfill `on conflict do nothing`).
+- [ ] pg_cron/pg_net via `create extension if not exists`; `cron.schedule` condicional p/ não
+      quebrar `db reset` sem a extensão.
+- [ ] Nenhum segredo no SQL. Dinheiro N/A nesta fatia; tempo em `timestamptz` UTC.
+- [ ] Testado que usuário de outro tenant **não** lê `webhook_events`.
 
 ---
 
-## 9. Riscos e invariantes de segurança (checklist de fronteira)
+## 6. Critérios de aceite (testáveis, numerados)
 
-- [ ] **RLS em `message_templates`** habilitado; `tenant_id` do JWT, nunca do cliente (RNF-T01, AC-03). Barrar cross-tenant comprovado com sessão autenticada.
-- [ ] **WITH CHECK** presente nas policies de escrita (evita inserir linha de outro tenant).
-- [ ] **Recursão de RLS** evitada: reusar `current_tenant_id()`/`current_role_name()` (security definer), não reimplementar.
-- [ ] **Renderização server-side**; o cliente nunca monta o texto final (fecha a porta a forjar corpo/burlar log).
-- [ ] **PII/segredo em log:** sem telefone/texto renderizado em claro; token Evolution só em env; nenhuma var `VITE_` com segredo (RNF-T02, AC-08).
-- [ ] **Fallback previsível:** nunca enviar `{nome}` cru; lista de variáveis fechada (RF-T05/RF-T07, AC-06).
-- [ ] **Sem regressão do `send`:** opt-in, idempotência (`dedupe_key`), instância conectada preservados; 5 outcomes intactos (AC-07).
-- [ ] **Migration nova e idempotente;** nenhuma migration aplicada é editada (RNF-T04).
-- [ ] **Baseline idempotente;** novo tenant nasce com 4 templates; tenant legado backfilled sem duplicar (RF-T02, AC-02).
-- [ ] **Fatia 2 não antecipada:** nenhum webhook/cron/parsing adicionado; só o contrato preparado (AC-09).
+1. **AC-01 (cron dispara D-1):** com um agendamento `pendente` de cliente `opt_in=true`, instância
+   `conectado`, `starts_at` ~24h à frente e sem `lembrete_d1` prévio, a execução do job enfileira
+   exatamente uma `messages` `template='lembrete_d1'`. (Testável chamando a função/SQL de
+   elegibilidade sem o scheduler real.)
+2. **AC-02 (cron idempotente):** executar o job duas vezes seguidas **não** cria um segundo
+   `lembrete_d1` para o mesmo agendamento.
+3. **AC-03 (sem opt-in não dispara):** agendamento de cliente `opt_in=false` **não** gera
+   `lembrete_d1`.
+4. **AC-04 (janela vencida):** agendamento com `starts_at` no passado **não** recebe D-1 (nem
+   novo, nem retentativa).
+5. **AC-05 (webhook autêntico):** POST sem o segredo correto retorna `401`, registra
+   `webhook_events.status='rejeitado'` e **nenhum** agendamento muda.
+6. **AC-06 (webhook schema inválido):** payload que falha o zod retorna `400`/registro
+   `rejeitado`, sem efeito.
+7. **AC-07 (resposta "1" confirma):** evento válido com texto `1` casado a um agendamento
+   `pendente`/`confirmado` do tenant certo leva `appointments.status='confirmado'` e
+   `confirmed_at` carimbado; `webhook_events.status='processado'`, `parsed_intent='confirmar'`.
+8. **AC-08 (idempotência de entrada):** reenviar o **mesmo** evento (mesmo `external_event_id`)
+   **não** gera segunda confirmação nem segundo efeito; a 2ª gravação em `webhook_events` é
+   barrada pelo índice único e o processamento para antes do efeito.
+9. **AC-09 (resposta "2" não altera):** evento com texto `2` casado a um agendamento **não** muda
+   `appointments.status`; enfileira uma `messages` `template='reagendar_retorno'`;
+   `webhook_events.parsed_intent='reagendar'`.
+10. **AC-10 (não casa):** evento de um telefone sem agendamento elegível no tenant é registrado
+    `ignorado` e não produz efeito nem erro ao provedor.
+11. **AC-11 (isolamento no casamento):** um telefone que existe em dois tenants só casa com o
+    agendamento do tenant **da instância** que recebeu; nunca confirma agendamento de outro
+    tenant.
+12. **AC-12 (transição inválida é segura):** resposta `1` para um agendamento já `cancelado`/
+    `concluido` **não** derruba a função (erro do trigger tratado), registra o resultado e segue.
+13. **AC-13 (retentativa com backoff):** uma `messages` em `fila` que falhou no envio é reenviada
+    pelo worker respeitando `next_attempt_at`; `attempts` incrementa a cada tentativa.
+14. **AC-14 (limite N):** após `attempts >= max_attempts` a mensagem vira `falha` com
+    `failure_reason` e não é mais reenviada.
+15. **AC-15 (retentativa respeita janela):** `lembrete_d1` em `fila` cujo agendamento já passou de
+    `starts_at` é marcado `falha` (`janela_vencida`) e não reenviado.
+16. **AC-16 (RLS webhook_events):** usuário autenticado do tenant A não lê `webhook_events` do
+    tenant B; o cliente não consegue INSERT/UPDATE/DELETE em `webhook_events`.
+17. **AC-17 (PII mínima):** `webhook_events.payload`, `messages.payload` e os logs não contêm
+    telefone, documento nem o texto cru da mensagem em claro.
+18. **AC-18 (sem segredo no cliente):** nenhum segredo de webhook/Evolution/service role aparece
+    no bundle do frontend nem em arquivo versionado; só `.env.example` com chaves vazias.
+19. **AC-19 (migrations versionadas):** todo schema/cron desta fatia está em migration nova; o
+    `db reset` roda limpo (ou, sem pg_cron local, não quebra e documenta a limitação).
+20. **AC-20 (build/typecheck):** `deno check` da(s) Edge Function(s) e o typecheck do projeto
+    passam limpos; QA ao vivo do webhook com payload simulado cobre `1`, `2`, duplicado e
+    inválido/não-autêntico.
 
 ---
 
-## 10. Testabilidade
+## 7. Fora de escopo
 
-- **Unit (render):** a função de renderização (template + dados → texto) é pura e determinística — testável isolada: substituição correta, fallback por variável faltante, variável desconhecida mantida literal, template ausente cai no padrão de sistema (RNF-T05, AC-05/AC-06).
-- **Integração (RLS):** testar com duas sessões autenticadas (dois tenants) que A não lê/edita template de B e que receptionist/professional não editam (AC-03/AC-04). Testar via anon key + JWT, não service role.
-- **Integração (envio):** com o adapter mock, verificar que `sendText` recebe o texto renderizado e que os 5 outcomes continuam corretos (AC-05/AC-07).
-- **Migration/baseline:** `supabase db reset` aplica as duas migrations; cadastro de empresa nova gera 4 templates; backfill não duplica (AC-01/AC-02).
-- **Build/QA:** `npm run build`/typecheck limpos; QA ao vivo em `/app/config/whatsapp` (AC-10). Ambiente: `supabase start`; `supabase functions serve whatsapp --env-file supabase/functions/.env`; `npm run dev`.
+- Botões/listas interativas da Evolution (resposta é **numérica**, texto livre).
+- Reagendamento automático / mudança de horário por resposta `2` (decisão "c": só mensagem de
+  retorno + tratamento manual).
+- Autoagendamento público, métricas consolidadas, módulo Asaas/PIX (`cobranca`/`comprovante`
+  seguem só sob demanda).
+- Recorte de leitura de `messages`/`webhook_events` por profissional (fase futura).
+- Múltiplas instâncias de WhatsApp por tenant.
 
 ---
 
-## 11. Fora de escopo (reafirmado)
+## 8. Premissas e pontos para o design resolver
 
-Confirmação interativa, webhook de entrada da Evolution, pg_cron/agendador, fila de retentativa, botões interativos, variáveis de valor/PIX (`{valor}`), customização por plano, histórico/versionamento de templates. Tudo isso é Fatia 2+ ou fase futura — não implementar neste run; apenas não fechar a porta para a evolução aditiva.
+- **Premissa:** a Evolution v2.3.7 entrega o evento de entrada identificando a instância e o id da
+  mensagem; o design confirma os campos exatos na doc e os valida com zod.
+- **Premissa:** o segredo do webhook é um token compartilhado controlado pelo Atlas
+  (`WHATSAPP_WEBHOOK_SECRET`), já que a Evolution não assina HMAC por padrão.
+- **A decidir no design:** webhook como nova Edge Function (ex.: `whatsapp-inbound`) vs. nova rota
+  na função `whatsapp` — o schema não depende disso; recomendação: **função separada** (superfície
+  pública sem JWT, modelo de auth distinto do `send` autenticado por JWT).
+- **A decidir no design:** mecanismo de invocação do cron (pg_net POST para a Edge Function vs.
+  função SQL `security definer` que faz o trabalho) e os parâmetros de backoff (base, fator, N).
+- **A decidir no design:** faixa exata da janela D-1 (ex.: 23h–25h) e granularidade do cron.
+- **Nunca descartado:** todos os pontos do usuário (lembrete numérico via pg_cron; "responder 1
+  marca confirmado"; resposta 2 = opção c; fila de retentativa) estão cobertos acima.

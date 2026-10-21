@@ -1,350 +1,300 @@
-# PRD — WhatsApp Fase 2, Fatia 1: Templates de mensagem editáveis por tenant
+# PRD — Fatia 2 do WhatsApp (Fase 2): Confirmação interativa D-1
 
-Projeto: **atlas-agenda** · base: `master` (default branch) · tipo de rota: **Feature**
-Documento de **contrato da demanda** (o QUE precisa existir e COMO se prova). A solução técnica
-detalhada vem nas ADRs do planejamento, após a aprovação humana deste PRD.
+> **Status:** aguardando aprovação humana (`prd-approval.json → "pending"`).
+> **Tipo de rota:** Feature (pesada — primeira vez que o projeto tem webhook de ENTRADA
+> da Evolution e job agendado via pg_cron).
+> **Base:** `master` (já contém a Fatia 1: `message_templates` + render server-side no
+> `handleSend`; `lembrete_d1` já traz o texto "Responda 1 para confirmar ou 2 para reagendar").
+> **Entrega:** branch nova + commit; **sem** merge em master (o usuário abre PR/merge).
 
-Fontes consolidadas: `analysis-data.md` (dados/segurança), `analysis-frontend.md` (frontend),
-steerings `produto.md` / `dominio.md` / `stack.md` / `seguranca-multitenant.md` /
-`convencoes-codigo.md`, e leitura do código atual (`supabase/functions/whatsapp/index.ts`,
-`src/types/domain.ts`, `src/lib/whatsapp.ts`, `src/hooks/usePermissions.ts`, `src/router.tsx`).
+Este PRD é o **contrato** da demanda: descreve O QUE precisa existir e COMO se prova que
+ficou pronto. O desenho técnico detalhado (desenho do webhook, backoff, invocação do cron,
+nomes de migration) vem nas ADRs do planejamento, após a aprovação humana deste documento.
 
 ---
 
 ## 1. Problema e valor de negócio
 
-Hoje o disparo de WhatsApp sob demanda envia **texto cru**: em
-`supabase/functions/whatsapp/index.ts`, `handleSend` chama
-`adapter.sendText({ ..., text: input.template })` — ou seja, manda a **string da chave**
-(`"confirmacao"`, `"lembrete_d1"`, …) como se fosse o corpo da mensagem. O cliente final recebe
-literalmente a palavra-chave, não uma mensagem útil.
+Hoje o Atlas Agenda só dispara WhatsApp **sob demanda** (Fatia 1). O objetivo central do
+produto — **reduzir no-show** com confirmação interativa automática 24h antes (D-1,
+`produto.md`) — ainda não existe de ponta a ponta: o texto do lembrete já menciona "responda
+1 ou 2", mas nada dispara esse lembrete sozinho nem escuta a resposta do cliente.
 
-Esta fatia entrega o **CRUD de templates de mensagem por tenant**, com **variáveis**, e troca a
-origem do texto enviado: o disparo passa a usar o **template renderizado do tenant** (variáveis
-substituídas, com fallback previsível). Valor quando estiver pronto:
+Quando esta fatia estiver pronta:
 
-- **Comunicação personalizada e padronizada:** cada empresa envia mensagens com nome do cliente,
-  serviço, data/hora e nome da empresa, em vez de texto genérico/cru — o degrau que torna a régua
-  de comunicação (objetivo central do produto) utilizável e prepara a confirmação interativa da
-  Fatia 2.
-- **Autonomia do admin:** cada tenant edita seus próprios textos sem depender de deploy
-  ("mensagens personalizadas" é diferencial dos planos Clínica/Pro — produto.md).
-- **Nova superfície de domínio sob isolamento:** introduz uma tabela nova de dados do tenant; o
-  isolamento por RLS é requisito inegociável desde o primeiro registro.
-
-### Definição de defeito (do pedido do usuário — cada item vira critério de aceite nesta fatia)
-
-1. Template **vazar entre tenants** (falha de RLS).
-2. **Quebrar o envio sob demanda atual** (regressão do fluxo `send`).
-3. Renderizar **variável não resolvida sem controle** (ex.: enviar `{nome}` cru ao cliente final).
-4. **Expor segredo/PII em log** (telefone, texto renderizado com dado pessoal, token).
+- **A empresa (tenant)** passa a ter o lembrete D-1 disparado automaticamente, sem ninguém
+  clicar. O cliente responde **1** no próprio WhatsApp e o agendamento vira `confirmado`
+  sozinho. Isso reduz no-show e reduz trabalho manual da recepção.
+- **A recepção** ganha visibilidade: a agenda distingue um agendamento confirmado **pelo
+  próprio cliente** (prova de intenção) de um confirmado manualmente. Essa distinção é o
+  valor de negócio visível da fatia.
+- **O cliente que quer reagendar** responde **2** e recebe uma mensagem automática de retorno
+  ("entramos em contato para reagendar"); o reagendamento em si continua manual (decisão do
+  usuário, opção "c").
+- **Resiliência:** uma falha temporária de envio não perde a mensagem — há fila de
+  retentativa com backoff e limite, respeitando a janela útil do lembrete.
 
 ---
 
 ## 2. Escopo
 
-### 2.1 Dados / Supabase (entra)
+### 2.1 Dados / Supabase (peso principal)
 
-- Nova tabela `message_templates` por tenant: uma linha por `(tenant_id, template_key)` para as 4
-  chaves padrão (`confirmacao`, `lembrete_d1`, `cobranca`, `comprovante`), com `body` pt-BR,
-  `active`, timestamps. `unique (tenant_id, template_key)`, índice em `tenant_id`, **RLS
-  habilitada**. Migration versionada em `supabase/migrations` (nova, idempotente, nunca editar
-  migration aplicada).
-- **Seed/baseline** dos 4 templates padrão pt-BR: ao criar tenant novo (acoplado a
-  `handle_new_user`, via função `security definer` idempotente) e backfill idempotente para
-  tenants existentes.
-- **Renderização no envio (server-side):** `handleSend` passa a carregar o `body` do template do
-  tenant (service role, dentro do tenant resolvido), resolver as variáveis e enviar o **texto
-  renderizado** ao adapter, em vez de `input.template` cru.
+**Entra:**
 
-### 2.2 Frontend (entra)
+- **Migrations aditivas** (nunca editar migration já aplicada):
+  - Nova tabela **`webhook_events`** (idempotência + auditoria de entrada): `tenant_id`,
+    `external_event_id` (chave de dedupe), `instance_name`, `status`, `appointment_id`,
+    `parsed_intent`, `payload` sem PII, `failure_reason`, `created_at`. Índice único
+    `(source, external_event_id)`. RLS habilitado.
+  - **`messages`** ganha campos de retentativa: `attempts`, `max_attempts`, `next_attempt_at`,
+    `last_attempt_at` + índice parcial da fila elegível.
+  - Enum `messages.template` e `message_templates` estendidos com **`reagendar_retorno`**
+    (novo template de baseline/seed, texto pt-BR sem PII).
+  - Setup de **pg_cron** (+ mecanismo de invocação) **versionado em migration**, condicional
+    para não quebrar `db reset` quando a extensão não existir no ambiente local.
+- **Edge Function de webhook de ENTRADA** (nova; recomendação de design: função separada,
+  ex. `whatsapp-inbound`, por ser superfície pública sem JWT). Valida autenticidade + zod +
+  idempotência; resolve tenant pela instância; casa resposta→agendamento; aplica efeito.
+- **Job de lembrete D-1** (cron) que varre agendamentos elegíveis e enfileira `lembrete_d1`.
+- **Worker de retentativa** (cron) que reenvia `messages.status='fila'` com backoff/limite.
 
-- Nova sub-rota de Configurações `/app/config/mensagens` (ver decisão de rota em §7-D1): tela que
-  lista os **4 templates** do tenant em cards (domínio fechado, sem "novo"/"excluir") e abre um
-  `Dialog` de edição por chave.
-- Editor com **react-hook-form + zod**, `Textarea` (novo primitivo shadcn), **barra de chips de
-  variável** que inserem o token no cursor, contador de caracteres e **preview ao vivo** com dados
-  de exemplo pt-BR mostrando a substituição e o fallback.
-- `SendMessageDialog` (envio sob demanda) ganha um **bloco de preview** do texto renderizado que
-  será enviado; o contrato de fio de `send` **não muda** (payload `action|template|customerId|
-  appointmentId?`). O preview da UI é defesa em profundidade; a renderização canônica é do servidor.
-- Dados via **TanStack Query** (`useMessageTemplates` / `useUpsertMessageTemplate`), escrita do
-  cliente sob RLS (não via Edge Function — templates são conteúdo editorial, como `services`).
-- Nova capacidade `canManageMessageTemplates` (= `isAdmin`) em `usePermissions`, espelhando
-  `canManageWhatsAppConnection`.
+**Reuso obrigatório (não recriar):** `appointments` + máquina de estados/trigger
+(`confirmed_at`), `messages` (status/`dedupe_key`/`provider_message_id`), `whatsapp_instances`,
+`message_templates` + render server-side, opt-in, normalização E.164, adapter Evolution
+(mock/real por `EVOLUTION_MODE`).
 
-### 2.3 Fora de escopo (Fatia 2, próximo run — contrato preparado, NÃO implementar)
+### 2.2 Frontend (superfície pequena, mas real)
 
-Confirmação interativa, webhook de entrada da Evolution, `pg_cron`/agendador (lembrete D-1), fila
-de retentativa, botões interativos. **Decisões já tomadas** para a Fatia 2: resposta por **opção
-numérica** (`1 confirmar`) e lembrete D-1 via **pg_cron** do Supabase. Nesta fatia isso se traduz
-**apenas** em: o texto do `lembrete_d1` pode conter `1 confirmar / 2 reagendar` como texto livre,
-sem nenhuma lógica de parsing/webhook/cron acoplada.
+**Entra — ajustes cirúrgicos, zero rota nova, zero módulo novo:**
 
-### 2.4 Fora de escopo (MVP — Fase 3, não antecipar)
+- **Agenda** (`/app/agenda`): micro-selo "confirmado pelo cliente" ao lado do badge
+  `Confirmado`, quando a confirmação veio do cliente via WhatsApp (depende da coluna
+  `appointments.confirmed_via` — ver §2.4 e §7).
+- **Histórico de mensagens** (`/app/config/whatsapp`): rotular lembrete automático (cron),
+  resposta recebida (sem PII — rótulo derivado, nunca o texto digitado), retorno de
+  reagendamento, e o estado `fila` sob retentativa.
+- Vocabulário pt-BR novo em `src/lib/whatsapp.ts`; extensão dos schemas zod de
+  `useAppointments` e `useRecentMessages` para validar campos novos como dado não confiável
+  (enums fechados).
 
-Link público de autoagendamento, taxa de reserva antecipada, métricas consolidadas (produto.md).
-Também fora desta fatia: variável `{valor}`/PIX (depende do módulo Asaas/cobranças —
-ver §7-D4), customização por plano, histórico/versionamento de templates.
+### 2.3 Fora de escopo
+
+- Botões/listas interativas da Evolution (a resposta é **numérica**, texto livre).
+- Reagendamento automático / mudança de horário por resposta `2` (decisão "c": só mensagem
+  de retorno + tratamento manual).
+- Autoagendamento público, taxa de reserva antecipada, métricas consolidadas → **Fase 3**.
+- Módulo Asaas/PIX (`cobranca`/`comprovante` seguem só sob demanda).
+- Múltiplas instâncias de WhatsApp por tenant; recorte de leitura por profissional em
+  `messages`/`webhook_events` (fase futura).
+- Polling da agenda para a confirmação "aparecer sozinha" (otimização futura; refetch
+  on-focus do TanStack Query cobre o fluxo real).
+
+### 2.4 Dependência de contrato entre backend e frontend
+
+O selo "confirmado pelo cliente" exige um dado que hoje **não existe**: `confirmed_at` é só
+um timestamp e não diz **quem** confirmou. O frontend está **bloqueado** nisto:
+
+- **Decisão (Opção A, preferida):** coluna nova `appointments.confirmed_via`
+  (`cliente_whatsapp | manual`, nullable), gravada pelo webhook quando casa a resposta "1" e
+  deixada `manual` na confirmação pela UI. Determinística, versionada, sob o RLS existente.
+- **Se o planejamento decidir não criar a coluna nesta fatia:** o selo de origem **sai de
+  escopo do frontend** e fica só o badge `Confirmado`. Registrar como corte explícito.
+  (A Opção B — derivar a origem por join com `messages` — foi **rejeitada**: frágil, não
+  determinística e expõe mais de `messages` à leitura da agenda, com risco de PII.)
+- Para o histórico: `messages` precisa de forma de distinguir **direção** (recebida/enviada)
+  e **origem** (cron/sob-demanda/resposta). Sem isso, o histórico fica só com o rótulo de
+  template atual.
 
 ---
 
 ## 3. Requisitos e critérios de aceite testáveis
 
-Cada requisito traz entrada → saída observável. Numeração alinhada às análises de origem.
+Cada requisito com entrada → saída observável. Testar o webhook com payload simulado (sem
+WhatsApp real); testar cron/retentativa pela lógica (função/SQL de elegibilidade) quando o
+scheduler real não estiver disponível, documentando o que ficou só verificado estaticamente.
 
-### RF-T01 — Tabela de templates por tenant
-- **Entrada:** aplicar a migration (`supabase db reset` / `supabase start`).
-- **Saída (AC-01):** existe `message_templates` com as colunas de §8-dados, `unique (tenant_id,
-  template_key)`, índice em `tenant_id`, RLS habilitada; aplica sem erro.
+### Lembrete D-1 automático (cron)
 
-### RF-T02 — Baseline/seed dos 4 templates
-- **Entrada:** cadastro de empresa nova (`handle_new_user`); e re-execução da baseline em tenant
-  que já tem as 4 linhas.
-- **Saída (AC-02):** tenant novo nasce com exatamente **4 linhas** (uma por chave), textos padrão
-  pt-BR não vazios; re-executar **não duplica** (idempotência via `on conflict do nothing`).
+- **R1 — dispara D-1.** Entrada: agendamento `pendente`/`confirmado`, cliente
+  `whatsapp_opt_in=true`, instância do tenant `conectado`, `starts_at` ~24h à frente
+  (faixa configurável, p.ex. 23h–25h), sem `lembrete_d1` prévio. Saída: exatamente **uma**
+  `messages` `template='lembrete_d1'` enfileirada.
+- **R2 — idempotente.** Entrada: rodar o job duas vezes seguidas. Saída: **não** cria um
+  segundo `lembrete_d1` para o mesmo agendamento (dedupe por `lembrete_d1:a:<appointmentId>`).
+- **R3 — sem opt-in não dispara.** Entrada: cliente `whatsapp_opt_in=false`. Saída: **nenhum**
+  `lembrete_d1`.
+- **R4 — janela vencida.** Entrada: `starts_at` no passado. Saída: **não** recebe D-1 (nem
+  novo, nem retentativa).
 
-### RF-T03 — Leitura dos templates
-- **Entrada:** admin abre `/app/config/mensagens`.
-- **Saída:** a tela lista os 4 templates do tenant com o texto atual. Leitura permitida a `admin`
-  (ver §5). Recepção/profissional **não** leem/editam (a renderização é server-side; não precisam).
+### Webhook de entrada (autenticidade, schema, idempotência)
 
-### RF-T04 — Edição pelo admin
-- **Entrada:** admin edita o `body` de um template no editor e salva.
-- **Saída:** persiste em `message_templates` sob RLS do tenant; toast pt-BR "Modelo atualizado";
-  a prévia do card reflete o novo texto (cache invalidado).
+- **R5 — autenticidade.** Entrada: POST sem o segredo correto. Saída: `401`,
+  `webhook_events.status='rejeitado'`, **nenhum** agendamento muda.
+- **R6 — schema inválido.** Entrada: payload que falha o zod. Saída: `400`/registro
+  `rejeitado`, sem efeito.
+- **R7 — idempotência de entrada.** Entrada: reenviar o **mesmo** evento (mesmo
+  `external_event_id`). Saída: **não** gera segunda confirmação nem efeito repetido; a 2ª
+  gravação em `webhook_events` é barrada pelo índice único e o processamento para antes do
+  efeito.
 
-### RF-T05 — Conjunto fechado de variáveis
-- **Entrada:** `body` com variáveis.
-- **Saída:** suporta o conjunto **fechado** `{nome}`, `{servico}`, `{dataHora}`, `{empresa}`
-  (ver §7-D4 sobre `{valor}` fora de escopo). Variável fora da lista (ex.: `{foo}`) **não quebra**
-  o save nem o envio — tratada na renderização (ver RF-T07). Lista travada em const/enum
-  compartilhado entre preview (cliente) e servidor.
+### Casamento resposta → agendamento + transição de estado
 
-### RF-T06 — Renderização no envio (server-side) — cobre defeito #2/#3
-- **Entrada:** admin edita `confirmacao` para `"Olá {nome}, seu horário de {servico} é {dataHora}."`
-  e dispara "Enviar mensagem" para um cliente com opt-in.
-- **Saída (AC-05):** o `text` entregue ao adapter é o **texto renderizado** com `{nome}/{servico}/
-  {dataHora}` substituídos pelos dados reais — **nunca** a string `"confirmacao"`. Renderização
-  ocorre **no servidor** (Edge Function), dados resolvidos sob service role dentro do tenant.
+- **R8 — casamento determinístico.** Entrada: telefone E.164 do remetente + tenant resolvido
+  **pela instância**. Saída: encontra o agendamento do cliente no tenant com status
+  `pendente`/`confirmado`, que teve `lembrete_d1` enviado, `starts_at` no futuro, escolhendo o
+  de `starts_at` **mais próximo**. Se nenhum casar: `webhook_events.status='ignorado'`, sem
+  efeito, sem erro ao provedor.
+- **R9 — resposta "1" confirma.** Entrada: evento válido, texto `1`, casado a agendamento
+  `pendente`/`confirmado`. Saída: `appointments.status='confirmado'` + `confirmed_at`
+  carimbado (via trigger existente) + `confirmed_via='cliente_whatsapp'` (se Opção A);
+  `webhook_events.status='processado'`, `parsed_intent='confirmar'`.
+- **R10 — resposta "2" retorna, não altera.** Entrada: evento válido, texto `2`, casado.
+  Saída: `appointments.status` **inalterado**; enfileira `messages`
+  `template='reagendar_retorno'`; `webhook_events.parsed_intent='reagendar'`.
+- **R11 — resposta não reconhecida.** Entrada: texto que não casa `1`/`2` (após normalização:
+  trim, primeiro token, tolerância a "1 confirmar"). Saída: logado/`ignorado`, sem efeito
+  (resposta "não entendi" é decisão do design; mínimo é ignorar).
+- **R12 — isolamento no casamento.** Entrada: telefone que existe em **dois** tenants. Saída:
+  casa **só** com o agendamento do tenant da instância que recebeu; nunca confirma de outro
+  tenant.
+- **R13 — transição inválida é segura.** Entrada: resposta `1` para agendamento já
+  `cancelado`/`concluido`. Saída: a função **não** quebra (erro do trigger tratado), registra
+  o resultado e segue.
+- **R14 — resposta automática registrada.** A mensagem de retorno (R10) é registrada em
+  `messages` com opt-in, idempotência e PII mínima, como o fluxo `send` da Fatia 1.
 
-### RF-T07 — Fallback previsível — cobre defeito #3
-- **Entrada:** template com `{nome}` disparado para um caso em que o dado falta (ex.: sem
-  agendamento → sem `{servico}/{dataHora}`).
-- **Saída (AC-06):** a variável é substituída por um **fallback pt-BR definido** — nunca o
-  placeholder cru. Tabela de fallback (contrato compartilhado cliente↔servidor):
-  - `{nome}` → `cliente`
-  - `{servico}` → `seu atendimento`
-  - `{dataHora}` → `no horário combinado`
-  - `{empresa}` → `trade_name` do tenant, ou `nossa equipe` se nulo
-  - token **desconhecido** → mantido literal (decisão consciente — só as variáveis conhecidas têm
-    fallback), nunca exibindo um erro ao cliente.
-  - **Template ausente** (tenant legado sem baseline): servidor usa o **texto de sistema padrão**
-    da chave — nunca envia vazio nem a chave crua.
+### Fila de retentativa
 
-### RF-T08 — Preservar o envio atual — cobre defeito #2
-- **Entrada:** disparos nas condições atuais.
-- **Saída (AC-07):** os 5 `outcome` de `send` (`sent | duplicate | opt_out | not_connected |
-  send_failed`) continuam produzidos nas mesmas condições e com os mesmos status HTTP. Opt-in,
-  idempotência (`dedupe_key`) e checagem de instância conectada permanecem antes do envio. O
-  contrato de fio de `send` **não muda**.
+- **R15 — retentativa com backoff.** Entrada: `messages` em `fila` cujo envio falhou. Saída:
+  reenviada pelo worker respeitando `next_attempt_at`; `attempts` incrementa a cada tentativa.
+- **R16 — limite N.** Entrada: `attempts >= max_attempts`. Saída: `status='falha'` com
+  `failure_reason`; não é mais reenviada.
+- **R17 — retentativa respeita janela útil.** Entrada: `lembrete_d1` em `fila` cujo
+  agendamento já passou de `starts_at`. Saída: `status='falha'` (`janela_vencida`), não
+  reenviado.
 
-### RF-T09 — Contrato preparado para a Fatia 2 (sem implementar)
-- **Entrada:** `body` do `lembrete_d1` com `1 confirmar / 2 reagendar`.
-- **Saída (AC-09):** renderiza o texto sem erro; **nenhum** endpoint de webhook/entrada, job de
-  cron ou parsing é adicionado neste run (verificável pela ausência de arquivos/migrations
-  correspondentes). A modelagem não impede evolução aditiva futura.
+### Segurança / dados / verificação
 
-### RNF-T01 — Isolamento multi-tenant — cobre defeito #1
-- **Entrada:** dois tenants A e B; usuário autenticado de A (anon key + JWT, **não** service role).
-- **Saída (AC-03):** `select` em `message_templates` retorna **somente** linhas de A; `update` de
-  linha de B é **negado** por RLS. `tenant_id` deriva do JWT/`profiles` (`current_tenant_id()`),
-  nunca de parâmetro do cliente.
-
-### RNF-T02 — Segredos e PII em log — cobre defeito #4
-- **Saída (AC-08):** nenhum log da Edge Function imprime telefone do cliente nem o texto
-  renderizado em claro; `messages.payload` continua sem PII (pode registrar `template_key` e
-  metadados não sensíveis); nenhum segredo da Evolution em log/resposta/bundle; `grep` por `VITE_`
-  não encontra chave da Evolution.
-
-### RNF-T03 — TS estrito + validação zod
-- **Saída:** tipos novos sem `any`; `body` e payload de edição validados com zod no cliente; shape
-  lido do banco validado antes do uso; lista de variáveis como enum fechado.
-
-### RNF-T04 — Migration versionada e idempotente
-- **Saída:** mudança de schema em migration nova (timestamp posterior à última aplicada),
-  idempotente no re-apply (`create table if not exists` / `drop policy if exists` / `on conflict
-  do nothing`); nenhuma migration aplicada é editada.
-
-### RNF-T05 — Determinismo da renderização
-- **Saída:** a função de render é pura e determinística dado (template, dados resolvidos): mesma
-  entrada → mesma saída; testável isolada.
-
-### AC-10 — Build/typecheck + QA ao vivo
-- **Saída:** `npm run build` / typecheck limpos. QA ao vivo (chrome-devtools) em
-  `/app/config/mensagens`: admin edita um template, dispara "Enviar mensagem" (Agenda/Clientes) e
-  confirma que o texto enviado é o **renderizado**, não a string crua. Ambiente local:
-  `supabase start`; `supabase functions serve whatsapp --env-file supabase/functions/.env`;
-  `npm run dev` (porta a partir de 5173).
+- **R18 — RLS `webhook_events`.** Usuário autenticado do tenant A **não** lê `webhook_events`
+  do tenant B; o cliente **não** consegue INSERT/UPDATE/DELETE em `webhook_events`.
+- **R19 — PII mínima.** `webhook_events.payload`, `messages.payload` e os logs **não** contêm
+  telefone, documento nem o texto cru da mensagem em claro.
+- **R20 — segredos fora do cliente.** Nenhum segredo (webhook/Evolution/service role) aparece
+  no bundle do frontend nem em arquivo versionado; só `.env.example` com chaves vazias.
+- **R21 — migrations versionadas.** Todo schema/cron está em migration nova; `db reset` roda
+  limpo (ou, sem pg_cron local, não quebra e documenta a limitação).
+- **R22 — build/typecheck.** `deno check` da(s) Edge Function(s) e o typecheck/build do
+  projeto passam limpos; QA ao vivo do webhook com payload simulado cobre `1`, `2`, duplicado
+  e inválido/não-autêntico.
 
 ---
 
 ## 4. Regras de fronteira que a demanda arrisca
 
-Esta fatia introduz uma tabela de domínio nova e troca a origem do texto enviado — ambas tocam
-fronteiras de segurança inegociáveis.
+Defeitos que esta fatia pode introduzir (do papel) e a invariante correspondente:
 
-- **Isolamento multi-tenant por RLS:** `message_templates` com `tenant_id not null default
-  current_tenant_id()` + índice + **RLS habilitada**. `tenant_id` sempre do JWT/`profiles`,
-  **nunca** de parâmetro do cliente. Políticas de escrita com `WITH CHECK` espelhando o `USING`
-  (barra gravar linha de outro tenant). Reusar os helpers `current_tenant_id()` /
-  `current_role_name()` (security definer) — **não** reimplementar (evita recursão de RLS).
-- **RBAC admin/professional/receptionist:** edição e leitura de templates **somente `admin`**
-  (configuração do dono do tenant, espelha `whatsapp_instances`/`tenants`). O envio continua
-  disponível a admin/receptionist/professional (`canSendWhatsAppMessage`) porque quem lê o template
-  no envio é a Edge Function com service role, não o cliente — logo restringir a leitura dos
-  templates ao admin **não** quebra o envio. `super_admin` **sem** caminho cross-tenant pelo
-  cliente a esta tabela.
-- **Status de assinatura:** a trava de suspensão de disparo (`bloqueado`/`cancelado`) já existe em
-  `handleSend` e **permanece intacta**; esta fatia não a altera.
-- **Renderização server-side (fronteira única de envio):** o cliente **nunca** monta o texto final
-  — fecha a porta a forjar corpo/burlar log. O preview no cliente é só defesa em profundidade.
-- **Segredos fora do cliente:** token/URL da Evolution continuam só em env do servidor; nenhuma var
-  `VITE_` com segredo; `anon key` é a única chave no bundle.
-- **LGPD (opt-in + PII mínima em log):** opt-in (`whatsapp_opt_in`) permanece conferido antes do
-  envio; o **texto renderizado** (que contém o nome do cliente) e o telefone **não** vão a log em
-  claro; `messages.payload` segue sem PII. O `body` do template não é segredo nem PII (é texto com
-  placeholders).
-- **Idempotência / autenticidade de webhook:** não há webhook nesta fatia (Fatia 2). A
-  idempotência do `send` (`dedupe_key` + índice único parcial) **permanece intacta**.
-- **Dados não confiáveis:** o shape lido do banco e o payload de edição são validados com zod antes
-  do uso; variável desconhecida no `body` nunca vira erro enviado ao cliente.
+- **Isolamento multi-tenant (RLS).** Webhook e cron **nunca** cruzam tenants. No webhook não
+  há JWT de usuário: o `tenant_id` é resolvido **pela instância**
+  (`whatsapp_instances.evolution_instance_name → tenant_id`), no servidor, com service role —
+  **nunca** do payload. No cron, cada linha candidata carrega seu `tenant_id`. RLS habilitado
+  em `webhook_events` e em toda tabela de domínio nova. Risco: casar resposta ao agendamento
+  de outro tenant → **proibido** (R12, R18).
+- **Idempotência de webhook.** Processar o mesmo evento duas vezes **não** confirma em
+  duplicidade (dedupe por `external_event_id`, índice único; o processamento para na 2ª
+  gravação antes de qualquer efeito) — R7.
+- **Autenticidade de webhook.** Verificada **antes** de qualquer efeito (segredo compartilhado
+  `WHATSAPP_WEBHOOK_SECRET`, comparação em tempo constante; a Evolution v2.3.7 não assina HMAC
+  por padrão). Sem match → `401` → `rejeitado` — R5. O design confirma o formato exato do
+  payload de entrada na doc da Evolution v2.3.7 e valida tudo com zod.
+- **Segredos fora do cliente.** Token Evolution, service role e segredo do webhook **só** no
+  servidor/env; nunca `VITE_*`, nunca no bundle — R20.
+- **LGPD.** Disparo só com `whatsapp_opt_in=true` — R3. PII mínima: sem telefone/documento/
+  texto cru em claro em `payload` ou logs (telefone para dedupe/diagnóstico hasheado ou
+  omitido) — R19. O histórico mostra rótulo derivado do efeito, nunca o texto digitado.
+- **Status de assinatura.** O cron respeita o status do tenant no servidor
+  (`bloqueado`/`cancelado` suspendem disparos, `seguranca-multitenant.md`).
+- **Nunca confirmar sem resposta válida casada** — R8/R9/R11.
 
 ---
 
-## 5. Perfis de acesso
+## 5. Perfis de acesso (quem executa cada ação)
 
-| Ação | super_admin | admin | professional | receptionist |
-|---|---|---|---|---|
-| Ler templates do tenant (`select`) | — (sem caminho cross-tenant pelo cliente) | ✅ | ❌ | ❌ |
-| Criar/editar template (`insert`/`update`) | — | ✅ | ❌ | ❌ |
-| Acessar a tela `/app/config/mensagens` | — | ✅ | ❌ (`AccessDenied`) | ❌ (`AccessDenied`) |
-| Disparar "Enviar mensagem" (inalterado) | — | ✅ | ✅ | ✅ |
-| Renderizar o template no envio | — (feito pela Edge Function com service role, dentro do tenant) | — | — | — |
-
-A trava real de todas as linhas acima é **RLS** no banco; o gate de UI (`canManageMessageTemplates
-= isAdmin`, atalho no hub só para admin, `AccessDenied` por URL) é defesa em profundidade.
+- **Sistema / service role (servidor):** executa o cron (lembrete D-1 e worker de
+  retentativa), processa o webhook de entrada, aplica a transição de status e escreve em
+  `messages`/`webhook_events`. Nenhum cliente comum executa estas operações.
+- **super_admin:** sem caminho pelo cliente para `webhook_events`/operações privilegiadas
+  (cross-tenant só por Edge Function auditada, fora desta fatia).
+- **admin / receptionist / professional (tenant):** **leem** o efeito já persistido —
+  o selo de confirmação na agenda (informação operacional, não financeira) e o histórico de
+  mensagens (projeção **sem PII**). `professional` vê o selo só nos próprios agendamentos
+  (herda o recorte de linhas da agenda). `receptionist` continua **sem** telas/dados
+  financeiros (esta fatia não toca financeiro). Nenhum papel do cliente escreve em
+  `webhook_events` (R18).
 
 ---
 
-## 6. Enquadramento no roadmap e dependências anteriores
+## 6. Enquadramento no roadmap e dependências
 
-| Fase | Entregue | Esta fatia |
+- **Roadmap (`produto.md`):** confirmação interativa D-1 é objetivo central (reduzir no-show).
+  Esta é a **Fatia 2 da Fase 2 do WhatsApp**, logo após a Fatia 1 (templates + render
+  server-side, já em master). Cobre RF10/RF11 + RNF04 (fila de retentativa) da skill
+  whatsapp-evolution.
+- **Dependências anteriores (consome, não recria):** máquina de estados de `appointments`
+  (`confirmado` + `confirmed_at` via trigger), `messages` com idempotência de envio
+  (`dedupe_key`), `whatsapp_instances`, `message_templates` + render server-side, opt-in,
+  normalização E.164 e adapter Evolution (mock/real).
+- **Respeita o fora-de-escopo do MVP:** autoagendamento público, taxa de reserva antecipada e
+  métricas consolidadas permanecem **Fase 3** — não implementar aqui.
+
+---
+
+## 7. Pontos levantados pelo usuário (nenhum descartado)
+
+| # | Ponto do usuário | Tratamento |
 |---|---|---|
-| Fase 1 (MVP) | Conexão por QR, envio **sob demanda** (ADR-04/06/07/08), log `messages`, idempotência por `dedupe_key`, opt-in LGPD, E.164 | — |
-| **WhatsApp Fase 2 — Fatia 1** | — | **Templates editáveis por tenant + renderização no envio sob demanda** ← este run |
-| WhatsApp Fase 2 — Fatia 2 | — | Confirmação interativa numérica, webhook de entrada Evolution, pg_cron (lembrete D-1), fila de retentativa — **contrato preparado, não implementado** |
-| Fase 3 | — | Autoagendamento público, taxa de reserva, métricas (fora de escopo) |
+| 1 | "Primeiro os templates e depois a interação" | **Decisão tomada.** Templates = Fatia 1 (entregue em master). Esta fatia é a interação. Ordem respeitada. |
+| 2 | "Resposta pode ser numérica" | **Decisão tomada.** Resposta **numérica** (`1` confirmar / `2` reagendar). Botões interativos ficam fora de escopo. |
+| 3 | "Se responder sim, marca a agenda como confirmado" (e "é possível com a Evolution API?") | **Decisão tomada.** Resposta `1` → `appointments.status='confirmado'` + `confirmed_at` (R9). Viável com Evolution via webhook de entrada (confirmar payload na doc v2.3.7 no design). |
+| 4 | "Analise se tem mais melhorias possíveis" | **Decisões tomadas.** Incorporadas: fila de retentativa (RNF04), auditoria/idempotência via `webhook_events`, selo de origem da confirmação na agenda, rotulagem do histórico. |
+| 5 | Resposta `2` (reagendar) = **opção c** | **Decisão tomada.** Mensagem automática de retorno (`reagendar_retorno`) + tratamento manual; **sem** reagendamento automático, **sem** mudar horário (R10). |
+| 6 | Lembrete D-1 via **pg_cron** | **Decisão tomada.** Job agendado via pg_cron, versionado em migration, condicional ao ambiente (R1–R4, R21). |
 
-Dependências/reuso (não recriar):
-- `MESSAGE_TEMPLATES` (enum das 4 chaves) já existe em `src/types/domain.ts`; `getMessageTemplateLabel`
-  em `src/lib/whatsapp.ts`; `messages.template` já é esse enum no banco.
-- Edge Function `whatsapp` (service role, resolução de `tenant_id`/`role` do JWT, opt-in,
-  idempotência, checagem de instância conectada, normalização E.164) permanece intacta — esta
-  fatia só troca a origem do `text` enviado ao adapter.
-- Padrão de config sob `src/app/config/` (hub + sub-rotas `servicos`/`profissionais`/`whatsapp`) e
-  de RBAC por capacidade em `usePermissions` (`canManageWhatsAppConnection: isAdmin`).
-- ADR-08 "Enviar mensagem sob demanda" (diálogo com opt-in + idempotência + checagem de instância)
-  é a base preservada.
-
----
-
-## 7. Pontos levantados pelo usuário e decisões (nenhum descartado)
-
-Pontos do usuário (mensagens 11–12) e divergências entre as duas análises — cada um registrado como
-decisão tomada ou pergunta em aberto.
-
-- **Usuário: "primeiro os templates, depois a interação."** → Decisão: esta fatia entrega **só os
-  templates + renderização**; a interação (confirmação) é Fatia 2. Respeitado.
-- **Usuário: resposta por opção numérica (`1 confirmar`).** → Decisão (Fatia 2, não implementar
-  agora): só o **texto** do `lembrete_d1` comporta `1 confirmar / 2 reagendar` como texto livre.
-  Nenhum parsing/webhook neste run (RF-T09).
-- **Usuário: lembrete D-1.** → Decisão (Fatia 2): via **pg_cron** do Supabase; não neste run.
-- **D1 — Rota da tela (divergência entre análises).** `analysis-frontend.md` propôs
-  `/app/config/mensagens` (sub-rota nova); `analysis-data.md` citou editar dentro de
-  `/app/config/whatsapp`. → **Decisão: `/app/config/mensagens`** (sub-rota nova no grupo de
-  Configurações). Razão: a tela de WhatsApp é a máquina de estados da **conexão** (parear QR,
-  status); templates são **conteúdo editorial** do tenant, ciclo de vida distinto. Rota dedicada
-  mantém cada tela com um trabalho só e evita inflar a tela de conexão. O hub de Configurações
-  ganha um 4º atalho, visível só para admin.
-- **D2 — Padrão da tela.** → Decisão: **lista fixa de 4 cards** (domínio fechado), editor em
-  `Dialog`, sem "novo"/"excluir"; robusta a lacuna de seed (cards "a configurar" derivados de
-  `MESSAGE_TEMPLATES` quando o fetch vier com < 4).
-- **D3 — Onde moram os templates.** → Decisão: **tabela própria `message_templates` por tenant**
-  (uma linha por `(tenant_id, template_key)`, seed dos 4 padrões), em vez de "defaults de sistema +
-  override difuso". Razão: caminho de leitura único (banco), tela mais simples (sem estado
-  "herdado vs customizado"), evolução mais fácil; o fallback de template ausente cobre tenant
-  legado até a baseline rodar.
-- **D4 — Variável `{valor}` (divergência entre análises).** `analysis-frontend.md` listou `{valor}`
-  nos chips; `analysis-data.md` excluiu (depende do módulo Asaas/cobranças). → **Decisão: fora de
-  escopo da Fatia 1.** A lista fechada desta fatia é `{nome} {servico} {dataHora} {empresa}`.
-  `{valor}` é evolução **aditiva** futura (não quebra a modelagem). Consequência para o
-  planejamento: **manter a lista fechada idêntica entre o chip-bar do editor, o `renderTemplate` do
-  preview e o render do servidor** — não introduzir `{valor}` em nenhum dos três nesta fatia.
-- **D5 — Onde a renderização acontece.** → Decisão: **100% no servidor** (`handleSend`). Renderizar
-  no cliente e enviar texto pronto foi **rejeitado** (abriria espaço para forjar corpo/burlar log;
-  o servidor é a fronteira única de envio). O preview no cliente é só defesa em profundidade.
-- **D6 — RBAC de leitura dos templates.** → Decisão: **leitura e escrita só `admin`**. Recepção/
-  profissional não precisam ler os templates para disparar (render é server-side), então restringir
-  reduz a superfície sem quebrar o envio.
-- **D7 — Primitivo `Textarea`.** → Decisão: adicionar `src/components/ui/textarea.tsx` (shadcn
-  padrão); hoje o projeto só tem `input.tsx`. Peça canônica, não primitivo caseiro.
-- **Pergunta em aberto (não bloqueante):** limite de caracteres do `body`. `analysis-frontend.md`
-  sugeriu zod `max(1000)`; `analysis-data.md` sugeriu `check (char_length between 1 and 2000)` na
-  coluna. → Assunção para o planejamento: **a coluna aceita até 2000; o form limita a 1000** (o
-  banco é o teto de segurança, a UI o limite prático). O planejamento confirma/ajusta na ADR de
-  schema — não bloqueia a aprovação do PRD.
+**Perguntas em aberto deixadas para o design (não bloqueiam o PRD):** faixa exata da janela
+D-1 (ex. 23h–25h) e granularidade do cron; mecanismo de invocação do cron (pg_net POST vs.
+função SQL `security definer`); parâmetros de backoff (base, fator, N); webhook como função
+separada (recomendado) vs. nova rota; formato exato do payload de entrada da Evolution v2.3.7
+(a confirmar na doc); se há resposta automática "não entendi" para R11. A decisão de criar
+`appointments.confirmed_via` (§2.4) — adotar Opção A é a recomendação; se recusada, o selo de
+origem sai de escopo do frontend.
 
 ---
 
-## 8. Critério de aceite visual (verificável via Chrome DevTools)
+## 8. Critério de aceite visual (frontend, verificável via Chrome DevTools)
 
-1. Em `/app/config` existe o atalho "Modelos de mensagem", **visível só para `admin`**; clicar leva
-   a `/app/config/mensagens`. Papel não-admin que acessa a URL vê `AccessDenied`.
-2. A tela lista os **4 cards** (Confirmação, Lembrete (24h antes), Cobrança, Comprovante), cada um
-   com rótulo pt-BR, badge Ativo/Inativo e prévia truncada do corpo. Mobile (<`sm`): 1 coluna, sem
-   overflow horizontal; desktop: 2 colunas.
-3. "Editar" abre o `Dialog` com o corpo atual no `Textarea`, os chips de variável e o preview ao
-   vivo. Clicar um chip insere o `{token}` no texto; o preview atualiza substituindo variáveis por
-   dados de exemplo pt-BR e **nunca** exibe `{token}` cru (fallback visível quando o dado falta).
-4. Salvar mostra toast "Modelo atualizado", fecha o diálogo e a prévia do card reflete o novo texto.
-5. No diálogo de **Enviar mensagem** (Agenda/Clientes), ao escolher um template aparece o preview do
-   texto renderizado que será enviado; o envio continua funcionando (os 5 outcomes inalterados) e o
-   texto efetivo é o **template renderizado**, não a string crua da chave.
-6. **Isolamento por tenant:** logado em tenant A, a tela mostra só os templates de A; editar em A
-   não afeta B; não há como enviar `tenant_id` pelo cliente para ver os de outro (RLS).
-7. **Acessibilidade:** `Tab` alcança cards → Editar → chips → textarea → Switch → Salvar/Cancelar;
-   foco visível; `Esc` fecha o diálogo e devolve o foco ao gatilho; labels associados; contraste do
-   texto do preview e do realce de token conferidos (realce de token por **fundo**, texto em
-   `foreground` — não depender só da cor para marcar a variável). Validação WCAG completa exige
-   teste manual com ferramenta de contraste/leitor de tela; o QA por ADR confere os pares renderizados.
-8. Build/typecheck limpos e verificação ao vivo (tela + envio) **sem erro de console**.
+1. **Selo — confirmado pelo cliente.** Agendamento `status=confirmado` +
+   `confirmed_via=cliente_whatsapp` mostra o badge `Confirmado` **mais** o micro-selo (ícone
+   WhatsApp + `aria-label` "Confirmado pelo cliente no WhatsApp"), na lista e no bloco de
+   calendário (modo não-compacto). Verificável pela presença do `aria-label` no DOM e visual.
+2. **Selo — confirmado manualmente.** Agendamento `confirmado` + `confirmed_via=manual` mostra
+   **só** o badge `Confirmado`, sem micro-selo; `title` do badge: "Confirmado pela recepção".
+3. **Histórico — lembrete automático.** Após o cron, a linha `lembrete_d1` aparece com rótulo
+   "Lembrete (24h antes)" e indicador "Enviada", **sem PII**.
+4. **Histórico — resposta recebida.** A resposta aparece como "Recebida" com rótulo derivado
+   ("Confirmação do cliente" / "Pedido de reagendamento"), **nunca** o texto digitado; direção
+   por **ícone + texto**, não cor.
+5. **Histórico — fila/retentativa.** Mensagem em retentativa: badge `Na fila` + `title`
+   "Aguardando reenvio automático"; após o limite, badge `Falha` + `title` "Falhou após
+   várias tentativas".
+6. **Contraste (claro e escuro).** Medir no DevTools o contraste do texto do badge
+   `Confirmado` (mirar ≥ 4,5:1) e do ícone do micro-selo contra `bg-card` (mirar ≥ 3:1, WCAG
+   1.4.11), nos dois temas; registrar os números medidos e ajustar token/opacidade se abaixo.
+7. **Teclado/foco.** Tab chega ao bloco do agendamento com anel de foco visível; o selo não
+   cria alvo de foco extra nem quebra a ordem de tab; `aria-label` lido junto do bloco.
+8. **Mobile (~375px).** Lista e blocos não estouram com selo + badge; no bloco compacto o selo
+   cai no `title`; histórico em cards no mobile preservado.
+9. **PII na UI.** Em nenhuma superfície (agenda, histórico, tooltip, DOM) aparece telefone do
+   cliente ou texto literal recebido.
 
----
-
-## 9. Verificação da fatia (resumo)
-
-- **Unit (render):** substituição correta, fallback por variável faltante, token desconhecido
-  mantido literal, template ausente cai no padrão de sistema (RNF-T05, AC-05/AC-06).
-- **Integração (RLS):** duas sessões autenticadas (dois tenants) — A não lê/edita template de B;
-  receptionist/professional não editam (AC-03/AC-04). Via anon key + JWT, não service role.
-- **Integração (envio):** adapter mock recebe o texto **renderizado**; os 5 outcomes continuam
-  corretos (AC-05/AC-07).
-- **Migration/baseline:** `supabase db reset` aplica; tenant novo nasce com 4 templates; backfill
-  não duplica (AC-01/AC-02).
-- **Build/QA ao vivo:** `npm run build`/typecheck limpos; QA chrome-devtools em
-  `/app/config/mensagens` (AC-10).
-
-Entrega sobre `master`, em **branch nova + commit**. O repo tem remote (origin github
-freitasjh/atlas-agenta) e a default é `master` — pode pushar para branch de feature, mas **não**
-fazer merge em `master` sem pedido; PR opcional.
+> Nota: validação completa de WCAG exige teste manual com tecnologia assistiva e revisão
+> especializada; os itens acima são o que se verifica via DevTools nesta fatia.

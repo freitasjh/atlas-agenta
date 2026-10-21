@@ -105,3 +105,17 @@ enabled = false
 enabled = true
 # Política de inspeção para depuração de Edge Functions.
 inspector_port = 8083
+
+# Webhook de ENTRADA da Evolution (ADR-03, Fatia 2): superfície PÚBLICA, sem JWT de usuário. A
+# autenticidade é feita pelo segredo compartilhado `WHATSAPP_WEBHOOK_SECRET` (comparação em tempo
+# constante dentro da função), não pelo GoTrue — por isso `verify_jwt = false` SÓ para esta
+# função. As demais Edge Functions (ex.: `whatsapp`) continuam exigindo JWT (default verify_jwt).
+[functions.whatsapp-inbound]
+verify_jwt = false
+
+# Drenadora da fila de retentativa (ADR-05, Fatia 2): worker INTERNO do sistema. Mantém o
+# verify_jwt DEFAULT (true) de propósito — não é superfície pública. É invocada pelo cron
+# `atlas_retry_queue` (no hosted, via pg_net com a service role key, que o GoTrue aceita como
+# bearer) ou manualmente pelo QA com um JWT válido. Não resolve identidade de usuário; usa service
+# role internamente. Nenhuma entrada [functions.whatsapp-dispatch] com verify_jwt=false — deixar o
+# default fecha a função a chamadas anônimas.

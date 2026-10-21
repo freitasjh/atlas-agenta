@@ -1,0 +1,10 @@
+{
+  "verdict": "approved",
+  "notes": [
+    "Ambos os revisores (A e B) aprovaram de forma independente. Nenhum changes_requested.",
+    "Contraprova confirmada por ambos: `npm run build` (tsc -b + vite build) exit 0; `vitest run` 24/24 (message-templates.test.ts 8 + scheduling-slots.test.ts 16). Não há script de lint; typecheck coberto pelo build.",
+    "Entrega bate exatamente com os 7 arquivos declarados na ADR (5 novos em src/app/config/mensagens/ + router.tsx + ConfigHubPage.tsx), sem arquivos extras; wiring de rota e atalho admin confirmados em disco.",
+    "Isolamento multi-tenant correto: nenhuma escrita de tenant_id pelo cliente; leitura/escrita sob RLS (ADR-01/05); RBAC em profundidade (atalho só admin + AccessDenied) sobre o RLS.",
+    "Observações não-bloqueantes diferidas ao QA/ADR-07: (1) TemplatePreview.segmentPreview duplica a semântica de renderTemplate (ADR-03) em vez de reusá-la — equivalente hoje, risco de drift sem teste de paridade; (2) maxLength não barra inserção programática de chip acima de 1000 chars (zod rejeita no submit); (3) SendMessageDialog não valida/filtra template inativo — verificar na ADR-07."
+  ]
+}

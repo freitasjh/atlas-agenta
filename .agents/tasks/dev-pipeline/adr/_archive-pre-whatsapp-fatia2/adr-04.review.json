@@ -1,0 +1,10 @@
+{
+  "verdict": "approved",
+  "non_blocking_followups": [
+    "Orphan 'fila' row + out-of-contract 500 if resolveRenderedText throws after enqueue (e.g. Intl.DateTimeFormat com timezone malformado do tenant); resolver o texto antes do insert 'fila' ou envolver o render no mesmo caminho de falha que marca 'falha'.",
+    "Paridade render.ts (Deno) <-> src/lib/message-templates.ts (app) é contrato manual sem guarda automática em CI; candidato a lint de espelho/hash em Fatia 2+.",
+    "render.ts e as edições de handleSend não foram type-checked contra o runtime Deno (tsc -b exclui supabase/functions; deno não instalado); confirmar no QA ao vivo da ADR-07.",
+    "DEFAULT_TEMPLATE_BODIES duplicado entre render.ts e o seed 20250222091000; manter em sincronismo ao redigir textos.",
+    "Dependência de baseline (ADR-02) não sinalizada como hard dependency no index.json; tenant legado cai no fallback de sistema (semanticamente correto)."
+  ]
+}

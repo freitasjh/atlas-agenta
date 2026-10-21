@@ -1,0 +1,11 @@
+{
+  "test": "deferred",
+  "reason": "ADR-02 entrega apenas a infra de agendamento (migration de setup do pg_cron condicional + registro dos jobs atlas_lembrete_d1 e atlas_retry_queue). Nao ha superficie testavel de ponta a ponta ainda: as funcoes SQL agendadas (whatsapp_enqueue_lembrete_d1 / whatsapp_process_retry_queue) so sao definidas em ADR-04/05, e nao ha frontend nesta ADR. O comportamento verificavel (jobs disparando lembrete/retentativa) depende dessas funcoes e da Edge Function de entrada (ADR-03). QA fica para a verificacao consolidada (ADR-07), que testa o fluxo completo com payload simulado. Ambos revisores ja reconfirmaram a contraprova de dados: db reset aplica limpo com/sem pg_cron, jobs criados uma unica vez com as cron expressions corretas, re-apply idempotente (unschedule antes de schedule), zero segredos no SQL, e npm run build exit 0.",
+  "evidence": {
+    "build": "npm run build (tsc -b && vite build) exit 0 reconfirmado por ambos revisores — ADR SQL-only, sem regressao no frontend",
+    "db_reset": "supabase db reset aplicou as migrations do projeto (incluindo 20250223094000_pg_cron_setup.sql); caminho 'sem pg_cron' nao quebra o reset (R21)",
+    "cron_jobs": "em imagem com pg_cron, select jobname, schedule from cron.job lista exatamente atlas_lembrete_d1 (*/15 * * * *) e atlas_retry_queue (*/5 * * * *), uma vez cada; re-apply mantem 2 jobs (idempotente)",
+    "secrets": "varredura por service_role|token|secret|apikey|bearer|password no SQL retorna apenas comentarios afirmando ausencia — fronteira de segredo preservada",
+    "rls": "webhook_events (dependencia ADR-01) com RLS: SELECT admin-only, zero policies de write (service role apenas)"
+  }
+}

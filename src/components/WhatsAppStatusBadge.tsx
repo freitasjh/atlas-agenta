@@ -1,4 +1,5 @@
 import {
+  getMessageStatusHint,
   getMessageStatusLabel,
   getWhatsAppConnectionStatusLabel,
 } from "@/lib/whatsapp";
@@ -14,7 +15,8 @@ import type { MessageStatus, WhatsAppConnectionStatus } from "@/types/domain";
  *
  * Mapa de tokens (ADR-05):
  *  - conexão: conectado→confirmado, aguardando_qr→pendente, desconectado→cancelado.
- *  - mensagem: enviado/entregue→confirmado, fila→pendente, falha→cancelado.
+ *  - mensagem: enviado/entregue→confirmado, fila/enviando→pendente, falha→cancelado.
+ *    (`enviando` é o claim transitório da fila de retentativa, ADR-05.)
  */
 const CONNECTION_CLASSNAME: Record<WhatsAppConnectionStatus, string> = {
   conectado: "bg-status-confirmado text-status-confirmado-foreground",
@@ -26,6 +28,7 @@ const MESSAGE_CLASSNAME: Record<MessageStatus, string> = {
   enviado: "bg-status-confirmado text-status-confirmado-foreground",
   entregue: "bg-status-confirmado text-status-confirmado-foreground",
   fila: "bg-status-pendente text-status-pendente-foreground",
+  enviando: "bg-status-pendente text-status-pendente-foreground",
   falha: "bg-status-cancelado text-status-cancelado-foreground",
 };
 
@@ -60,8 +63,15 @@ export function WhatsAppStatusBadge(props: WhatsAppStatusBadgeProps) {
     ? CONNECTION_CLASSNAME[props.connectionStatus]
     : MESSAGE_CLASSNAME[props.messageStatus];
 
+  // Estado de mensagem sob retentativa/falha ganha uma nota pt-BR no `title`
+  // (ex.: "Aguardando reenvio automático"), sem PII nem conteúdo cru.
+  const title = isConnection(props)
+    ? undefined
+    : getMessageStatusHint(props.messageStatus);
+
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
         className,

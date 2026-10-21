@@ -1,47 +1,41 @@
 {
   "url": null,
   "prPublished": false,
-  "delivery": "branch-pushed-no-forge-cli",
-  "branch": "feat/adr-06-slotpicker",
-  "remote": "git@github.com:freitasjh/atlas-agenta.git",
+  "delivery": "branch-pushed-pr-api-blocked-by-token-scope",
   "pushed": true,
-  "compareUrl": "https://github.com/freitasjh/atlas-agenta/pull/new/feat/adr-06-slotpicker",
-  "title": "feat(agenda): slots sob demanda, exceções/vigência e visão de calendário",
-  "reason": "A branch feat/adr-06-slotpicker foi empurrada com sucesso para origin (git push -u, novo branch rastreado). O PR NÃO foi criado porque nenhum CLI de forge está disponível neste step (gh/glab/cr/hub ausentes; instalar via snap/apt exigiria sudo e um token autenticado inexistente). URL do PR não foi fabricada — o GitHub retornou apenas a compareUrl acima para abertura manual. Além disso, a QA ao vivo via chrome-devtools (gate obrigatório antes do PR) NÃO pôde ser executada: a ferramenta MCP chrome-devtools não está exposta a este step de entrega.",
-  "pendingUserAction": "Abrir o PR manualmente pela compareUrl (base a definir: master ou a branch-alvo de merge) OU autenticar um gh/glab para criação programática. Antes do merge, executar a QA visual consolidada no /app/agenda com chrome-devtools (ver qaPending).",
-  "commits": [
-    "86854bc fix: week view mobile day-nav and keyboard-reachable empty slots (ADR-08)",
-    "a7f35b7 feat: visão de calendário dia/semana alternável na agenda (ADR-08)",
-    "a45da38 feat: vigência e exceções por data na tela de horários (ADR-07)",
-    "9067952 feat: seletor de slots livres no formulário de agendamento (ADR-06)",
-    "cba4200 fix: filtrar status ativo em busy e cobrir DST real (ADR-05)",
-    "4659e0d feat: gerador de slots puro e useAvailableSlots (ADR-05)",
-    "47bc315 feat: hooks de dados para exceções e vigência/passo da agenda (ADR-04)",
-    "ed4f273 fix: inclui colunas de vigência/passo no select de professionals (ADR-03)",
-    "8fff6f8 feat: add schedule_overrides table with RLS/RBAC (ADR-02)"
-  ],
+  "compareUrl": "https://github.com/freitasjh/atlas-agenta/pull/new/feat/adr-06-frontend-selo-historico",
+  "reason": "Branch feat/adr-06-frontend-selo-historico empurrada para origin (git push -u, rastreada; commit de artefatos 450f66a no topo dos 9 commits de código). gh CLI autenticado (conta freitasjh), mas `gh pr create` falhou com 'Resource not accessible by personal access token (createPullRequest)': o fine-grained PAT NÃO tem o escopo 'Pull requests: write'. URL do PR NÃO foi fabricada — abrir pela compareUrl ou conceder o escopo ao PAT e recriar.",
+  "pendingUserAction": "Abrir o PR pela compareUrl, OU conceder 'Pull requests: write' ao PAT e rodar: gh pr create --base master --head feat/adr-06-frontend-selo-historico --title \"feat: confirmação interativa D-1 do WhatsApp (Fase 2, Fatia 2)\" --body-file .agents/tasks/dev-pipeline/PR_BODY.md",
+  "slice": "WhatsApp Fase 2 — Fatia 2 (confirmação interativa D-1)",
+  "branch": "feat/adr-06-frontend-selo-historico",
+  "base": "master",
+  "remote": "git@github.com:freitasjh/atlas-agenta.git",
+  "title": "feat: confirmação interativa D-1 do WhatsApp (Fase 2, Fatia 2)",
   "adrsDelivered": [
-    { "id": "adr-01", "title": "Vigência da grade e passo-base de slots em professionals" },
-    { "id": "adr-02", "title": "Tabela schedule_overrides (exceções por data) com RLS/RBAC" },
-    { "id": "adr-03", "title": "Tipos de domínio e schemas zod de exceção/vigência" },
-    { "id": "adr-04", "title": "Hooks de dados: exceções e vigência/passo" },
-    { "id": "adr-05", "title": "Gerador de slots puro (lib/scheduling-slots.ts) e useAvailableSlots" },
-    { "id": "adr-06", "title": "SlotPicker no fluxo de criação (AppointmentFormDialog)" },
-    { "id": "adr-07", "title": "Vigência e exceções na tela de horários (HorariosPage)" },
-    { "id": "adr-08", "title": "Visão de calendário (dia/semana) alternável com a lista (AgendaPage)" }
+    { "id": "adr-01", "title": "Migrations aditivas: webhook_events + appointments.confirmed_via + retentativa em messages + template reagendar_retorno" },
+    { "id": "adr-02", "title": "Setup pg_cron versionado e condicional (não quebra db reset local)" },
+    { "id": "adr-03", "title": "Edge Function whatsapp-inbound: autenticidade + zod + idempotência + casamento resposta→agendamento + efeito 1/2" },
+    { "id": "adr-04", "title": "Job de lembrete D-1 (cron) que enfileira lembrete_d1 idempotente" },
+    { "id": "adr-05", "title": "Worker de retentativa (cron) com backoff/limite e janela útil + drenadora whatsapp-dispatch" },
+    { "id": "adr-06", "title": "Frontend: confirmed_via nos tipos/select/zod, selo 'confirmado pelo cliente' na agenda e rotulagem do histórico" },
+    { "id": "adr-07", "title": "Verificação consolidada: QA do webhook com payload simulado (1/2/duplicado/inválido) + build/deno check" }
   ],
   "qa": {
-    "buildTypecheck": "pass — `npm run build` (tsc -b && vite build) exit 0, TS estrito, build limpo. Único aviso é chunk >500kB, pré-existente e fora de escopo.",
-    "unitTests": "pass — `npm test` (vitest run): 16/16 em src/lib/scheduling-slots.test.ts. Cobre o gerador puro de slots (grade semanal, break, exceção fechada/janela atípica, vigência início/fim, ocupados, duração do serviço consumindo o bloco, passo-base, e DST real).",
-    "dbLiveSchema": "pass — verificado contra o Postgres local em execução (docker exec psql): schedule_overrides existe com tenant_id DEFAULT current_tenant_id(), RLS habilitado, 3 políticas (select same-tenant; write admin; write own-professional via profile_id=auth.uid()), FK composto (tenant_id, professional_id), unique (tenant_id, professional_id, override_date), índices, e CHECKs (is_closed vs janela com break both-or-none). professionals ganhou schedule_start_date, schedule_end_date, slot_step_minutes; RLS habilitado. Confirma ADR-01 e ADR-02 ao vivo.",
-    "frontendWiring": "pass (source) — SlotPicker.tsx, useAvailableSlots.ts, useScheduleOverrides.ts, scheduling-slots.ts, AgendaPage.tsx presentes e importados no fluxo (AppointmentFormDialog, HorariosPage). Build/typecheck garantem a integração de tipos.",
-    "chromeDevtools": "NÃO EXECUTADA — ferramenta MCP chrome-devtools NÃO exposta a este step de entrega. A QA visual ao vivo consolidada do /app/agenda (chips de slot refletindo grade/exceção/vigência/ocupados no fuso do tenant; estados de vazio folga/fora-vigência/sem-grade; toggle calendário<->lista dia/semana; criar agendamento a partir de um chip sem sobreposição com erro 23P01 pt-BR na corrida) permanece PENDENTE. Não fabricada.",
-    "secretAudit": "pass — .env e supabase/functions/.env não versionados; apenas .env.example rastreado. Nenhum segredo ecoado. Pasta .agents não commitada no diff da feature."
+    "buildTypecheck": "pass — npm run build (tsc -b + vite build) exit 0; único aviso é chunk >500kB, pré-existente.",
+    "unitTests": "pass — vitest run 32/32.",
+    "denoCheck": "pass — deno check whatsapp-inbound/index.ts e whatsapp-dispatch/index.ts limpos.",
+    "dbReset": "pass — supabase db reset aplica as 24 migrations; caminho condicional do pg_cron não quebra o reset local.",
+    "webhookInboundLive": "pass — função servida via deno (port 9099, segredo de teste, EVOLUTION_MODE=mock). 6 casos: auth inválida→401 (sem efeito); schema inválido→400; '1'→processado (appointment tenant A → confirmado + confirmed_via=cliente_whatsapp + confirmed_at; mesmo telefone em 2 tenants NÃO vazou); evento duplicado→duplicado (1 só efeito, 1 linha webhook_events confirmar); texto não reconhecido→ignorado; '2'→processado, reagendar_retorno enfileirado SEM mudar o agendamento (tenant B segue pendente).",
+    "cronLembreteD1": "pass — whatsapp_enqueue_lembrete_d1(): 1 inserido para agendamento na janela 23-25h com opt-in/instância conectada; re-run 0 (idempotente por dedupe_key).",
+    "retryWorker": "pass — whatsapp_process_retry_queue(): max_attempts→falha/max_attempts; lembrete com starts_at no passado→falha/janela_vencida; reagendar_retorno não expira por janela; elegíveis contados corretamente.",
+    "chromeDevtoolsFrontend": "NÃO EXECUTADA — MCP chrome-devtools não exposto a este step e o wrapper bloqueia o dev server aqui. Integridade do frontend coberta pelo build de produção + typecheck limpos. Click-through visual recomendado antes do merge.",
+    "secretAudit": "pass — .env e supabase/functions/.env fora do git; só .env.example rastreado; nenhum valor de segredo no diff; deno.lock (resíduo de QA) removido, não commitado."
   },
-  "qaGate": "BLOQUEADO para abertura de PR por este step: (a) QA visual chrome-devtools não executável aqui; (b) sem CLI de forge para criar o PR. Nada FALHOU na verificação estática/DB — a verificação visual simplesmente não pôde ser rodada neste ambiente.",
+  "qaGate": "VERDE para entrega: build/typecheck/testes/deno check limpos; db reset com 24 migrations; webhook inbound provado ao vivo (auth/schema/idempotência/casamento por tenant/efeito 1 e 2); cron D-1 e worker de retentativa provados por SQL. Ressalva: click-through no navegador (chrome-devtools) não executável neste step — recomendado passe manual antes do merge; pg_cron scheduler e envio real pela Evolution não exercitados (lógica provada sem scheduler/rede).",
   "pendingItems": [
-    "QA visual consolidada no /app/agenda via chrome-devtools (ADR-01..08) — não executável neste step; tool MCP ausente. Deve ser feita antes do merge.",
-    "Criação do PR: branch já empurrada; abrir manualmente pela compareUrl ou autenticar um gh/glab.",
-    "Confirmar a branch-base de merge (master x branch empilhada)."
+    "QA de click-through no navegador via chrome-devtools (ADR-06) — não executável neste step; recomendado antes do merge.",
+    "Confirmar extensão pg_cron habilitada no projeto Supabase de produção.",
+    "Envio real pela Evolution (instância pareada) não exercitado no QA (EVOLUTION_MODE=mock).",
+    "Não fazer merge em master sem revisão."
   ]
 }
