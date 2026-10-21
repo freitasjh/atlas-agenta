@@ -36,6 +36,7 @@ import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { useTenant } from "@/hooks/useTenant";
 import { mapSendOutcome, mapWhatsAppError } from "@/lib/whatsapp-errors";
 import { getMessageTemplateLabel } from "@/lib/whatsapp";
+import { MESSAGE_TEMPLATES } from "@/types/domain";
 import {
   resolveEmpresa,
   segmentTemplate,
@@ -112,23 +113,27 @@ export function SendMessageDialog({
 
   const selectedTemplate = form.watch("template");
 
-  // Só os templates ATIVOS do tenant são oferecidos (defesa em profundidade; a
-  // trava final de ativo/inativo é do servidor, ADR-04). Mantém a ordem
-  // canônica de `MessageTemplate` para a UI ficar estável.
-  const activeTemplates = useMemo(
-    () => (templatesQuery.data ?? []).filter((row) => row.active),
-    [templatesQuery.data],
-  );
-
+  // As OPÇÕES do `Select` vêm da lista FECHADA `MESSAGE_TEMPLATES` (domínio
+  // fixo das 4 chaves), NÃO da leitura de `message_templates`. Isso desacopla o
+  // envio da leitura de templates: a RLS concede SELECT só ao admin, então
+  // receptionist/professional (que PODEM disparar — `canSendWhatsAppMessage`)
+  // recebem zero linhas do fetch; derivar as opções do enum garante que eles
+  // vejam as 4 chaves e consigam enviar. A renderização canônica é do servidor
+  // (ADR-04), que cai em DEFAULT_TEMPLATE_BODIES quando a linha não existe.
   const selectedRow = useMemo(
-    () => activeTemplates.find((row) => row.template_key === selectedTemplate),
-    [activeTemplates, selectedTemplate],
+    () =>
+      (templatesQuery.data ?? []).find(
+        (row) => row.template_key === selectedTemplate,
+      ),
+    [templatesQuery.data, selectedTemplate],
   );
 
   // Dados disponíveis no diálogo para o preview: `{nome}` = nome do cliente,
-  // `{empresa}` = nome fantasia do tenant. `{servico}`/`{dataHora}` não vêm no
-  // diálogo (só o `appointmentId`); caem no fallback pt-BR, deixando explícito
-  // ao admin que não haverá dado cru. A renderização de fio é do servidor.
+  // `{empresa}` = nome fantasia do tenant. O diálogo recebe só o
+  // `appointmentId` (não os dados do agendamento), então `{servico}`/`{dataHora}`
+  // caem no fallback pt-BR do preview — o servidor resolverá serviço e data
+  // reais no envio (ADR-04 é a fonte da verdade). Decisão registrada na ADR-07:
+  // o preview cobre nome/empresa; servico/dataHora aparecem como fallback.
   const previewVars = useMemo<TemplateVars>(
     () => ({
       nome: customerName,
@@ -149,12 +154,6 @@ export function SendMessageDialog({
       selectedRow ? segmentTemplate(selectedRow.body, previewVars) : [],
     [selectedRow, previewVars],
   );
-
-  // Envio bloqueado na borda quando o template escolhido não tem versão ativa
-  // para o tenant (sem seed / desativado). O servidor é a trava real.
-  const templatesLoaded = !templatesQuery.isLoading && !templatesQuery.isError;
-  const noActiveTemplate =
-    whatsappOptIn && templatesLoaded && !selectedRow;
 
   async function onSubmit(values: SendMessageInput) {
     try {
@@ -192,8 +191,12 @@ export function SendMessageDialog({
     }
   }
 
-  const sendDisabled =
-    !whatsappOptIn || noActiveTemplate || sendMessage.isPending;
+  // O envio só é bloqueado na borda por falta de opt-in (defesa em
+  // profundidade) ou enquanto pende. NUNCA por ausência de linha de template: a
+  // trava de ativo/inativo e o fallback de template ausente são do servidor
+  // (ADR-04 → DEFAULT_TEMPLATE_BODIES), senão receptionist/professional (sem
+  // SELECT por RLS) e admin de tenant legado ficariam travados (RF-T07/RF-T08).
+  const sendDisabled = !whatsappOptIn || sendMessage.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -228,12 +231,9 @@ export function SendMessageDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {activeTemplates.map((row) => (
-                        <SelectItem
-                          key={row.template_key}
-                          value={row.template_key}
-                        >
-                          {getMessageTemplateLabel(row.template_key)}
+                      {MESSAGE_TEMPLATES.map((templateKey) => (
+                        <SelectItem key={templateKey} value={templateKey}>
+                          {getMessageTemplateLabel(templateKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -274,25 +274,6 @@ export function SendMessageDialog({
                   )}
                 </div>
               </div>
-            ) : null}
-
-            {noActiveTemplate ? (
-              // Sem template ativo para a chave (sem seed / desativado): envio
-              // bloqueado na borda com motivo pt-BR e atalho para a edição. A
-              // trava real continua no servidor.
-              <p
-                className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
-                role="note"
-              >
-                Nenhum modelo ativo para esta mensagem. Ajuste em{" "}
-                <Link
-                  to="/app/config/mensagens"
-                  className="font-medium text-foreground underline underline-offset-4"
-                >
-                  Modelos de mensagem
-                </Link>
-                .
-              </p>
             ) : null}
 
             {!whatsappOptIn ? (

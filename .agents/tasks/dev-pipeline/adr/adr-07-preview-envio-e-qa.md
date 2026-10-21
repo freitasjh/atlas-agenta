@@ -23,17 +23,30 @@ nunca é a fonte da verdade do envio.
 
 ## Decisão
 
-Alterar **apenas** `src/app/whatsapp/SendMessageDialog.tsx`:
+Alteração principal em `src/app/whatsapp/SendMessageDialog.tsx` (ver "Arquivos afetados" para os
+arquivos de apoio tocados por paridade de contrato):
 
-1. Ler os templates do tenant via `useMessageTemplates()` (ADR-05).
-2. Abaixo do `Select` de template, renderizar um bloco de preview (`renderTemplate(body, vars)`,
-   ADR-03) com os dados disponíveis: `{nome}` = `customerName`; `{empresa}` = `trade_name` do tenant
-   (via `useTenant`); `{servico}`/`{dataHora}` quando o diálogo tiver o agendamento de origem (caso
-   contrário, o fallback aparece — deixando explícito ao admin que não haverá `{dataHora}` cru).
-   Mesmo tratamento de realce de token por fundo (texto em `foreground`) da ADR-06.
-3. Se o template da chave estiver **inativo**, o `Select` não o oferece; se não houver ativo para a
-   chave, explicar em pt-BR e desabilitar o envio daquela chave (defesa em profundidade; a trava
-   final é do servidor). Sem mudar o shape do payload nem os 5 outcomes.
+1. As **opções** do `Select` de template vêm da lista **fechada** `MESSAGE_TEMPLATES`
+   (`src/types/domain.ts`) — domínio fixo das 4 chaves —, **não** da leitura de `message_templates`.
+   Isso **desacopla o envio da leitura de templates**: a RLS concede `SELECT` só ao `admin`, então
+   `receptionist`/`professional` (que **podem** disparar — `canSendWhatsAppMessage`) recebem zero
+   linhas do fetch; derivar as opções do enum garante que todos os papéis que podem enviar vejam as
+   4 chaves. `useMessageTemplates()` (ADR-05) é usado **apenas para enriquecer o preview** quando as
+   linhas existem (admin).
+2. Abaixo do `Select`, quando existir a linha do template para o tenant (admin), renderizar um bloco
+   de preview via `segmentTemplate(body, vars)` (ADR-03) com realce de token por fundo (texto em
+   `foreground`, igual à ADR-06). Variáveis do preview: `{nome}` = `customerName`; `{empresa}` =
+   `trade_name` → `legal_name` → fallback (mesmo encadeamento do servidor, via `resolveEmpresa`).
+   **`{servico}`/`{dataHora}` ficam no fallback pt-BR do preview** — o diálogo recebe só
+   `appointmentId`, não os dados do agendamento; o servidor (ADR-04) resolve serviço/data reais no
+   envio e é a fonte da verdade. O preview cobre nome/empresa; serviço/data aparecem como fallback
+   previsível (decisão consciente, alinhada ao item 4 da review).
+3. **O envio nunca é desabilitado por ausência de linha de template.** A trava de ativo/inativo e o
+   fallback de template ausente são do servidor (ADR-04 → `DEFAULT_TEMPLATE_BODIES`); desabilitar na
+   UI por `!selectedRow` travaria `receptionist`/`professional` (sem `SELECT` por RLS) e o `admin` de
+   tenant legado sem seed — recriando a regressão de envio (RF-T07/RF-T08). O `Select` desabilita
+   apenas sem opt-in; `sendDisabled = !whatsappOptIn || isPending`. Sem mudar o shape do payload nem
+   os 5 outcomes.
 
 Nenhuma mudança no `useSendMessage`, no schema `sendMessageSchema`, nos DTOs de `src/lib/whatsapp.ts`
 nem nos outcomes — o envio permanece intacto (AC-07).
@@ -51,7 +64,19 @@ Esta ADR também concentra o **QA ao vivo da fatia** (AC-10): ambiente local `su
 
 ## Arquivos afetados
 
-- `src/app/whatsapp/SendMessageDialog.tsx` (modificar — adicionar o bloco de preview)
+- `src/app/whatsapp/SendMessageDialog.tsx` (modificar — bloco de preview; opções do `Select` pela
+  lista fechada `MESSAGE_TEMPLATES`; envio desacoplado da leitura de templates)
+
+Arquivos de apoio tocados por paridade de contrato (desvio do escopo original "alterar apenas
+`SendMessageDialog.tsx`", registrado aqui conforme item 3 da review — mudanças pequenas e
+verificadas, não antecipam ADRs futuras):
+
+- `src/lib/message-templates.ts` (extração de `segmentTemplate` + `resolveEmpresa` — contrato
+  compartilhado cliente↔servidor da ADR-03, reusado pelo preview)
+- `src/app/config/mensagens/TemplatePreview.tsx`, `src/app/config/mensagens/TemplateEditorDialog.tsx`
+  (consomem o contrato extraído — paridade com o preview do editor, ADR-06)
+- `src/hooks/useTenant.ts` (expõe `trade_name`/`legal_name` para o `{empresa}` do preview)
+- `src/types/domain.ts` (tipos de apoio do contrato de templates)
 
 ## Critérios de aceite (testáveis nesta ADR)
 
