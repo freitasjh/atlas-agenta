@@ -2,9 +2,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import {
-  TEMPLATE_FALLBACKS,
-  TEMPLATE_VARIABLES,
-  type TemplateVariable,
+  resolveEmpresa,
+  segmentTemplate,
   type TemplateVars,
 } from "@/lib/message-templates";
 
@@ -13,6 +12,8 @@ interface TemplatePreviewProps {
   body: string;
   /** Nome fantasia do tenant para a variável `{empresa}` (ou `null`). */
   empresa: string | null;
+  /** Razão social do tenant: espelha o fallback `trade_name → legal_name` do servidor. */
+  legalName?: string | null;
 }
 
 /** Dados de exemplo fixos pt-BR para o preview (o `{empresa}` vem do tenant). */
@@ -22,57 +23,26 @@ const EXAMPLE_VARS: Omit<Required<TemplateVars>, "empresa"> = {
   dataHora: "qui, 15/02 às 14:00",
 };
 
-const KNOWN = new Set<string>(TEMPLATE_VARIABLES);
-const TOKEN_PATTERN = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g;
-
-type Segment =
-  | { kind: "text"; value: string }
-  | { kind: "var"; value: string };
-
-/**
- * Segmenta o corpo em texto literal e trechos resolvidos de variáveis
- * conhecidas, aplicando a MESMA tabela de fallback de `renderTemplate` (ADR-03).
- * Token desconhecido fica literal (vira texto). Nunca expõe `{token}` conhecido
- * cru — espelha a semântica canônica, só que preservando quais trechos foram
- * substituídos para o realce visual.
- */
-function segmentPreview(body: string, vars: TemplateVars): Segment[] {
-  const segments: Segment[] = [];
-  let lastIndex = 0;
-  for (const match of body.matchAll(TOKEN_PATTERN)) {
-    const [raw, name] = match;
-    const start = match.index ?? 0;
-    if (!KNOWN.has(name)) {
-      // Token desconhecido: mantém literal (parte do texto comum).
-      continue;
-    }
-    if (start > lastIndex) {
-      segments.push({ kind: "text", value: body.slice(lastIndex, start) });
-    }
-    const variable = name as TemplateVariable;
-    const value = vars[variable];
-    const resolved =
-      value != null && value.trim() !== ""
-        ? value
-        : TEMPLATE_FALLBACKS[variable];
-    segments.push({ kind: "var", value: resolved });
-    lastIndex = start + raw.length;
-  }
-  if (lastIndex < body.length) {
-    segments.push({ kind: "text", value: body.slice(lastIndex) });
-  }
-  return segments;
-}
-
 /**
  * Prévia ao vivo do que o cliente recebe. Reatividade pura (deriva de `body`,
- * sem efeito). Realça as variáveis substituídas por **fundo** (não só cor), com
- * texto em `foreground` + `font-medium` para contraste adequado.
+ * sem efeito). Segmentação via `segmentTemplate` (contrato compartilhado
+ * ADR-03) — mesma lista fechada e fallback do envio. Realça as variáveis
+ * substituídas por **fundo** (não só cor), com texto em `foreground` +
+ * `font-medium` para contraste adequado. `{empresa}` segue o encadeamento
+ * `trade_name → legal_name → null` do servidor (`resolveEmpresa`).
  */
-export function TemplatePreview({ body, empresa }: TemplatePreviewProps) {
+export function TemplatePreview({
+  body,
+  empresa,
+  legalName,
+}: TemplatePreviewProps) {
   const segments = React.useMemo(
-    () => segmentPreview(body, { ...EXAMPLE_VARS, empresa }),
-    [body, empresa],
+    () =>
+      segmentTemplate(body, {
+        ...EXAMPLE_VARS,
+        empresa: resolveEmpresa(empresa, legalName),
+      }),
+    [body, empresa, legalName],
   );
 
   return (

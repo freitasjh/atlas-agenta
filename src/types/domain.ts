@@ -53,6 +53,7 @@ export interface CurrentProfile {
 export interface CurrentTenant {
   id: string;
   trade_name: string | null;
+  legal_name: string | null;
   subscription_status: SubscriptionStatus;
   timezone: string;
 }

@@ -61,6 +61,7 @@ export function TemplateEditorDialog({
   const upsert = useUpsertMessageTemplate();
   const tenantQuery = useTenant();
   const empresa = tenantQuery.data?.trade_name ?? null;
+  const legalName = tenantQuery.data?.legal_name ?? null;
 
   const form = useForm<MessageTemplateInput>({
     resolver: zodResolver(messageTemplateSchema),
@@ -105,7 +106,11 @@ export function TemplateEditorDialog({
           >
             <TemplateBodyField control={form.control} disabled={upsert.isPending} />
 
-            <TemplatePreview body={watchedBody} empresa={empresa} />
+            <TemplatePreview
+              body={watchedBody}
+              empresa={empresa}
+              legalName={legalName}
+            />
 
             <FormField
               control={form.control}

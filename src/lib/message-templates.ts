@@ -64,6 +64,19 @@ const KNOWN_VARIABLES = new Set<string>(TEMPLATE_VARIABLES);
 const TOKEN_PATTERN = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g;
 
 /**
+ * Resolve uma variável conhecida: o valor fornecido quando presente e não vazio,
+ * senão o fallback pt-BR da tabela. Fonte única do critério de resolução,
+ * compartilhada por `renderTemplate` (texto plano) e `segmentTemplate` (realce).
+ */
+function resolveVariable(variable: TemplateVariable, vars: TemplateVars): string {
+  const value = vars[variable];
+  if (value != null && value.trim() !== "") {
+    return value;
+  }
+  return TEMPLATE_FALLBACKS[variable];
+}
+
+/**
  * Renderiza o corpo de um template substituindo as variáveis conhecidas.
  *
  * - Variável conhecida com valor presente e não vazio → o valor fornecido.
@@ -81,11 +94,67 @@ export function renderTemplate(body: string, vars: TemplateVars): string {
       // Token desconhecido: mantém literal.
       return match;
     }
-    const variable = rawName as TemplateVariable;
-    const value = vars[variable];
-    if (value != null && value.trim() !== "") {
-      return value;
-    }
-    return TEMPLATE_FALLBACKS[variable];
+    return resolveVariable(rawName as TemplateVariable, vars);
   });
+}
+
+/**
+ * Segmento de um template renderizado para fins de **realce visual** no preview:
+ * `text` é texto literal (inclui tokens desconhecidos, mantidos crus), `var` é o
+ * valor resolvido de uma variável conhecida (destacado por fundo na UI).
+ */
+export type TemplateSegment =
+  | { kind: "text"; value: string }
+  | { kind: "var"; value: string };
+
+/**
+ * Versão de `renderTemplate` que **preserva quais trechos foram substituídos**,
+ * para o preview realçar as variáveis por fundo (texto em `foreground`). Aplica
+ * exatamente a mesma lista fechada e a mesma tabela de fallback de
+ * `renderTemplate` — concatenar os `value` dos segmentos reproduz, caractere a
+ * caractere, a saída de `renderTemplate(body, vars)`. Peça pura compartilhada
+ * entre o editor (ADR-06) e o `SendMessageDialog` (ADR-07) — fonte única da
+ * semântica de segmentação, para não divergir do contrato canônico.
+ */
+export function segmentTemplate(
+  body: string,
+  vars: TemplateVars,
+): TemplateSegment[] {
+  const segments: TemplateSegment[] = [];
+  let lastIndex = 0;
+  for (const match of body.matchAll(TOKEN_PATTERN)) {
+    const [raw, name] = match;
+    const start = match.index ?? 0;
+    if (!KNOWN_VARIABLES.has(name)) {
+      // Token desconhecido: mantém literal (parte do texto comum).
+      continue;
+    }
+    if (start > lastIndex) {
+      segments.push({ kind: "text", value: body.slice(lastIndex, start) });
+    }
+    segments.push({
+      kind: "var",
+      value: resolveVariable(name as TemplateVariable, vars),
+    });
+    lastIndex = start + raw.length;
+  }
+  if (lastIndex < body.length) {
+    segments.push({ kind: "text", value: body.slice(lastIndex) });
+  }
+  return segments;
+}
+
+/**
+ * Resolve o valor da variável `{empresa}` com o MESMO encadeamento do servidor
+ * (`resolveRenderedText` em `supabase/functions/whatsapp/index.ts`):
+ * `trade_name` → `legal_name` → `null` (cada um trimado; vazio conta como
+ * ausente). Garante que o preview do cliente e o texto enviado coincidam para
+ * tenants com nome fantasia vazio e razão social preenchida. `null` cai no
+ * fallback `nossa equipe` na renderização.
+ */
+export function resolveEmpresa(
+  tradeName: string | null | undefined,
+  legalName: string | null | undefined,
+): string | null {
+  return tradeName?.trim() || legalName?.trim() || null;
 }

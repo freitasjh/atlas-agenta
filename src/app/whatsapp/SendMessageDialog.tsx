@@ -37,9 +37,8 @@ import { useTenant } from "@/hooks/useTenant";
 import { mapSendOutcome, mapWhatsAppError } from "@/lib/whatsapp-errors";
 import { getMessageTemplateLabel } from "@/lib/whatsapp";
 import {
-  TEMPLATE_FALLBACKS,
-  TEMPLATE_VARIABLES,
-  type TemplateVariable,
+  resolveEmpresa,
+  segmentTemplate,
   type TemplateVars,
 } from "@/lib/message-templates";
 import { cn } from "@/lib/utils";
@@ -47,49 +46,6 @@ import {
   sendMessageSchema,
   type SendMessageInput,
 } from "@/lib/validations/whatsapp";
-
-const KNOWN_VARIABLES = new Set<string>(TEMPLATE_VARIABLES);
-const TOKEN_PATTERN = /\{([a-zA-Z][a-zA-Z0-9_]*)\}/g;
-
-type PreviewSegment =
-  | { kind: "text"; value: string }
-  | { kind: "var"; value: string };
-
-/**
- * Segmenta o corpo do template em texto literal e variáveis resolvidas,
- * aplicando a MESMA tabela de fallback de `renderTemplate` (ADR-03). Token
- * desconhecido fica literal; variável conhecida nunca aparece crua. Espelha a
- * semântica canônica preservando quais trechos foram substituídos (realce por
- * fundo), igual ao preview do editor (ADR-06). O preview é defesa em
- * profundidade — a renderização de fio é do servidor (ADR-04).
- */
-function segmentPreview(body: string, vars: TemplateVars): PreviewSegment[] {
-  const segments: PreviewSegment[] = [];
-  let lastIndex = 0;
-  for (const match of body.matchAll(TOKEN_PATTERN)) {
-    const [raw, name] = match;
-    const start = match.index ?? 0;
-    if (!KNOWN_VARIABLES.has(name)) {
-      // Token desconhecido: mantém literal (parte do texto comum).
-      continue;
-    }
-    if (start > lastIndex) {
-      segments.push({ kind: "text", value: body.slice(lastIndex, start) });
-    }
-    const variable = name as TemplateVariable;
-    const value = vars[variable];
-    const resolved =
-      value != null && value.trim() !== ""
-        ? value
-        : TEMPLATE_FALLBACKS[variable];
-    segments.push({ kind: "var", value: resolved });
-    lastIndex = start + raw.length;
-  }
-  if (lastIndex < body.length) {
-    segments.push({ kind: "text", value: body.slice(lastIndex) });
-  }
-  return segments;
-}
 
 interface SendMessageDialogProps {
   open: boolean;
@@ -176,14 +132,21 @@ export function SendMessageDialog({
   const previewVars = useMemo<TemplateVars>(
     () => ({
       nome: customerName,
-      empresa: tenantQuery.data?.trade_name ?? null,
+      // `{empresa}` segue o MESMO encadeamento do servidor
+      // (`resolveRenderedText`): trade_name → legal_name → null. Sem isso, o
+      // preview mostraria o fallback enquanto o cliente receberia a razão
+      // social — contradizendo o propósito do preview (ADR-07).
+      empresa: resolveEmpresa(
+        tenantQuery.data?.trade_name,
+        tenantQuery.data?.legal_name,
+      ),
     }),
-    [customerName, tenantQuery.data?.trade_name],
+    [customerName, tenantQuery.data?.trade_name, tenantQuery.data?.legal_name],
   );
 
   const previewSegments = useMemo(
     () =>
-      selectedRow ? segmentPreview(selectedRow.body, previewVars) : [],
+      selectedRow ? segmentTemplate(selectedRow.body, previewVars) : [],
     [selectedRow, previewVars],
   );
 
