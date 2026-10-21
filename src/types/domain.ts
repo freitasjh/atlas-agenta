@@ -245,6 +245,22 @@ export const MESSAGE_TEMPLATES = [
 export type MessageTemplate = (typeof MESSAGE_TEMPLATES)[number];
 
 /**
+ * Linha de `message_templates` (uma por `(tenant_id, template_key)`). Texto
+ * editável da régua de comunicação, sob RLS (leitura/escrita só admin). O
+ * `template_key` espelha o enum `MessageTemplate`; `body` aceita até 2000 chars
+ * no banco (o form limita a 1000). Nenhum segredo.
+ */
+export interface MessageTemplateRow {
+  id: string;
+  tenant_id: string;
+  template_key: MessageTemplate;
+  body: string;
+  active: boolean;
+  updated_at: string;
+  created_at: string;
+}
+
+/**
  * Linha de `whatsapp_instances` (uma por tenant). `evolution_instance_name` é o
  * nome lógico derivado do tenant — **sem segredo**. QR/token não são
  * persistidos; o QR vem só na resposta efêmera de `pair` (ADR-04).
