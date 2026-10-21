@@ -21,6 +21,12 @@ import {
 } from "./schemas.ts";
 // `SendResponse` é usado nas assinaturas de `sendResponse()` e nos retornos de condição.
 import { createEvolutionAdapter } from "./evolution-adapter.ts";
+import {
+  DEFAULT_TEMPLATE_BODIES,
+  formatDataHora,
+  renderTemplate,
+  type TemplateVars,
+} from "./render.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -254,6 +260,83 @@ async function handleCheck(
   );
 }
 
+/**
+ * Resolve as variáveis e renderiza o TEXTO FINAL do template para o envio (ADR-04, decisão D5 —
+ * renderização 100% no servidor; o cliente nunca monta o corpo). Carrega o `body` do template do
+ * tenant (service role, dentro do tenant resolvido); na ausência (tenant legado sem baseline ou
+ * template inativo) usa o texto de sistema padrão da chave — NUNCA a chave crua nem vazio
+ * (RF-T07). Resolve só o que estiver disponível e deixa o fallback da ADR-03 cobrir o resto.
+ *
+ * Dados resolvidos sob service role, dentro do tenant: `{nome}`←customer.name,
+ * `{servico}`←services.name (só com appointment), `{dataHora}`←appointments.starts_at no fuso do
+ * tenant, `{empresa}`←tenants.trade_name (fallback legal_name). PII (nome) NUNCA é logada; o
+ * texto renderizado NUNCA vai a log (RNF-T02 / AC-08).
+ */
+async function resolveRenderedText(
+  input: SendInput,
+  tenantId: string,
+  customerName: string | null,
+  service: SupabaseClient,
+): Promise<string> {
+  // 1. Carrega o body do template ativo do tenant; fallback para o texto de sistema padrão.
+  const { data: templateRow } = await service
+    .from("message_templates")
+    .select("body")
+    .eq("tenant_id", tenantId)
+    .eq("template_key", input.template)
+    .eq("active", true)
+    .maybeSingle();
+  const body = (templateRow?.body as string | undefined)?.trim()
+    ? (templateRow!.body as string)
+    : DEFAULT_TEMPLATE_BODIES[input.template];
+
+  // 2. Resolve dados do tenant/empresa e, quando houver agendamento, serviço e data/hora.
+  const { data: tenantRow } = await service
+    .from("tenants")
+    .select("trade_name, legal_name, timezone")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const timeZone =
+    (tenantRow?.timezone as string | null)?.trim() || "America/Sao_Paulo";
+  const empresa =
+    (tenantRow?.trade_name as string | null)?.trim() ||
+    (tenantRow?.legal_name as string | null)?.trim() ||
+    null;
+
+  let servico: string | null = null;
+  let dataHora: string | null = null;
+  if (input.appointmentId) {
+    const { data: appointment } = await service
+      .from("appointments")
+      .select("starts_at, services(name)")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.appointmentId)
+      .maybeSingle();
+    if (appointment) {
+      // `services` pode vir como objeto ou array conforme o embed; extrai `name` com segurança.
+      const serviceRel = (appointment as { services?: unknown }).services;
+      if (Array.isArray(serviceRel)) {
+        servico = (serviceRel[0] as { name?: string } | undefined)?.name ?? null;
+      } else if (serviceRel && typeof serviceRel === "object") {
+        servico = (serviceRel as { name?: string }).name ?? null;
+      }
+      dataHora = formatDataHora(
+        (appointment as { starts_at?: string | null }).starts_at ?? null,
+        timeZone,
+      );
+    }
+  }
+
+  // 3. Renderiza com a lógica espelhada da ADR-03 (mesma lista fechada + fallback).
+  const vars: TemplateVars = {
+    nome: customerName,
+    servico,
+    dataHora,
+    empresa,
+  };
+  return renderTemplate(body, vars);
+}
+
 // ---------------------------------------------------------------------------
 // Operação: enviar
 // ---------------------------------------------------------------------------
@@ -280,9 +363,11 @@ async function handleSend(
   }
 
   // Resolve o customer DENTRO do tenant derivado (service role + filtro por tenant_id).
+  // `name` entra aqui para a renderização de `{nome}` (ADR-04); PII resolvida sob service role,
+  // dentro do tenant — NUNCA logada em claro.
   const { data: customer, error: customerErr } = await service
     .from("customers")
-    .select("id, phone, whatsapp_opt_in, active")
+    .select("id, name, phone, whatsapp_opt_in, active")
     .eq("tenant_id", tenantId)
     .eq("id", input.customerId)
     .maybeSingle();
@@ -421,13 +506,23 @@ async function handleSend(
 
   const messageId = queued.id as string;
 
+  // Renderiza o TEXTO FINAL do template do tenant (ADR-04): o cliente passa a receber a mensagem
+  // real personalizada, NUNCA mais a string crua da chave (`"confirmacao"`). Resolução sob
+  // service role, dentro do tenant. O texto renderizado contém PII (nome) e NÃO é logado.
+  const renderedText = await resolveRenderedText(
+    input,
+    tenantId,
+    (customer.name as string | null) ?? null,
+    service,
+  );
+
   // Envia via adapter (mock). `to`/`text` nunca são logados em claro (PII mínima).
   const adapter = createEvolutionAdapter();
   try {
     const sendResult = await adapter.sendText({
       instanceName: instance.evolution_instance_name as string,
       to: customer.phone as string,
-      text: input.template,
+      text: renderedText,
     });
     await service
       .from("messages")
