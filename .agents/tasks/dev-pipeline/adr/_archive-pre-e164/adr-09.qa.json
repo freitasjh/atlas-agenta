@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-09 é fundação sem superfície testável: adiciona infra compartilhada (resolução de credenciais do env, cliente HTTP com AbortController/timeout, schemas zod da Evolution v2.3.7, normalização E.164) ao RealEvolutionAdapter, mas pair/sendText CONTINUAM stub lançando 'não implementada nesta fase' — nenhuma chamada real roda. Sem frontend (scope dados). O comportamento verificável de ponta a ponta (pairing com QR real, envio real de texto) só aparece nas ADR-10/11. Testar agora não exercita caminho real algum. Verificação consolidada antes do PR, após as ADRs que fiam a infra em comportamento."
-}

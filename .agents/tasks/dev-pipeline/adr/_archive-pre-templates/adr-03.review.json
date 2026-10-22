@@ -1,8 +1,0 @@
-{
-  "verdict": "approved",
-  "notes": [
-    "Revisor A: aprovado sem ressalvas (0 issues). Revisor B: approved com 3 achados não-bloqueantes.",
-    "Union dos achados (nenhum bloqueante): (1) scheduleOverrideSchema.reason aceita string vazia enquanto o CHECK do banco exige 1..200 chars — baixa severidade, o Postgres continua sendo a trava; recomendado alinhar o zod (min(1) ou transformar '' em undefined) para feedback pt-BR de formulário quando a UI consumir (ADR-07). (2) edição de useProfessionals.ts é nominalmente escopo da ADR-04, incluída por necessidade para coerência do tipo Professional estendido — a ADR-04 não deve re-editar select/row schema. (3) string de colunas de professionals repetida 4x — nit de manutenção (extrair PROFESSIONALS_COLUMNS).",
-    "Contraprova: npm run build (tsc -b + vite build) verde em ambas as revisões independentes; não há script de lint/test no package.json (typecheck é subconjunto do build). Fonte revisada confere com HEAD."
-  ]
-}

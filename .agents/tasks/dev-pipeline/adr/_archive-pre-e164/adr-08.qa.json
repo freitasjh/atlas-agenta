@@ -1,9 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-08 entrega comportamento verificável de ponta a ponta (diálogo de envio utilizável em Agenda e Clientes, outcomes pt-BR) e é a última ADR da fase — portanto a QA visual deve rodar como verificação CONSOLIDADA do fluxo WhatsApp inteiro (telas de ADR-05..ADR-08) antes do PR, junto das 7 ADRs já em qaPending, evitando subir o dev server 8 vezes. Além disso, o passo de QA visual exige subir `npm run dev` e dirigir o Chrome DevTools MCP, ferramentas não disponíveis para este agente agregador (apenas leitura/escrita/busca). A contraprova estática (typecheck + build) foi confirmada verde por ambos os revisores e a inspeção da fonte confirmou as invariantes (sem tenant_id no payload, opt-in gated na borda, gancho de cobrança só comentário). A QA de sistema real fica registrada em qaPending para a verificação consolidada.",
-  "evidence": {
-    "staticChecks": "npm run typecheck (tsc -b) e npm run build (tsc -b && vite build) reportados limpos por ambos os revisores (A e B).",
-    "sourceInspection": "SendMessageDialog.tsx inspecionado: payload de send = { template, customerId, appointmentId? } sem tenant_id; opt-in false desabilita envio com texto + Link para /app/clientes; mapeamento de outcome (sent/duplicate/not_connected/opt_out/send_failed) alinhado ao contrato de SendResponse.",
-    "visualQaPending": "Subir dev server + Chrome DevTools MCP para validar CA-F01..CA-F09 (fluxo enviar OK/opt-in/duplicado, foco, pt-BR, sem erro de console) na verificação consolidada antes do PR."
-  }
-}

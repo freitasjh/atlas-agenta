@@ -1,9 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-01 e fundacao de schema SQL-only (migrations: webhook_events, appointments.confirmed_via, campos de retentativa em messages, template reagendar_retorno). Nao ha superficie testavel de ponta a ponta ainda: nenhuma tela, nenhuma Edge Function, nenhum fluxo que o usuario possa exercitar. O comportamento depende da ADR-03 (webhook), ADR-04/05 (cron/worker) e ADR-06 (frontend). A verificacao de banco (dedupe, CHECKs, FK composta cross-tenant, RLS por papel, idempotencia do db reset num ambiente estavel) sera consolidada na ADR-07.",
-  "evidence": {
-    "build": "Ambos os revisores executaram npm run build (tsc -b + vite build) -> exit 0; npm run typecheck (tsc -b) -> exit 0; npm test (vitest) -> 32/32 verdes. ADR SQL-only nao toca frontend, verde esperado como contraprova de nao-regressao.",
-    "db": "supabase db reset aplicou as 20 migrations limpo (exit 0). Invariantes exercitados no Postgres local pelos revisores: indice unico (source, external_event_id) barra duplicado (unique_violation); CHECK confirmed_via rejeita valor invalido; FK composta (tenant_id, appointment_id) rejeita casamento cross-tenant (foreign_key_violation); RLS -> admin do tenant le 1 evento, receptionist/professional leem 0, admin de outro tenant le 0, INSERT por receptionist negado por RLS; signup novo cria exatamente 5 message_templates.",
-    "open_for_consolidated_qa": "Confirmar o duplo supabase db reset num ambiente estavel (Review B observou flapping de container do Realtime da propria CLI na 2a execucao, resolvido com --debug; nao e defeito do SQL) e validar que um tenant legado pre-existente ganha a 5a linha do backfill sem duplicar em re-apply."
-  }
-}

@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-02 é escopo 'dados' puro: a migration cria a tabela whatsapp_instances (schema, índice, RLS, RBAC admin-write) sem nenhuma superfície testável no sistema real. Não há tela nem fluxo de ponta a ponta — a tabela é fundação da tela de conexão (ADR-07) e da operação pair da Edge Function (ADR-04). A verificação (A1-A5: db reset idempotente, catálogo/RLS, unique por tenant, isolamento cross-tenant e RBAC) já foi exercida pelos dois revisores contra o Supabase local via harness de dois tenants + papéis, todos passando, com npm run build verde. QA de sistema fica para a verificação consolidada antes do PR, junto com as ADRs de frontend que consomem esta tabela."
-}

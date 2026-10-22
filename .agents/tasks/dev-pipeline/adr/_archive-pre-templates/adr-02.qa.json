@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-02 é uma migration SQL pura (nova tabela de domínio schedule_overrides), fundação de dados sem nenhuma superfície testável de ponta a ponta: não há tela nem fluxo de usuário novo, nenhum TS tocado, nada para navegar no Chrome DevTools. Os critérios de aceite (isolamento multi-tenant, tenant_id do servidor, RBAC admin/professional/receptionist, coerência de janela, unicidade, re-apply idempotente) são de banco e exigem supabase db reset + sessões autenticadas de papéis/tenants distintos — verificação ao vivo. O comportamento end-to-end das exceções só emerge quando o gerador de slots (ADR-05) e as telas (ADR-06/07/08) as consomem. O QA real desta tabela entra na verificação consolidada antes do PR, junto com adr-01."
-}

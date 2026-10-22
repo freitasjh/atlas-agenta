@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-04 entrega apenas a funcao SQL `whatsapp_enqueue_lembrete_d1()` (security definer, chamada pelo cron a cada 15 min). E fundacao de dados sem superficie testavel pelo usuario: nao ha tela nem fluxo end-to-end navegavel. A verificacao de runtime exige `supabase db reset` + popular dados de teste (tenant ativo, instancia conectada, customer opt-in, agendamento ~24h) + `select whatsapp_enqueue_lembrete_d1();` e inspecao de `messages` para provar R1-R5 e idempotencia (R2) — mais o teste do webhook com payloads simulados (1/2/duplicado/invalido) e `deno check` da Edge Function. Tudo isso e exatamente o escopo da ADR-07 (verificacao consolidada), para onde os dois revisores independentes recomendaram adiar o QA. O build/typecheck/test de frontend nao exercita SQL; serve so como contraprova de ausencia de regressao (ambos revisores: typecheck/build exit 0, 32/32 testes)."
-}

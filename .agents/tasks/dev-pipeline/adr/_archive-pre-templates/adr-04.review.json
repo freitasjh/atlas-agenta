@@ -1,8 +1,0 @@
-{
-  "verdict": "approved",
-  "notes": [
-    "Revisor A apontou 'isolamento de tenant não documentado no seletor useScheduleValidity' como bloqueante, mas o docstring em useProfessionals.ts (linhas 104-110) já explicita que o RLS não traz profissional de outro tenant; não é defeito funcional (o próprio A admite 'o find é seguro' e 'não é bug funcional hoje'). Union de defeitos reais não contém issue bloqueante.",
-    "Revisor B: APPROVED. Três issues menores/não-bloqueantes, todas marcadas 'confirmed, menor': (1) embrulho de erro assimétrico upsert(pt-BR via new Error) vs update-vigência(PostgrestError cru em inglês) — nota de contrato para a UI de ADR-07 uniformizar exibição; (2) useScheduleValidity conflui loading/not-found em null — ADR-07 deve usar isLoading/isPending; (3) queryKey placeholder 'none' com enabled:false — inócuo, padrão idêntico ao useWorkingHours.",
-    "Contraprova (gates existentes = typecheck + build; sem lint/test no package.json): ambos revisores rodaram 'npm run typecheck' (tsc -b) e 'npm run build' (tsc -b && vite build) limpos; aviso de chunk >500kB é pré-existente. Código dos hooks lido e confere com os pareceres."
-  ]
-}
