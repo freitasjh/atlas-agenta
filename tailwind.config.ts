@@ -78,6 +78,16 @@ export default {
           DEFAULT: "hsl(var(--status-sub-cancelado))",
           foreground: "hsl(var(--status-sub-cancelado-fg))",
         },
+        // Cores de serviço derivadas do service_id (ADR-01): theme-aware,
+        // consumidas via bg-service-N no dot de serviço (ADR-06).
+        "service-1": "hsl(var(--service-1))",
+        "service-2": "hsl(var(--service-2))",
+        "service-3": "hsl(var(--service-3))",
+        "service-4": "hsl(var(--service-4))",
+        "service-5": "hsl(var(--service-5))",
+        "service-6": "hsl(var(--service-6))",
+        "service-7": "hsl(var(--service-7))",
+        "service-8": "hsl(var(--service-8))",
       },
       borderRadius: {
         lg: "var(--radius)",

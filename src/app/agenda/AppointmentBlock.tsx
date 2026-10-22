@@ -4,6 +4,7 @@ import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
 import { formatTimeInTenantTz } from "@/lib/datetime";
+import { serviceColorDotClass } from "@/lib/service-color";
 import type {
   AppointmentStatus,
   AppointmentWithRelations,
@@ -94,10 +95,19 @@ export function AppointmentBlock({
         {customerName}
       </span>
       {!compact ? (
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {serviceName}
-          {" · "}
-          {professionalName}
+        <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "inline-block h-2 w-2 shrink-0 rounded-full",
+              serviceColorDotClass(appointment.service_id),
+            )}
+          />
+          <span className="truncate">
+            {serviceName}
+            {" · "}
+            {professionalName}
+          </span>
         </span>
       ) : null}
     </button>
