@@ -12,7 +12,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
-import { StatusBadge } from "@/components/StatusBadge";
+import { StatusBadge, getAppointmentStatusLabel } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,21 +46,25 @@ import {
   useChangeAppointmentStatus,
 } from "@/hooks/useAppointments";
 import { useProfessionals } from "@/hooks/useProfessionals";
+import { useServices } from "@/hooks/useServices";
 import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
+import { serviceColorDotClass } from "@/lib/service-color";
+import { cn } from "@/lib/utils";
 import {
   getAllowedTransitions,
   getTransitionLabel,
   isFinalStatus,
   SENSITIVE_TRANSITIONS,
 } from "@/lib/scheduling-status";
-import type {
-  AppointmentStatus,
-  AppointmentWithRelations,
+import {
+  APPOINTMENT_STATUSES,
+  type AppointmentStatus,
+  type AppointmentWithRelations,
 } from "@/types/domain";
 
 /** `YYYY-MM-DD` de hoje no fuso do tenant (default do filtro de dia). */
@@ -167,10 +171,19 @@ function AgendaItem({
             <p className="font-medium text-foreground">
               {appointment.customers?.name ?? "Cliente removido"}
             </p>
-            <p className="text-sm text-muted-foreground">
-              {appointment.services?.name ?? "Serviço removido"}
-              {" · "}
-              {appointment.professionals?.name ?? "Profissional removido"}
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-block h-2 w-2 shrink-0 rounded-full",
+                  serviceColorDotClass(appointment.service_id),
+                )}
+              />
+              <span>
+                {appointment.services?.name ?? "Serviço removido"}
+                {" · "}
+                {appointment.professionals?.name ?? "Profissional removido"}
+              </span>
             </p>
             <p className="text-sm tabular-nums text-muted-foreground">
               {formatCentsToBRL(appointment.price_cents)}
@@ -265,10 +278,15 @@ export function AgendaPage() {
 
   const { data: profile } = useProfile();
   const professionalsQuery = useProfessionals({ activeOnly: true });
+  const servicesQuery = useServices({ activeOnly: true });
 
   const [day, setDay] = useState(() => todayInTenantTz(timeZone));
   // Filtro de profissional livre (admin/recepção). Vazio = todos.
   const [filterProfessionalId, setFilterProfessionalId] = useState<string>("");
+  // Filtro de serviço (todos os papéis). Vazio = todos os serviços.
+  const [filterServiceId, setFilterServiceId] = useState<string>("");
+  // Filtro de status do agendamento. Vazio = todos os status.
+  const [filterStatus, setFilterStatus] = useState<AppointmentStatus | "">("");
   // Visão escolhida pelo usuário (lista/dia/semana), persistida no navegador.
   const [view, setView] = useAgendaView();
 
@@ -290,7 +308,18 @@ export function AgendaPage() {
   const appointmentsQuery = useAppointments({
     day,
     professionalId: effectiveProfessionalId,
+    serviceId: filterServiceId || undefined,
+    status: filterStatus || undefined,
   });
+
+  // Filtros de recorte ativos (serviço/status) — para distinguir o estado vazio
+  // "sem agendamentos no dia" do "nada bate com os filtros".
+  const hasActiveFilters = !!filterServiceId || !!filterStatus;
+
+  function clearFilters() {
+    setFilterServiceId("");
+    setFilterStatus("");
+  }
 
   // Grade do profissional em foco, só para desenhar a faixa de expediente na
   // visão Dia. Quando "todos" estão à vista (sem um profissional em foco), a
@@ -376,6 +405,7 @@ export function AgendaPage() {
 
   const appointments = appointmentsQuery.data ?? [];
   const activeProfessionals = professionalsQuery.data ?? [];
+  const activeServices = servicesQuery.data ?? [];
 
   const isLoading =
     (canScheduleForAnyProfessional
@@ -412,7 +442,7 @@ export function AgendaPage() {
                   htmlFor="agenda-dia"
                   className="text-sm font-medium text-foreground"
                 >
-                  Dia
+                  Ir para data
                 </label>
                 <div className="flex items-center gap-2">
                   <Button
@@ -427,6 +457,7 @@ export function AgendaPage() {
                     id="agenda-dia"
                     type="date"
                     className="w-auto"
+                    aria-label="Ir para data"
                     value={day}
                     onChange={(event) => setDay(event.target.value)}
                   />
@@ -485,6 +516,70 @@ export function AgendaPage() {
               </div>
             ) : null}
 
+            <div className="space-y-1">
+              <label
+                htmlFor="agenda-servico"
+                className="text-sm font-medium text-foreground"
+              >
+                Serviço
+              </label>
+              <Select
+                value={filterServiceId || "todos"}
+                onValueChange={(value) =>
+                  setFilterServiceId(value === "todos" ? "" : value)
+                }
+              >
+                <SelectTrigger
+                  id="agenda-servico"
+                  className="w-[200px]"
+                  aria-label="Filtrar por serviço"
+                >
+                  <SelectValue placeholder="Todos os serviços" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os serviços</SelectItem>
+                  {activeServices.map((service) => (
+                    <SelectItem key={service.id} value={service.id}>
+                      {service.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label
+                htmlFor="agenda-status"
+                className="text-sm font-medium text-foreground"
+              >
+                Status
+              </label>
+              <Select
+                value={filterStatus || "todos"}
+                onValueChange={(value) =>
+                  setFilterStatus(
+                    value === "todos" ? "" : (value as AppointmentStatus),
+                  )
+                }
+              >
+                <SelectTrigger
+                  id="agenda-status"
+                  className="w-[200px]"
+                  aria-label="Filtrar por status"
+                >
+                  <SelectValue placeholder="Todos os status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os status</SelectItem>
+                  {APPOINTMENT_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {getAppointmentStatusLabel(status)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="sm:ml-auto">
               <AgendaViewToggle value={view} onChange={setView} />
             </div>
@@ -529,6 +624,15 @@ export function AgendaPage() {
               onSelectDay={setDay}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}
             />
+          ) : appointments.length === 0 && hasActiveFilters ? (
+            <StatePanel
+              titulo="Nenhum agendamento com estes filtros."
+              descricao="Ajuste ou limpe os filtros para ver mais agendamentos."
+            >
+              <Button variant="outline" onClick={clearFilters}>
+                Limpar filtros
+              </Button>
+            </StatePanel>
           ) : appointments.length === 0 ? (
             <StatePanel
               titulo="Nenhum agendamento para este dia"

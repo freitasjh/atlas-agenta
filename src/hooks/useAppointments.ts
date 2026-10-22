@@ -79,21 +79,33 @@ export interface AppointmentInput {
 
 /**
  * Lista de agendamentos de um dia (`YYYY-MM-DD` no fuso do tenant),
- * opcionalmente filtrada por profissional. A faixa `[início, fim)` é convertida
- * para UTC via `tenantDayRangeUtc` (helper de ADR-05).
+ * opcionalmente filtrada por profissional, serviço e status. A faixa
+ * `[início, fim)` é convertida para UTC via `tenantDayRangeUtc` (helper de
+ * ADR-05).
+ *
+ * `serviceId` e `status` são refinamento de UX aplicado **no servidor** (`.eq`
+ * do PostgREST, uma única request — RNF01). Nenhum deles é fronteira de
+ * segurança: o isolamento por tenant continua 100% no RLS (derivado do JWT),
+ * então um `service_id` forjado jamais vaza linhas de outro tenant. Os valores
+ * vêm de selects controlados (`useServices` sob RLS; enum `AppointmentStatus`),
+ * sem texto livre a validar com zod aqui.
  */
 export function useAppointments({
   day,
   professionalId,
+  serviceId,
+  status,
 }: {
   day: string;
   professionalId?: string;
+  serviceId?: string;
+  status?: AppointmentStatus;
 }) {
   const { data: tenant } = useTenant();
   const timeZone = tenant?.timezone;
 
   return useQuery<AppointmentWithRelations[]>({
-    queryKey: [...APPOINTMENTS_KEY, { day, professionalId }],
+    queryKey: [...APPOINTMENTS_KEY, { day, professionalId, serviceId, status }],
     // Precisa do fuso do tenant para derivar a faixa UTC do dia.
     enabled: !!timeZone,
     queryFn: async () => {
@@ -107,6 +119,8 @@ export function useAppointments({
         .lt("starts_at", range.endUtc.toISOString())
         .order("starts_at", { ascending: true });
       if (professionalId) query = query.eq("professional_id", professionalId);
+      if (serviceId) query = query.eq("service_id", serviceId);
+      if (status) query = query.eq("status", status);
 
       const { data, error } = await query;
       if (error) throw error;

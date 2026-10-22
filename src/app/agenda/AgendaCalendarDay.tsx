@@ -197,18 +197,20 @@ export function AgendaCalendarDay({
       ) : null}
 
       <div className="flex">
-        {/* Calha de horas. */}
-        <div className="w-14 shrink-0" style={{ height: gridHeight }}>
-          {hours.slice(0, -1).map((hour) => (
-            <div
+        {/* Calha de horas: cada rótulo posicionado na MESMA coordenada da
+            hairline da coluna (`top = (hour - startHour) * HOUR_HEIGHT`),
+            centrado na linha via `translateY(-50%)`, para o texto da hora
+            encostar no topo do bloco. Itera todas as horas (inclui a última,
+            que marca a base da janela). */}
+        <div className="relative w-14 shrink-0" style={{ height: gridHeight }}>
+          {hours.map((hour) => (
+            <span
               key={hour}
-              className="relative border-t border-border"
-              style={{ height: HOUR_HEIGHT }}
+              className="absolute right-1 -translate-y-1/2 font-mono text-xs tabular-nums text-muted-foreground"
+              style={{ top: (hour - startHour) * HOUR_HEIGHT }}
             >
-              <span className="absolute -top-2 right-1 font-mono text-xs tabular-nums text-muted-foreground">
-                {hour.toString().padStart(2, "0")}:00
-              </span>
-            </div>
+              {hour.toString().padStart(2, "0")}:00
+            </span>
           ))}
         </div>
 

@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, type RouterProviderProps } from "react-router-dom";
 
 import { RootLayout } from "@/components/RootLayout";
 import { NotFound } from "@/components/NotFound";
@@ -36,7 +36,9 @@ import { AdminDashboardPage, EmpresasPage } from "@/admin/pages";
  * Toaster; cada área tem seu layout. Guards de `/app` e `/admin` são stubs
  * passthrough nomeados (ADR-04). Rota curinga → 404 em pt-BR.
  */
-export const router = createBrowserRouter([
+// Anotação explícita de tipo: evita TS2742 (o tipo inferido referenciava o
+// caminho interno de resolução de @remix-run/router, não portável).
+export const router: RouterProviderProps["router"] = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
