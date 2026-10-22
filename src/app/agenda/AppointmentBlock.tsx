@@ -80,7 +80,7 @@ export function AppointmentBlock({
       style={style}
     >
       <span className="flex items-center justify-between gap-1">
-        <span className="truncate text-xs font-semibold tabular-nums text-foreground">
+        <span className="min-w-0 truncate text-xs font-semibold tabular-nums text-foreground">
           {startLabel}
         </span>
         <span className="flex shrink-0 items-center gap-1">
@@ -90,11 +90,11 @@ export function AppointmentBlock({
           <StatusBadge status={appointment.status} className="shrink-0" />
         </span>
       </span>
-      <span className="truncate text-sm font-medium text-foreground">
+      <span className="min-w-0 truncate text-sm font-medium text-foreground">
         {customerName}
       </span>
       {!compact ? (
-        <span className="truncate text-xs text-muted-foreground">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
           {serviceName}
           {" · "}
           {professionalName}
