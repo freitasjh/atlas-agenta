@@ -59,6 +59,19 @@
     --status-sub-cancelado: 215 16% 42%;
     --status-sub-cancelado-fg: 215 20% 96%;
 
+    /* Paleta de cor por serviço (ADR-01) — dot pequeno (componente gráfico),
+       contraste-alvo ≥ 3:1 vs --card (WCAG 1.4.11); cor nunca é o único sinal
+       (nome do serviço acompanha em texto). Matizes espaçadas, sem colidir com
+       --primary (160° jade) nem com as cores de status. */
+    --service-1: 265 60% 55%;
+    --service-2: 190 70% 42%;
+    --service-3: 28 80% 48%;
+    --service-4: 330 65% 55%;
+    --service-5: 230 60% 58%;
+    --service-6: 175 55% 38%;
+    --service-7: 95 45% 42%;
+    --service-8: 12 70% 55%;
+
     --radius: 0.75rem;
   }
 
@@ -107,6 +120,16 @@
     --status-nao-compareceu-fg: 350 30% 96%;
     --status-sub-cancelado: 215 14% 55%;
     --status-sub-cancelado-fg: 215 20% 12%;
+
+    /* Paleta de cor por serviço (ADR-01) — valores do tema escuro. */
+    --service-1: 265 70% 68%;
+    --service-2: 190 75% 58%;
+    --service-3: 28 85% 60%;
+    --service-4: 330 70% 68%;
+    --service-5: 230 70% 70%;
+    --service-6: 175 60% 52%;
+    --service-7: 95 50% 58%;
+    --service-8: 12 75% 65%;
   }
 }
 
