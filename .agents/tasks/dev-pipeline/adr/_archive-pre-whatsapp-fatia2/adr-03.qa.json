@@ -1,5 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-03 é uma peça pura sem superfície testável ponta a ponta: a função renderTemplate (src/lib/message-templates.ts) é um contrato compartilhado sem UI, rede, DOM ou relógio. Não há tela para navegar no Chrome DevTools nem fluxo utilizável — é fundação consumida depois pelo render server-side (ADR-04) e pelo preview do editor (ADR-06). O comportamento verificável (substituição, fallback pt-BR, token desconhecido literal, determinismo RNF-T05/AC-05/AC-06) está integralmente coberto por 8 testes unitários vitest, confirmados verdes pelos dois revisores (24/24 total, typecheck/build exit 0). O QA ao vivo da fatia (preview no SendMessageDialog + envio real) acontece na verificação consolidada antes do PR, na ADR-07.",
-  "evidence": "Contraprova estática reportada pelos dois revisores independentes: npm run typecheck (exit 0), npm run test (24/24, 8 novos de message-templates.test.ts), npm run build (exit 0, aviso de chunk size pré-existente). Sem superfície de UI/rede nesta ADR — QA ao vivo não aplicável."
-}

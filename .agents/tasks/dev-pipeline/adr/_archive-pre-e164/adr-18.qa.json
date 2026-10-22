@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-18 é backend-puro (Edge Function Deno): remove o resíduo do mock de handlePair e adiciona a action check de reconciliação. Não há superfície de frontend testável nesta ADR — o frontend só dispara check e persiste o QR na ADR-19. O fluxo QR fim-a-fim (OQ-01) só fecha com a ADR-19 por desenho da quebra. A verificação server-side foi feita por boot probe do edge-runtime (ambos revisores) e por grep (bloco 'Pareamento simulado' ausente; única escrita de 'conectado' guardada por state === 'open' em handleCheck). QA consolidado via chrome-devtools deve rodar após a ADR-19, quando a tela de configuração do WhatsApp exercitar pair -> aguardando_qr -> QR visível -> check -> conectado de ponta a ponta."
-}

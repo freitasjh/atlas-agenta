@@ -1,5 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-03 é infra de dev pura (scripts/dev-functions.sh + atalho npm dev:functions). Não entrega superfície testável de ponta a ponta: nenhuma tela, rota, componente, chamada ao Supabase, migration ou policy RLS. É um wrapper do CLI `supabase functions serve` cuja execução depende do CLI instalado e do .env preenchido (pré-requisito de ambiente, não comportamento de produto verificável via browser). Sem frontend afetado, não há tela para abrir no chrome-devtools. Adiado para a verificação consolidada antes do PR, junto da verificação ponta-a-ponta da ADR-04.",
-  "evidence": "Diff toca apenas scripts/dev-functions.sh (novo, 42 linhas) e package.json (+1 linha). git diff em ^src/ e ^supabase/(migrations|functions) vazio (confirmado nos dois pareceres). grep por EVOLUTION_API_KEY|SERVICE_ROLE|TOKEN|SECRET|BEARER no script: zero matches. Contraprova dos revisores A e B: npm run build e npm run typecheck exit 0. Nenhuma rota/tela nova para QA visual."
-}

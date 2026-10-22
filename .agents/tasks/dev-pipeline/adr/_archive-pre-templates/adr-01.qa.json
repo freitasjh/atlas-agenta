@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-01 é uma migration SQL pura (fundação de dados): adiciona as colunas schedule_start_date, schedule_end_date e slot_step_minutes em professionals, sem nenhuma superfície testável de ponta a ponta (sem tela, sem fluxo de usuário). Não há frontend novo para navegar no Chrome DevTools. Os ACs de banco (coerência de vigência, range do passo, default 30, nulos e re-apply idempotente) já foram validados pelos dois revisores via supabase start + psql. O comportamento end-to-end dessas colunas só surge quando o gerador de slots e as telas as consomem (ADR-05/06/07); o QA real deve rodar na verificação consolidada antes do PR."
-}

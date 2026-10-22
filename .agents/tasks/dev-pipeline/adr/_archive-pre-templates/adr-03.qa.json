@@ -1,4 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "ADR-03 entrega apenas tipos de domínio (ScheduleOverride, Professional estendido) e schemas zod puros (scheduleValiditySchema, scheduleOverrideSchema) + refatoração de extração em catalog.ts. Não há tela utilizável, fluxo de ponta a ponta nem superfície navegável para testar no sistema real — é fundação consumida pelas ADRs 04-08. A verificação visual/comportamental ocorre quando os hooks (ADR-04/05) e telas (ADR-06/07/08) montarem UI sobre esses tipos/schemas. Contraprova de build/typecheck verde cobre a garantia desta ADR; QA real adiado para a verificação consolidada antes do PR."
-}

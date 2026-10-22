@@ -1,5 +1,0 @@
-{
-  "test": "deferred",
-  "reason": "A tela /app/config/mensagens é uma superfície utilizável, mas o QA ao vivo desta fatia foi planejado de propósito na ADR-07 ('Preview no SendMessageDialog + QA ao vivo da fatia'), que depende da ADR-06. Além disso, as 3 observações não-bloqueantes agregadas no review (paridade preview↔renderTemplate, over-limit por chip, filtro de template inativo no SendMessageDialog) foram explicitamente endereçadas para esse QA consolidado. Testar a ADR-06 isolada agora duplicaria essa verificação e não exerceria o render de envio (ADR-04). Adiando para a verificação consolidada antes do PR.",
-  "evidence": null
-}

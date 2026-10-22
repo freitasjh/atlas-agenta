@@ -1,9 +1,0 @@
-{
-  "verdict": "approved",
-  "notes": [
-    "Ambos os revisores (A e B) aprovaram. ADR-02 é migration SQL-only (nenhum arquivo TS tocado): tabela schedule_overrides com tenant_id default current_tenant_id(), FK composta (tenant_id, professional_id) → professionals (tenant_id, id), CHECK de coerência de janela, unique (tenant_id, professional_id, override_date), 2 índices, RLS habilitado e 3 policies (SELECT tenant, WRITE admin, WRITE own-professional) espelhando working_hours.",
-    "Observação não-bloqueante (Revisor B): o CHECK de reason usa 'between 1 and 200' enquanto a ADR/análise dizem '<= 200'; endurecimento sensato (string vazia rejeitada). A ADR-03 deve espelhar no zod (min(1) ou transform '' → null) para a borda falhar em pt-BR, não no CHECK. Carregado para a ADR-03.",
-    "Observação não-bloqueante: verificação de RLS/CHECK/unique em runtime (AC-01..07) é SQL-only e não é exercitada por npm run build; pertence ao QA ao vivo (supabase db reset + sessões autenticadas).",
-    "Contraprova: npm run build (tsc -b && vite build) e npm run typecheck reportados exit 0 por ambos os revisores independentes; não há script de lint/test no package.json. ADR-02 não adiciona nenhum TS ao grafo de build, logo o resultado permanece limpo."
-  ]
-}

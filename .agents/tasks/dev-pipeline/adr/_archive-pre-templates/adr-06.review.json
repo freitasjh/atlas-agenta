@@ -1,8 +1,0 @@
-{
-  "verdict": "approved",
-  "notes": [
-    "Ambos os revisores (A e B) aprovaram. Contraprova estática convergente nos dois pareceres: typecheck (tsc -b) limpo, build (vite) limpo (apenas aviso pré-existente de chunk >500kB, não introduzido aqui), 16/16 testes do gerador (ADR-05) passando.",
-    "Issues não-bloqueantes registradas por B para rastreio futuro: (1) cascata de precedência vigência→exceção→grade duplicada no emptyReason do AppointmentFormDialog vs scheduling-slots.ts/useAvailableSlots.ts — risco de drift de mensagem, considerar expor o motivo do vazio pelo hook; (2) prefill alimenta emptyValues que está nas deps do useEffect de reset — troca de prefill com diálogo aberto resetaria o form (risco baixo, ADR-08 só muda prefill ao reabrir); (3) chip selecionado comparado por label (válido no escopo de um dia, premissa a revisitar se o picker listar múltiplos dias).",
-    "Verificação independente do orquestrador: SlotPicker.tsx é presentacional/controlado, radiogroup com role/aria-checked, foco visível, slots indisponíveis omitidos (não desabilitados), copy pt-BR por motivo, sem acesso a dados (nenhum tenant_id, nenhum cliente supabase). Nenhuma fronteira de segurança cruzada; appointmentSchema inalterado."
-  ]
-}
