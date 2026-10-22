@@ -53,6 +53,8 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
+import { serviceColorDotClass } from "@/lib/service-color";
+import { cn } from "@/lib/utils";
 import {
   getAllowedTransitions,
   getTransitionLabel,
@@ -169,10 +171,19 @@ function AgendaItem({
             <p className="font-medium text-foreground">
               {appointment.customers?.name ?? "Cliente removido"}
             </p>
-            <p className="text-sm text-muted-foreground">
-              {appointment.services?.name ?? "Serviço removido"}
-              {" · "}
-              {appointment.professionals?.name ?? "Profissional removido"}
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-block h-2 w-2 shrink-0 rounded-full",
+                  serviceColorDotClass(appointment.service_id),
+                )}
+              />
+              <span>
+                {appointment.services?.name ?? "Serviço removido"}
+                {" · "}
+                {appointment.professionals?.name ?? "Profissional removido"}
+              </span>
             </p>
             <p className="text-sm tabular-nums text-muted-foreground">
               {formatCentsToBRL(appointment.price_cents)}
