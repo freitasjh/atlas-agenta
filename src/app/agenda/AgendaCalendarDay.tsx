@@ -15,6 +15,13 @@ const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 18;
 /** Altura mínima de um bloco para continuar legível (px). */
 const MIN_BLOCK_HEIGHT = 22;
+/**
+ * Altura mínima (px) para o bloco comportar as 3 linhas (horário+status,
+ * cliente, serviço·profissional) sem cortar. Abaixo disso o bloco entra em
+ * modo compacto (o resto fica no title/aria-label). Derivada do orçamento
+ * vertical: 3 linhas (~56) + 2 gaps (4) + padding (16) ≈ 76px.
+ */
+const FULL_CONTENT_MIN_HEIGHT = 76;
 
 /** Minutos desde a meia-noite do dia (fuso do tenant) de um instante UTC. */
 function minutesOfDay(utcIso: string, timeZone: string): number {
@@ -293,7 +300,7 @@ export function AgendaCalendarDay({
                   <AppointmentBlock
                     appointment={appointment}
                     timeZone={timeZone}
-                    compact={rawHeight < HOUR_HEIGHT}
+                    compact={rawHeight < FULL_CONTENT_MIN_HEIGHT}
                     onOpen={onOpenAppointment}
                   />
                 </div>
