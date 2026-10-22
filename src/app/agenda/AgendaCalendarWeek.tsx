@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
 import { Button } from "@/components/ui/button";
@@ -66,12 +66,20 @@ interface AgendaCalendarWeekProps {
 }
 
 /**
- * Visão **semana**: 7 colunas de dia (segunda→domingo). Para não abrir sete
- * requests (RNF01), a semana compartilha a MESMA query do dia em foco — só a
- * coluna do dia selecionado mostra os agendamentos; clicar noutra coluna move o
- * foco e carrega aquele dia. No mobile (abaixo de `sm`) a grade de 7 colunas
- * não cabe em 360px, então degrada para **uma coluna de dia navegável por
- * setas** (anterior/próximo movem o dia em foco e carregam aquele dia).
+ * Visão **semana**: 7 colunas de dia (segunda→domingo), sempre visíveis — uma
+ * coluna sem agendamento não colapsa, mostra um rótulo de vazio discreto. Para
+ * não abrir sete requests (RNF01), a semana compartilha a MESMA query do dia em
+ * foco — só a coluna do dia selecionado mostra os agendamentos; as demais ficam
+ * explicitamente vazias. Clicar numa coluna move o foco e carrega aquele dia.
+ *
+ * No desktop (`sm+`) há paridade de navegação com a Lista/Dia: **‹ Semana
+ * anterior** / **Próxima semana ›** movem o foco em ±7 dias (mesmo weekday) e
+ * **"Hoje"** volta ao dia atual no fuso do tenant. O date-picker "ir para data"
+ * não é duplicado aqui — já é servido pela barra da `AgendaPage`.
+ *
+ * No mobile (abaixo de `sm`) a grade de 7 colunas não cabe em 360px, então
+ * degrada para **uma coluna de dia navegável por setas** (anterior/próximo
+ * movem o dia em foco em ±1 e carregam aquele dia).
  *
  * O dia de hoje é destacado por peso + `text-primary` (nunca só por cor — há o
  * número do dia e o rótulo textual). Os horários dos blocos vêm no fuso do
@@ -94,6 +102,15 @@ export function AgendaCalendarWeek({
     const monday = shiftIsoDate(day, -positionInOrder);
     return DISPLAY_ORDER.map((_, index) => shiftIsoDate(monday, index));
   }, [day]);
+
+  // Rótulo do intervalo da semana (ex.: "12 – 18/08"), para contexto no
+  // cabeçalho de navegação. Usa o número do dia + mês do domingo, sem fuso.
+  const weekRangeLabel = useMemo(() => {
+    const first = weekDays[0];
+    const last = weekDays[weekDays.length - 1];
+    const month = last.slice(5, 7);
+    return `${dayNumber(first)} – ${dayNumber(last)}/${month}`;
+  }, [weekDays]);
 
   // Ordena os agendamentos do dia em foco por início (UTC comparável).
   const focusedAppointments = useMemo(
@@ -163,8 +180,44 @@ export function AgendaCalendarWeek({
         <div className="flex flex-col gap-1 p-1">{focusedLane}</div>
       </div>
 
-      {/* sm+: grade de 7 colunas (segunda→domingo). */}
-      <div className="hidden overflow-x-auto rounded-lg border border-border bg-card sm:block">
+      {/* sm+: navegação por semana (±7 + Hoje) + grade de 7 colunas. */}
+      <div className="hidden overflow-hidden rounded-lg border border-border bg-card sm:block">
+      {/* Cabeçalho de navegação, em paridade com a barra da Lista/Dia. */}
+      <div className="flex items-center justify-between gap-2 border-b border-border p-2">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label="Semana anterior"
+          onClick={() => onSelectDay(shiftIsoDate(day, -7))}
+        >
+          <ChevronLeft aria-hidden="true" />
+          Semana anterior
+        </Button>
+        <span className="text-sm font-medium text-foreground tabular-nums">
+          {weekRangeLabel}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Ir para hoje"
+            onClick={() => onSelectDay(todayIso)}
+          >
+            <CalendarDays aria-hidden="true" />
+            Hoje
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="Próxima semana"
+            onClick={() => onSelectDay(shiftIsoDate(day, 7))}
+          >
+            Próxima semana
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
       <div className="grid min-w-[640px] grid-cols-7">
         {weekDays.map((columnDay) => {
           const isFocus = columnDay === day;
@@ -199,11 +252,18 @@ export function AgendaCalendarWeek({
               </button>
 
               <div className="flex flex-col gap-1 p-1">
-                {isFocus ? focusedLane : null}
+                {isFocus ? (
+                  focusedLane
+                ) : (
+                  <p className="px-1 py-2 text-xs text-muted-foreground/70">
+                    —
+                  </p>
+                )}
               </div>
             </div>
           );
         })}
+      </div>
       </div>
       </div>
     </>
