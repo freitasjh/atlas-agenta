@@ -5,9 +5,11 @@
 # path .github/workflows/** é protegido pelo harness (protected-path-gate +
 # shell-hygiene-gate) e a escrita foi bloqueada no ambiente deste run — não é
 # defeito de código, é proteção deliberada de CI/CD. Para ativar o release-please,
-# o usuário deve COPIAR o conteúdo abaixo (da linha `name:` em diante) para
-# `.github/workflows/release-please.yml`, criando o arquivo manualmente (ou com a
-# sessão rodando com HARNESS_GATES=off).
+# o usuário deve COPIAR o conteúdo abaixo A PARTIR do bloco de comentário
+# `# release-please: ...` (INCLUSIVE — ele contém a nota de design RF-REL-06 que
+# deve ficar no workflow ativo), descartando APENAS este cabeçalho "PENDENTE",
+# para `.github/workflows/release-please.yml`, criando o arquivo manualmente (ou
+# com a sessão rodando com HARNESS_GATES=off).
 #
 # Também é responsabilidade do usuário, fora do código:
 #   - habilitar Settings → Actions → General → Workflow permissions:
