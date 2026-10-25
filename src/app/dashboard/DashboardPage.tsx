@@ -1,8 +1,15 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -29,11 +36,19 @@ import { HeroNoShowCard } from "@/app/dashboard/HeroNoShowCard";
 import { KpiGrid } from "@/app/dashboard/KpiGrid";
 import { PendingConfirmationTable } from "@/app/dashboard/PendingConfirmationTable";
 
+// Lazy-load do gráfico (CA-04-e, RNF01): `recharts` + submódulos d3 pesam no
+// bundle. Isolá-lo num chunk próprio mantém o peso fora do carregamento inicial
+// do painel; o Suspense exibe um Skeleton com a altura final (~280px) enquanto
+// o chunk chega, sem reflow.
+const TrendChart = lazy(() =>
+  import("@/app/dashboard/TrendChart").then((m) => ({ default: m.TrendChart })),
+);
+
 /**
  * Painel operacional da agenda (`/app`, Fatia 1). Substitui o antigo
  * placeholder por uma ferramenta de decisão em pirâmide invertida: métrica-herói
- * de no-show, grade de KPIs de apoio e a tabela de exceções D-1 acionável — sem
- * gráfico (ADR-04) e sem nada financeiro (Fatia 2).
+ * de no-show, grade de KPIs de apoio, gráfico de tendência (ADR-04) e a tabela
+ * de exceções D-1 acionável — sem nada financeiro (Fatia 2).
  *
  * A orquestração vive aqui: deriva `effectiveProfessionalId` (RBAC de UI, mesmo
  * padrão da AgendaPage — a trava real é o RLS), escolhe o período e chama os
@@ -154,10 +169,33 @@ export function DashboardPage() {
             </div>
           </div>
           <KpiGrid summary={summaryQuery.data} />
+
+          {/* Gráfico de tendência (ADR-04): consome a série `trend` do mesmo
+              resumo, então herda os estados loading/erro deste bloco. */}
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle className="font-display text-lg font-semibold tracking-tight">
+                Tendência das últimas semanas
+              </CardTitle>
+              <CardDescription>
+                Agendamentos e faltas por semana no fuso da sua empresa.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Suspense
+                fallback={
+                  <Skeleton className="h-[280px] w-full" aria-busy="true" />
+                }
+              >
+                <TrendChart
+                  trend={summaryQuery.data.trend}
+                  timeZone={timeZone}
+                />
+              </Suspense>
+            </CardContent>
+          </Card>
         </div>
       ) : null}
-
-      {/* Ponto de extensão do gráfico de tendência (ADR-04) entra aqui. */}
 
       {/* Bloco D-1: tabela de exceções acionável (hook/cache independente). */}
       <section className="space-y-3">
