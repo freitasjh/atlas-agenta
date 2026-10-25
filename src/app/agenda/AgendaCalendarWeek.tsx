@@ -3,8 +3,17 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
 import { Button } from "@/components/ui/button";
+import { toTenantLocal } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type { AppointmentWithRelations } from "@/types/domain";
+
+/** `YYYY-MM-DD` (zero-pad) do `starts_at` no fuso do tenant. */
+function tenantDayKey(utcIso: string, timeZone: string): string {
+  const { year, month, day } = toTenantLocal(utcIso, timeZone);
+  const mm = String(month).padStart(2, "0");
+  const dd = String(day).padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
 
 /** Ordem de exibição (segunda→domingo), igual à grade em `WeekScheduleForm`. */
 const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -52,10 +61,13 @@ const WEEKDAY_LONG: Record<number, string> = {
 };
 
 interface AgendaCalendarWeekProps {
-  /** Dia em foco (`YYYY-MM-DD`); a coluna dele é a que tem dados carregados. */
+  /** Dia em foco (`YYYY-MM-DD`); sua coluna recebe apenas realce visual. */
   day: string;
   timeZone: string;
-  /** Agendamentos do dia em foco (mesma query da lista — sem request novo). */
+  /**
+   * Agendamentos da **semana inteira** (os 7 dias). O componente os distribui
+   * por coluna agrupando por `starts_at` convertido ao fuso do tenant.
+   */
   appointments: AppointmentWithRelations[];
   /** `YYYY-MM-DD` de hoje no fuso do tenant, para destacar a coluna. */
   todayIso: string;
@@ -67,10 +79,11 @@ interface AgendaCalendarWeekProps {
 
 /**
  * Visão **semana**: 7 colunas de dia (segunda→domingo), sempre visíveis — uma
- * coluna sem agendamento não colapsa, mostra um rótulo de vazio discreto. Para
- * não abrir sete requests (RNF01), a semana compartilha a MESMA query do dia em
- * foco — só a coluna do dia selecionado mostra os agendamentos; as demais ficam
- * explicitamente vazias. Clicar numa coluna move o foco e carrega aquele dia.
+ * coluna sem agendamento não colapsa, mostra um rótulo de vazio discreto. Os
+ * agendamentos recebidos (`appointments`) são os da semana inteira, buscados
+ * numa única request (RNF01), e distribuídos por coluna agrupando-os pelo dia
+ * local (`starts_at` no fuso do tenant). A coluna do dia em foco recebe apenas
+ * **realce** (não filtra as demais); clicar numa coluna move o foco.
  *
  * No desktop (`sm+`) há paridade de navegação com a Lista/Dia: **‹ Semana
  * anterior** / **Próxima semana ›** movem o foco em ±7 dias (mesmo weekday) e
@@ -112,33 +125,49 @@ export function AgendaCalendarWeek({
     return `${dayNumber(first)} – ${dayNumber(last)}/${month}`;
   }, [weekDays]);
 
-  // Ordena os agendamentos do dia em foco por início (UTC comparável).
-  const focusedAppointments = useMemo(
-    () =>
-      [...appointments].sort(
+  // Agrupa os agendamentos da semana por dia local (fuso do tenant). Cada lane
+  // fica ordenada pelo instante absoluto (`starts_at` UTC comparável).
+  const byDay = useMemo(() => {
+    const map = new Map<string, AppointmentWithRelations[]>();
+    for (const appointment of appointments) {
+      const key = tenantDayKey(appointment.starts_at, timeZone);
+      const lane = map.get(key);
+      if (lane) {
+        lane.push(appointment);
+      } else {
+        map.set(key, [appointment]);
+      }
+    }
+    for (const lane of map.values()) {
+      lane.sort(
         (a, b) =>
           new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
-      ),
-    [appointments],
-  );
+      );
+    }
+    return map;
+  }, [appointments, timeZone]);
 
-  const focusedLane =
-    focusedAppointments.length > 0 ? (
-      focusedAppointments.map((appointment) => (
-        <div key={appointment.id} className="h-16">
-          <AppointmentBlock
-            appointment={appointment}
-            timeZone={timeZone}
-            compact
-            onOpen={onOpenAppointment}
-          />
-        </div>
-      ))
-    ) : (
-      <p className="px-1 py-2 text-xs text-muted-foreground">
-        Sem agendamentos.
-      </p>
-    );
+  /** Renderiza a lane de um dia (`YYYY-MM-DD`): blocos ou rótulo de vazio. */
+  const renderLane = (columnDay: string) => {
+    const lane = byDay.get(columnDay) ?? [];
+    if (lane.length === 0) {
+      return (
+        <p className="px-1 py-2 text-xs text-muted-foreground">
+          Sem agendamentos.
+        </p>
+      );
+    }
+    return lane.map((appointment) => (
+      <div key={appointment.id} className="h-16">
+        <AppointmentBlock
+          appointment={appointment}
+          timeZone={timeZone}
+          compact
+          onOpen={onOpenAppointment}
+        />
+      </div>
+    ));
+  };
 
   const focusWeekdayLong = WEEKDAY_LONG[weekdayOf(day)] ?? "";
 
@@ -177,7 +206,7 @@ export function AgendaCalendarWeek({
             <ChevronRight aria-hidden="true" />
           </Button>
         </div>
-        <div className="flex flex-col gap-1 p-1">{focusedLane}</div>
+        <div className="flex flex-col gap-1 p-1">{renderLane(day)}</div>
       </div>
 
       {/* sm+: navegação por semana (±7 + Hoje) + grade de 7 colunas. */}
@@ -252,13 +281,7 @@ export function AgendaCalendarWeek({
               </button>
 
               <div className="flex flex-col gap-1 p-1">
-                {isFocus ? (
-                  focusedLane
-                ) : (
-                  <p className="px-1 py-2 text-xs text-muted-foreground/70">
-                    —
-                  </p>
-                )}
+                {renderLane(columnDay)}
               </div>
             </div>
           );
