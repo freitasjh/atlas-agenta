@@ -76,7 +76,7 @@ export function KpiGrid({ summary }: KpiGridProps) {
         )} no período.`}
       >
         <DeltaBadge
-          atual={current.confirmation_rate ?? 0}
+          atual={current.confirmation_rate}
           anterior={previous.confirmation_rate}
           melhorQuando="sobe"
           formatarMagnitude={formatRateDelta}
@@ -93,7 +93,7 @@ export function KpiGrid({ summary }: KpiGridProps) {
         )} no período.`}
       >
         <DeltaBadge
-          atual={current.attendance_rate ?? 0}
+          atual={current.attendance_rate}
           anterior={previous.attendance_rate}
           melhorQuando="sobe"
           formatarMagnitude={formatRateDelta}

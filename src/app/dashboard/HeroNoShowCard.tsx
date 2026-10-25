@@ -92,7 +92,7 @@ export function HeroNoShowCard({ current, previous }: HeroNoShowCardProps) {
         {temDados ? (
           <div aria-hidden="true">
             <DeltaBadge
-              atual={current.no_show_rate ?? 0}
+              atual={current.no_show_rate}
               anterior={previous.no_show_rate}
               melhorQuando="cai"
               formatarMagnitude={formatRateDelta}

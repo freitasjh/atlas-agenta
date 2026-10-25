@@ -16,8 +16,12 @@ import { cn } from "@/lib/utils";
 export type MelhorQuando = "sobe" | "cai";
 
 interface DeltaBadgeProps {
-  /** Valor atual da métrica. */
-  atual: number;
+  /**
+   * Valor atual da métrica; `null` quando não há dado (ex.: taxa com
+   * denominador 0, D5). Sem atual não há variação a mostrar — ausência de
+   * dado não é regressão.
+   */
+  atual: number | null;
   /** Valor do período anterior; `null` quando não há base de comparação. */
   anterior: number | null;
   /** Qual direção representa melhora para esta métrica. */
@@ -64,9 +68,14 @@ export function DeltaBadge({
   formatarMagnitude,
   className,
 }: DeltaBadgeProps) {
-  // Sem período anterior com base de comparação: nada de seta nem cor; a UI
-  // mostra só o atual (a decisão D6 do PRD).
-  if (anterior === null) {
+  // Sem dado atual (taxa com denominador 0, D5) ou sem base de comparação
+  // anterior (D6): não há variação real a mostrar. Ramo neutro, sem seta nem
+  // cor — ausência de dado nunca pode virar sinal falso de "piora" (RF-DASH-09,
+  // AC-10), espelhando o `temDados` do HeroNoShowCard.
+  if (atual === null || anterior === null) {
+    // Sem atual: não dá para comparar nada ("Sem comparação"). Com atual mas
+    // sem anterior: mostra o atual sem seta ("Sem período anterior", D6).
+    const rotulo = atual === null ? "Sem comparação" : "Sem período anterior";
     return (
       <span
         className={cn(
@@ -74,7 +83,7 @@ export function DeltaBadge({
           className,
         )}
       >
-        Sem período anterior
+        {rotulo}
       </span>
     );
   }
