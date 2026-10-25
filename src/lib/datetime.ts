@@ -269,6 +269,57 @@ export function tenantRangeUtc(
 }
 
 /**
+ * Ordem de exibição da semana (segunda→domingo) usada na grade da agenda, igual
+ * ao `WeekScheduleForm`. `0` = domingo.
+ */
+const WEEK_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
+/**
+ * Semana (segunda→domingo) que contém `dateStr` (`YYYY-MM-DD`), como as sete
+ * datas de calendário `YYYY-MM-DD` em ordem de exibição, mais os extremos
+ * (`start` = segunda, `end` = domingo). Fonte única do intervalo da Semana da
+ * agenda: a `AgendaPage` usa `{ start, end }` para buscar os 7 dias numa request
+ * e o `AgendaCalendarWeek` usa `days` para renderizar as colunas — assim o
+ * intervalo buscado nunca diverge das colunas renderizadas (ADR-04 fix da
+ * Semana).
+ *
+ * Aritmética de **calendário** (sem fuso): o weekday vem de `Date.UTC` só para
+ * posicionar o dia na semana, não para converter instante. Retorna `null` se
+ * `dateStr` for inválido.
+ */
+export function weekRangeOf(
+  dateStr: string,
+): { start: string; end: string; days: string[] } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  // Rejeita datas que o `Date` normaliza (ex.: "2025-13-40").
+  if (
+    base.getUTCFullYear() !== year ||
+    base.getUTCMonth() !== month - 1 ||
+    base.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const weekday = base.getUTCDay();
+  const positionInOrder = WEEK_DISPLAY_ORDER.indexOf(
+    weekday as (typeof WEEK_DISPLAY_ORDER)[number],
+  );
+  const monday = shiftCalendarDate(dateStr, -positionInOrder);
+  if (!monday) return null;
+  const days: string[] = [];
+  for (let index = 0; index < WEEK_DISPLAY_ORDER.length; index += 1) {
+    const columnDay = shiftCalendarDate(monday, index);
+    if (!columnDay) return null;
+    days.push(columnDay);
+  }
+  return { start: days[0], end: days[days.length - 1], days };
+}
+
+/**
  * Soma `minutes` a um instante UTC (ex.: `ends_at = starts_at +
  * service.duration_minutes`). Opera no eixo absoluto — independe de fuso.
  */

@@ -3,7 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
 import { Button } from "@/components/ui/button";
-import { toTenantLocal } from "@/lib/datetime";
+import { toTenantLocal, weekRangeOf } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type { AppointmentWithRelations } from "@/types/domain";
 
@@ -15,8 +15,6 @@ function tenantDayKey(utcIso: string, timeZone: string): string {
   return `${year}-${mm}-${dd}`;
 }
 
-/** Ordem de exibição (segunda→domingo), igual à grade em `WeekScheduleForm`. */
-const DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
 const WEEKDAY_SHORT: Record<number, string> = {
   0: "dom",
   1: "seg",
@@ -106,15 +104,10 @@ export function AgendaCalendarWeek({
   onSelectDay,
   onOpenAppointment,
 }: AgendaCalendarWeekProps) {
-  // Monta a semana (segunda a domingo) que contém o dia em foco.
-  const weekDays = useMemo(() => {
-    const focusWeekday = weekdayOf(day);
-    const positionInOrder = DISPLAY_ORDER.indexOf(
-      focusWeekday as (typeof DISPLAY_ORDER)[number],
-    );
-    const monday = shiftIsoDate(day, -positionInOrder);
-    return DISPLAY_ORDER.map((_, index) => shiftIsoDate(monday, index));
-  }, [day]);
+  // Monta a semana (segunda a domingo) que contém o dia em foco. Mesma fonte
+  // única (`weekRangeOf`) que a `AgendaPage` usa para buscar o intervalo, então
+  // as colunas renderizadas nunca divergem dos dados buscados (ADR-04).
+  const weekDays = useMemo(() => weekRangeOf(day)?.days ?? [day], [day]);
 
   // Rótulo do intervalo da semana (ex.: "12 – 18/08"), para contexto no
   // cabeçalho de navegação. Usa o número do dia + mês do domingo, sem fuso.
