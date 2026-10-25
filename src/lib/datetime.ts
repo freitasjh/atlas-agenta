@@ -210,6 +210,65 @@ export function tenantDayRangeUtc(
 }
 
 /**
+ * Avança `YYYY-MM-DD` em `days` dias de **calendário** (aritmética em UTC pura,
+ * sem fuso) — mesmo padrão de `shiftIsoDate` em `AgendaPage`/`AgendaCalendarWeek`.
+ * Retorna `null` se a data for inválida.
+ */
+function shiftCalendarDate(dateStr: string, days: number): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  // Rejeita datas que o `Date` normaliza (ex.: "2025-13-40" → outro mês).
+  if (
+    base.getUTCFullYear() !== year ||
+    base.getUTCMonth() !== month - 1 ||
+    base.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+/**
+ * Faixa `[início, fim)` da janela de múltiplos dias `startDateStr..endDateStr`
+ * (ambos inclusivos, no fuso do tenant) como instantes UTC — para buscar os
+ * agendamentos de uma semana (7 dias) numa única request (ADR-01 fix da Semana).
+ *
+ * `startUtc` = 00:00 local do primeiro dia; `endUtc` = 00:00 local do dia
+ * **seguinte** ao último dia, derivado por **data de calendário** (avançar o dia
+ * e converter com `tenantDateTimeToUtc`), nunca somando `N×24h` — assim a janela
+ * fica correta mesmo em dia de transição de horário de verão (DST). Intervalo
+ * **semiaberto** `[startUtc, endUtc)`, coerente com o `tstzrange` do banco e com
+ * `tenantDayRangeUtc`.
+ *
+ * Retorna `null` se qualquer conversão falhar (data inválida) ou se `endDateStr`
+ * for anterior a `startDateStr`.
+ */
+export function tenantRangeUtc(
+  startDateStr: string,
+  endDateStr: string,
+  timeZone: string,
+): { startUtc: Date; endUtc: Date } | null {
+  const startUtc = tenantDateTimeToUtc(startDateStr, "00:00", timeZone);
+  if (!startUtc) return null;
+
+  const nextDayStr = shiftCalendarDate(endDateStr, 1);
+  if (!nextDayStr) return null;
+
+  const endUtc = tenantDateTimeToUtc(nextDayStr, "00:00", timeZone);
+  if (!endUtc) return null;
+
+  // `endDateStr < startDateStr` ⇒ janela vazia/invertida: rejeita.
+  if (endUtc.getTime() <= startUtc.getTime()) return null;
+
+  return { startUtc, endUtc };
+}
+
+/**
  * Soma `minutes` a um instante UTC (ex.: `ends_at = starts_at +
  * service.duration_minutes`). Opera no eixo absoluto — independe de fuso.
  */
