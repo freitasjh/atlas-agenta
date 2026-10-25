@@ -1,0 +1,45 @@
+# ============================================================================
+# ADR-03 — conteúdo PENDENTE de .github/workflows/release-please.yml
+#
+# ATENÇÃO (passo manual obrigatório): este arquivo NÃO é um workflow ativo. O
+# path .github/workflows/** é protegido pelo harness (protected-path-gate +
+# shell-hygiene-gate) e a escrita foi bloqueada no ambiente deste run — não é
+# defeito de código, é proteção deliberada de CI/CD. Para ativar o release-please,
+# o usuário deve COPIAR o conteúdo abaixo A PARTIR do bloco de comentário
+# `# release-please: ...` (INCLUSIVE — ele contém a nota de design RF-REL-06 que
+# deve ficar no workflow ativo), descartando APENAS este cabeçalho "PENDENTE",
+# para `.github/workflows/release-please.yml`, criando o arquivo manualmente (ou
+# com a sessão rodando com HARNESS_GATES=off).
+#
+# Também é responsabilidade do usuário, fora do código:
+#   - habilitar Settings → Actions → General → Workflow permissions:
+#     "Read and write permissions" no repositório GitHub;
+#   - manter Conventional Commits para a qualidade do CHANGELOG.
+# ============================================================================
+
+# release-please: automação de versão + CHANGELOG + GitHub Release (trunk-based na master).
+# Usa o GITHUB_TOKEN padrão (sem segredo novo). ATENÇÃO: eventos disparados pelo
+# GITHUB_TOKEN NÃO acionam outras Actions nos PRs/releases criados por este workflow
+# (proteção anti-loop do GitHub). Se um dia for necessário rodar CI no Release PR,
+# troque por um PAT guardado em `secrets` (ex.: RELEASE_PLEASE_TOKEN) com escopo mínimo
+# — NUNCA cole o token no YAML em texto claro.
+name: release-please
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
