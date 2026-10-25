@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CalendarDays,
   ChevronLeft,
@@ -91,6 +92,11 @@ function shiftIsoDate(dateStr: string, days: number): string {
 function weekdayOf(dateStr: string): number {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Valida o formato `YYYY-MM-DD` de um dia vindo da URL (ex.: link do painel). */
+function isValidIsoDate(value: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 /** Borda-lateral de status na timeline (reforço redundante do `StatusBadge`). */
@@ -257,7 +263,14 @@ export function AgendaPage() {
   const professionalsQuery = useProfessionals({ activeOnly: true });
   const servicesQuery = useServices({ activeOnly: true });
 
-  const [day, setDay] = useState(() => todayInTenantTz(timeZone));
+  // Dia inicial: o `?dia=YYYY-MM-DD` da URL (deep-link do painel operacional),
+  // ou hoje no fuso do tenant. Lido só na montagem; a navegação interna segue
+  // pelo estado, sem reescrever a URL.
+  const [searchParams] = useSearchParams();
+  const [day, setDay] = useState(() => {
+    const fromUrl = searchParams.get("dia");
+    return isValidIsoDate(fromUrl) ? fromUrl : todayInTenantTz(timeZone);
+  });
   // Filtro de profissional livre (admin/recepção). Vazio = todos.
   const [filterProfessionalId, setFilterProfessionalId] = useState<string>("");
   // Filtro de serviço (todos os papéis). Vazio = todos os serviços.
