@@ -30,7 +30,7 @@ import {
  */
 
 /** Shape do join embutido lido pela lista da agenda (ver `AppointmentWithRelations`). */
-const appointmentRowSchema = z.object({
+export const appointmentRowSchema = z.object({
   id: z.string(),
   tenant_id: z.string(),
   customer_id: z.string(),
@@ -56,10 +56,10 @@ const appointmentRowSchema = z.object({
   professionals: z.object({ name: z.string() }).nullable(),
 });
 
-const appointmentListSchema = z.array(appointmentRowSchema);
+export const appointmentListSchema = z.array(appointmentRowSchema);
 
 /** `select` com o join embutido — uma request só, nomes legíveis inclusos. */
-const APPOINTMENT_SELECT =
+export const APPOINTMENT_SELECT =
   "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;

@@ -1,4 +1,3 @@
-import * as React from "react";
 import { useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -10,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { StatePanel } from "@/components/StatePanel";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge, getAppointmentStatusLabel } from "@/components/StatusBadge";
@@ -102,29 +102,6 @@ const STATUS_BORDER: Record<AppointmentStatus, string> = {
   cancelado: "border-status-cancelado",
   nao_compareceu: "border-status-nao-compareceu",
 };
-
-/** Painel de estado (vazio/erro), no mesmo molde das demais telas de `/app`. */
-function StatePanel({
-  titulo,
-  descricao,
-  children,
-}: {
-  titulo: string;
-  descricao: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-2xl rounded-lg border border-dashed border-border p-8 text-center">
-      <h2 className="font-display text-lg font-semibold tracking-tight">
-        {titulo}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
-      {children ? (
-        <div className="mt-4 flex justify-center">{children}</div>
-      ) : null}
-    </div>
-  );
-}
 
 /** Um item da timeline do dia. */
 function AgendaItem({
