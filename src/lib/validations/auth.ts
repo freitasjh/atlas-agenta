@@ -31,8 +31,7 @@ export const signupSchema = z
   .object({
     tradeName: z.string().trim().min(2, "Informe o nome da empresa."),
     segment: z.enum(BUSINESS_SEGMENTS, {
-      required_error: "Escolha o ramo da sua empresa.",
-      invalid_type_error: "Escolha o ramo da sua empresa.",
+      errorMap: () => ({ message: "Escolha o ramo da sua empresa." }),
     }),
     email: emailSchema,
     password: passwordSchema,
