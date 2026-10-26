@@ -29,38 +29,74 @@ import {
  * UI (ADR-08). PII do cliente nunca é logada em claro.
  */
 
+/**
+ * Shape bruto do join aninhado de comissão. O snapshot é 1:0..1 por
+ * agendamento (unique `(tenant_id, appointment_id)` em `appointment_commissions`,
+ * ADR-02), mas a FK é COMPOSTA, então o PostgREST pode devolver a relação ora
+ * como objeto/`null` (to-one detectado pelo unique), ora como array de 0..1
+ * (to-many pela FK composta). Aceitamos ambas as formas e normalizamos para um
+ * único `commission_cents: number | null` no `transform` da linha — o invariante
+ * é "zod valida o shape antes do uso". A ausência (relação vazia/`null`) cobre
+ * tanto "sem comissão apurada" quanto o recorte do RLS (receptionist não recebe
+ * a linha; professional só a própria).
+ */
+const commissionEmbedSchema = z
+  .object({ commission_cents: z.number().int() })
+  .nullable()
+  .or(z.array(z.object({ commission_cents: z.number().int() })));
+
+/** Normaliza o embed de comissão (objeto/`null`/array) para `number | null`. */
+function normalizeCommissionCents(
+  embed: z.infer<typeof commissionEmbedSchema>,
+): number | null {
+  if (embed == null) return null;
+  if (Array.isArray(embed)) return embed[0]?.commission_cents ?? null;
+  return embed.commission_cents;
+}
+
 /** Shape do join embutido lido pela lista da agenda (ver `AppointmentWithRelations`). */
-export const appointmentRowSchema = z.object({
-  id: z.string(),
-  tenant_id: z.string(),
-  customer_id: z.string(),
-  professional_id: z.string(),
-  service_id: z.string(),
-  starts_at: z.string(),
-  ends_at: z.string(),
-  price_cents: z.number().int(),
-  status: z.enum(APPOINTMENT_STATUSES),
-  confirmed_at: z.string().nullable(),
-  confirmed_via: z.enum(APPOINTMENT_CONFIRMED_VIA).nullable(),
-  created_at: z.string(),
-  customers: z
-    .object({ name: z.string(), whatsapp_opt_in: z.boolean() })
-    .nullable(),
-  services: z
-    .object({
-      name: z.string(),
-      duration_minutes: z.number().int(),
-      price_cents: z.number().int(),
-    })
-    .nullable(),
-  professionals: z.object({ name: z.string() }).nullable(),
-});
+export const appointmentRowSchema = z
+  .object({
+    id: z.string(),
+    tenant_id: z.string(),
+    customer_id: z.string(),
+    professional_id: z.string(),
+    service_id: z.string(),
+    starts_at: z.string(),
+    ends_at: z.string(),
+    price_cents: z.number().int(),
+    status: z.enum(APPOINTMENT_STATUSES),
+    confirmed_at: z.string().nullable(),
+    confirmed_via: z.enum(APPOINTMENT_CONFIRMED_VIA).nullable(),
+    created_at: z.string(),
+    customers: z
+      .object({ name: z.string(), whatsapp_opt_in: z.boolean() })
+      .nullable(),
+    services: z
+      .object({
+        name: z.string(),
+        duration_minutes: z.number().int(),
+        price_cents: z.number().int(),
+      })
+      .nullable(),
+    professionals: z.object({ name: z.string() }).nullable(),
+    // Pode não vir na resposta (ex.: insert/update que não seleciona o embed):
+    // ausente → `undefined` → normaliza para `null`.
+    appointment_commissions: commissionEmbedSchema.optional(),
+  })
+  .transform(({ appointment_commissions, ...rest }) => ({
+    ...rest,
+    commission_cents: normalizeCommissionCents(appointment_commissions ?? null),
+  }));
 
 export const appointmentListSchema = z.array(appointmentRowSchema);
 
-/** `select` com o join embutido — uma request só, nomes legíveis inclusos. */
+/** `select` com o join embutido — uma request só, nomes legíveis inclusos.
+ * O join aninhado `appointment_commissions(commission_cents)` entra sem request
+ * extra (reusa o cache da agenda) e é recortado pelo RLS financeiro da ADR-02:
+ * receptionist não recebe a relação, professional só a própria. */
 export const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name)";
+  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name), appointment_commissions(commission_cents)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 

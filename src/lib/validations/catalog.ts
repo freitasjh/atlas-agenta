@@ -29,7 +29,16 @@ export const serviceSchema = z.object({
 
 export type ServiceInput = z.infer<typeof serviceSchema>;
 
-/** `professionals`: name 1–120, active. `profile_id` é somente-leitura. */
+/**
+ * `professionals`: name 1–120, active. `profile_id` é somente-leitura.
+ *
+ * `commissionBps` é **opcional** (ADR-06): a % de comissão mora em
+ * `professional_commissions` (tabela à parte), não em `professionals`, e o campo
+ * só entra no form quando o gating libera (barbearia + admin). É um inteiro em
+ * base points (0–10000 = 0,00–100,00%) — a fonte de verdade da UI nunca é float;
+ * espelha o CHECK 0–100 do banco (`professional_commissions`). Opcional para não
+ * quebrar o cadastro de clínica/salão/legado, onde o campo não aparece.
+ */
 export const professionalSchema = z.object({
   name: z
     .string()
@@ -37,6 +46,12 @@ export const professionalSchema = z.object({
     .min(1, "Informe o nome do profissional.")
     .max(120, "O nome deve ter no máximo 120 caracteres."),
   active: z.boolean(),
+  commissionBps: z
+    .number({ invalid_type_error: "Informe a comissão em percentual." })
+    .int("A comissão deve ser um percentual válido.")
+    .min(0, "A comissão não pode ser negativa.")
+    .max(10000, "A comissão deve ser de no máximo 100%.")
+    .optional(),
 });
 
 export type ProfessionalInput = z.infer<typeof professionalSchema>;

@@ -19,6 +19,8 @@ import { CobrancasPage, DashboardPage, QuitacaoPage } from "@/app/pages";
 import { AgendaPage } from "@/app/agenda/AgendaPage";
 import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
+import { RelatoriosHubPage } from "@/app/relatorios/RelatoriosHubPage";
+import { ComissoesPage } from "@/app/relatorios/ComissoesPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { ProfissionaisPage } from "@/app/config/profissionais/ProfissionaisPage";
 import { HorariosPage } from "@/app/config/profissionais/horarios/HorariosPage";
@@ -99,6 +101,13 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                         path: "mensagens",
                         element: <TemplatesMensagemPage />,
                       },
+                    ],
+                  },
+                  {
+                    path: "relatorios",
+                    children: [
+                      { index: true, element: <RelatoriosHubPage /> },
+                      { path: "comissoes", element: <ComissoesPage /> },
                     ],
                   },
                 ],

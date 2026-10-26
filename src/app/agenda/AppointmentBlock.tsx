@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
+import { CommissionAmount } from "@/components/CommissionAmount";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
 import { formatTimeInTenantTz } from "@/lib/datetime";
@@ -28,6 +29,8 @@ interface AppointmentBlockProps {
   timeZone: string;
   /** `true` quando o bloco é muito baixo para caber serviço/profissional. */
   compact?: boolean;
+  /** Pode exibir a linha de comissão (gating de segmento + RBAC resolvido no pai). */
+  showCommission?: boolean;
   /** Abre o mesmo menu de ações da lista (editar/status/mensagem). */
   onOpen?: (appointment: AppointmentWithRelations) => void;
   className?: string;
@@ -47,6 +50,7 @@ export function AppointmentBlock({
   appointment,
   timeZone,
   compact = false,
+  showCommission = false,
   onOpen,
   className,
   style,
@@ -109,6 +113,15 @@ export function AppointmentBlock({
             {professionalName}
           </span>
         </span>
+      ) : null}
+      {/* Comissão só no bloco com espaço (não-compacto) e atendimento concluído,
+          gated por segmento+RBAC (pai) e recortada pelo RLS (ADR-02).
+          CommissionAmount não renderiza nada quando commission_cents é null. */}
+      {!compact && showCommission && appointment.status === "concluido" ? (
+        <CommissionAmount
+          commissionCents={appointment.commission_cents}
+          className="truncate text-xs"
+        />
       ) : null}
     </button>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -30,6 +30,13 @@ import {
   useCreateProfessional,
   useUpdateProfessional,
 } from "@/hooks/useProfessionals";
+import {
+  useProfessionalCommission,
+  useUpsertProfessionalCommission,
+} from "@/hooks/useProfessionalCommission";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
+import { usePermissions } from "@/hooks/usePermissions";
+import { formatBpsToPercent, parsePercentToBps } from "@/lib/commission";
 import type { Professional } from "@/types/domain";
 
 interface ProfessionalFormDialogProps {
@@ -59,13 +66,31 @@ export function ProfessionalFormDialog({
   const isEdit = !!professional;
   const hasLogin = !!professional?.profile_id;
 
+  // Comissão só é editável para barbearia (gating de UI) e só por quem gerencia
+  // (admin). A trava real é o RLS `professional_commissions_write_admin`.
+  const { commission: commissionFeature } = useSegmentFeatures();
+  const { canManageCommission } = usePermissions();
+  const showCommission = commissionFeature && canManageCommission;
+
   const createProfessional = useCreateProfessional();
   const updateProfessional = useUpdateProfessional();
+  const upsertCommission = useUpsertProfessionalCommission();
+
+  // Lê a taxa atual (em bps) só quando o campo é visível e há um profissional
+  // em edição. Novo profissional ainda não tem linha de comissão.
+  const commissionQuery = useProfessionalCommission(professional?.id ?? null, {
+    enabled: open && showCommission && isEdit,
+  });
 
   const form = useForm<ProfessionalInput>({
     resolver: zodResolver(professionalSchema),
     defaultValues: EMPTY_VALUES,
   });
+
+  // Draft de texto do campo "Comissão (%)": permite digitar decimais pt-BR
+  // ("12,5") sem que a conversão para bps atrapalhe. A fonte de verdade é o
+  // `commissionBps` do form; este draft é só a representação visível.
+  const [commissionDraft, setCommissionDraft] = useState("");
 
   // Ao (re)abrir, sincroniza o form com o profissional selecionado (ou novo).
   useEffect(() => {
@@ -77,17 +102,55 @@ export function ProfessionalFormDialog({
     }
   }, [open, professional, form]);
 
-  const isSaving = createProfessional.isPending || updateProfessional.isPending;
+  // Popular a % lida (percent ← bps) quando o diálogo abre em modo edição e a
+  // taxa chega. Em criação o campo começa vazio (0 bps → "").
+  useEffect(() => {
+    if (!open || !showCommission) return;
+    if (isEdit && commissionQuery.data !== undefined) {
+      const bps = commissionQuery.data;
+      form.setValue("commissionBps", bps, { shouldDirty: false });
+      setCommissionDraft(bps > 0 ? formatBpsToPercent(bps) : "");
+    } else if (!isEdit) {
+      form.setValue("commissionBps", undefined, { shouldDirty: false });
+      setCommissionDraft("");
+    }
+  }, [open, showCommission, isEdit, commissionQuery.data, form]);
+
+  const isSaving =
+    createProfessional.isPending ||
+    updateProfessional.isPending ||
+    upsertCommission.isPending;
 
   async function onSubmit(values: ProfessionalInput) {
     try {
+      let professionalId: string;
       if (professional) {
-        await updateProfessional.mutateAsync({ id: professional.id, ...values });
-        toast.success("Profissional atualizado.");
+        await updateProfessional.mutateAsync({
+          id: professional.id,
+          name: values.name,
+          active: values.active,
+        });
+        professionalId = professional.id;
       } else {
-        await createProfessional.mutateAsync(values);
-        toast.success("Profissional criado.");
+        const created = await createProfessional.mutateAsync({
+          name: values.name,
+          active: values.active,
+        });
+        professionalId = created.id;
       }
+
+      // Persistir a % só quando o campo está habilitado (barbearia + admin) e
+      // houve um valor informado. A FK composta exige um profissional já criado.
+      if (showCommission && values.commissionBps !== undefined) {
+        await upsertCommission.mutateAsync({
+          professionalId,
+          commissionBps: values.commissionBps,
+        });
+      }
+
+      toast.success(
+        professional ? "Profissional atualizado." : "Profissional criado.",
+      );
       onOpenChange(false);
     } catch {
       toast.error("Não foi possível salvar o profissional. Tente novamente.");
@@ -151,6 +214,60 @@ export function ProfessionalFormDialog({
                 </FormItem>
               )}
             />
+
+            {/*
+              Comissão (%) — só aparece para barbearia (gating de UI) e só para
+              quem gerencia (admin). Não é dinheiro: não usar MoneyInput. A fonte
+              de verdade do form é `commissionBps` (inteiro); o campo mostra o
+              percentual pt-BR e converte na borda.
+            */}
+            {showCommission ? (
+              <FormField
+                control={form.control}
+                name="commissionBps"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="commission-pct">Comissão (%)</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          id="commission-pct"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          placeholder="Ex.: 40"
+                          className="pr-8"
+                          value={commissionDraft}
+                          name={field.name}
+                          ref={field.ref}
+                          onBlur={field.onBlur}
+                          onChange={(event) => {
+                            const text = event.target.value;
+                            setCommissionDraft(text);
+                            if (text.trim() === "") {
+                              field.onChange(undefined);
+                              return;
+                            }
+                            const bps = parsePercentToBps(text);
+                            // Mantém o texto digitado; só grava bps quando válido.
+                            field.onChange(bps ?? undefined);
+                          }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                        >
+                          %
+                        </span>
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      Percentual que o barbeiro recebe por atendimento concluído.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             {/*
               Acesso (profile_id) é somente-leitura nesta fase: sem fluxo de

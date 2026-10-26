@@ -223,11 +223,19 @@ export interface Appointment {
  * os nomes legíveis: `select("…, customers(name), services(name),
  * professionals(name)")`. Cada relação pode vir `null` defensivamente (o zod do
  * hook valida o shape aninhado antes do uso).
+ *
+ * `commission_cents` é o valor de comissão apurado — snapshot imutável gravado
+ * ao concluir (ADR-02/ADR-03), lido por um join aninhado a
+ * `appointment_commissions`. É normalizado pelo hook para `number | null`
+ * (`null` = sem snapshot OU relação recortada pelo RLS: `receptionist` nunca
+ * recebe a linha; `professional` só a própria). A UI trata `null` como "sem
+ * comissão para exibir" e nunca calcula nada — só lê.
  */
 export interface AppointmentWithRelations extends Appointment {
   customers: { name: string; whatsapp_opt_in: boolean } | null;
   services: { name: string } | null;
   professionals: { name: string } | null;
+  commission_cents: number | null;
 }
 
 /**

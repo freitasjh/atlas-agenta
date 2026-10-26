@@ -35,6 +35,18 @@ export interface Permissions {
   canManageMessageTemplates: boolean;
   /** Disparar mensagem de WhatsApp sob demanda (admin/receptionist/professional). */
   canSendWhatsAppMessage: boolean;
+  /**
+   * Ler comissão — taxa e valor apurado (admin **ou** professional). Comissão é
+   * dado financeiro sensível (classe de `charges`): `receptionist` NUNCA lê.
+   * O professional vê só a própria comissão — o recorte real é do RLS por
+   * `professional_id`; aqui é só defesa em profundidade na UI.
+   */
+  canViewCommission: boolean;
+  /**
+   * Cadastrar/editar a % de comissão de um profissional (só admin). O
+   * professional não edita nem a própria taxa. Trava real no RLS write admin.
+   */
+  canManageCommission: boolean;
   isAdmin: boolean;
   isProfessional: boolean;
   isReceptionist: boolean;
@@ -58,6 +70,8 @@ export function usePermissions(): Permissions {
     canManageWhatsAppConnection: isAdmin,
     canManageMessageTemplates: isAdmin,
     canSendWhatsAppMessage: isAdmin || isReceptionist || isProfessional,
+    canViewCommission: isAdmin || isProfessional,
+    canManageCommission: isAdmin,
     isAdmin,
     isProfessional,
     isReceptionist,
