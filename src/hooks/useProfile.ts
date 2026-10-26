@@ -19,9 +19,12 @@ const profileSchema = z.object({
 /**
  * Profile do usuário logado (`role`, `tenant_id`).
  *
- * `select` SEM filtro de `tenant_id` no cliente — o RLS devolve apenas a linha
- * do próprio usuário (policy "usuário lê o próprio profile", ADR-03). Habilitado
- * só quando há sessão.
+ * A linha única é garantida pelo filtro `.eq("id", userId)` — não pelo RLS. A
+ * policy `profiles_select_same_tenant` deixa um usuário enxergar TODOS os
+ * profiles do seu tenant, então um `.single()` sem esse filtro retorna 406 em
+ * tenants com 2+ profiles. O `userId` vem sempre da sessão Supabase autenticada
+ * (`id = auth.uid()`), nunca de entrada do cliente, e NÃO é filtro de tenant.
+ * Habilitado só quando há sessão.
  */
 export function useProfile() {
   const { data: session } = useSession();
@@ -31,9 +34,11 @@ export function useProfile() {
     queryKey: ["profile", userId],
     enabled: !!session,
     queryFn: async () => {
+      if (!userId) throw new Error("Sessão sem usuário ao ler o profile.");
       const { data, error } = await supabase
         .from("profiles")
         .select("id, role, tenant_id")
+        .eq("id", userId)
         .single();
       if (error) throw error;
       return profileSchema.parse(data);
