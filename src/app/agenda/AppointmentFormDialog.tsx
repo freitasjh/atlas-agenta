@@ -49,6 +49,7 @@ import {
 import { useAvailableSlots } from "@/hooks/useAvailableSlots";
 import { useCustomers } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { useProfessionals, useScheduleValidity } from "@/hooks/useProfessionals";
 import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
 import { useServices } from "@/hooks/useServices";
@@ -120,6 +121,14 @@ export function AppointmentFormDialog({
   const isEdit = !!appointment;
 
   const { canEditAnySchedule, canEditOwnSchedule } = usePermissions();
+  const {
+    servicoLabelSingular,
+    profissionalLabelSingular,
+    clienteLabel,
+  } = useSegmentTerms();
+  const servicoLower = servicoLabelSingular.toLowerCase();
+  const profissionalLower = profissionalLabelSingular.toLowerCase();
+  const clienteLower = clienteLabel.toLowerCase();
 
   const customersQuery = useCustomers({ activeOnly: true });
   const professionalsQuery = useProfessionals({ activeOnly: true });
@@ -299,7 +308,9 @@ export function AppointmentFormDialog({
   async function onSubmit(values: AppointmentInput) {
     const service = services.find((s) => s.id === values.serviceId);
     if (!service) {
-      form.setError("serviceId", { message: "Selecione um serviço." });
+      form.setError("serviceId", {
+        message: `Selecione um ${servicoLower}.`,
+      });
       return;
     }
 
@@ -354,8 +365,7 @@ export function AppointmentFormDialog({
             {isEdit ? "Editar agendamento" : "Novo agendamento"}
           </DialogTitle>
           <DialogDescription>
-            Escolha cliente, profissional, serviço e horário. O término e o valor
-            são calculados pelo serviço.
+            {`Escolha ${clienteLower}, ${profissionalLower}, ${servicoLower} e horário. O término e o valor são calculados pelo ${servicoLower}.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -370,14 +380,14 @@ export function AppointmentFormDialog({
               name="customerId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cliente</FormLabel>
+                  <FormLabel>{clienteLabel}</FormLabel>
                   <Select
                     value={field.value || undefined}
                     onValueChange={field.onChange}
                   >
                     <FormControl>
-                      <SelectTrigger aria-label="Cliente">
-                        <SelectValue placeholder="Selecione o cliente" />
+                      <SelectTrigger aria-label={clienteLabel}>
+                        <SelectValue placeholder={`Selecione o ${clienteLower}`} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -398,15 +408,17 @@ export function AppointmentFormDialog({
               name="professionalId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Profissional</FormLabel>
+                  <FormLabel>{profissionalLabelSingular}</FormLabel>
                   <Select
                     value={field.value || undefined}
                     onValueChange={field.onChange}
                     disabled={!!lockedProfessionalId}
                   >
                     <FormControl>
-                      <SelectTrigger aria-label="Profissional">
-                        <SelectValue placeholder="Selecione o profissional" />
+                      <SelectTrigger aria-label={profissionalLabelSingular}>
+                        <SelectValue
+                          placeholder={`Selecione o ${profissionalLower}`}
+                        />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -430,14 +442,14 @@ export function AppointmentFormDialog({
               name="serviceId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Serviço</FormLabel>
+                  <FormLabel>{servicoLabelSingular}</FormLabel>
                   <Select
                     value={field.value || undefined}
                     onValueChange={field.onChange}
                   >
                     <FormControl>
-                      <SelectTrigger aria-label="Serviço">
-                        <SelectValue placeholder="Selecione o serviço" />
+                      <SelectTrigger aria-label={servicoLabelSingular}>
+                        <SelectValue placeholder={`Selecione o ${servicoLower}`} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -512,7 +524,7 @@ export function AppointmentFormDialog({
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Escolha o serviço e o horário para ver o término e o valor.
+                {`Escolha o ${servicoLower} e o horário para ver o término e o valor.`}
               </p>
             )}
 

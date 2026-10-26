@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { cn } from "@/lib/utils";
 import { formatDateInTenantTz, formatTimeInTenantTz } from "@/lib/datetime";
 import type { AppointmentWithRelations } from "@/types/domain";
@@ -39,6 +40,8 @@ export function PendingConfirmationTable({
   tomorrowIso,
 }: PendingConfirmationTableProps) {
   const agendaHref = `/app/agenda?dia=${tomorrowIso}`;
+  const { servicoLabelSingular, profissionalLabelSingular, clienteLabel } =
+    useSegmentTerms();
 
   if (appointments.length === 0) {
     return (
@@ -83,12 +86,14 @@ export function PendingConfirmationTable({
                   {formatTimeInTenantTz(appointment.starts_at, timeZone)}
                 </p>
                 <p className="font-medium text-foreground">
-                  {appointment.customers?.name ?? "Cliente removido"}
+                  {appointment.customers?.name ?? `${clienteLabel} removido`}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {appointment.services?.name ?? "Serviço removido"}
+                  {appointment.services?.name ??
+                    `${servicoLabelSingular} removido`}
                   {" · "}
-                  {appointment.professionals?.name ?? "Profissional removido"}
+                  {appointment.professionals?.name ??
+                    `${profissionalLabelSingular} removido`}
                 </p>
               </div>
             </div>
@@ -106,9 +111,9 @@ export function PendingConfirmationTable({
           <TableHeader>
             <TableRow>
               <TableHead>Horário</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Serviço</TableHead>
-              <TableHead>Profissional</TableHead>
+              <TableHead>{clienteLabel}</TableHead>
+              <TableHead>{servicoLabelSingular}</TableHead>
+              <TableHead>{profissionalLabelSingular}</TableHead>
               <TableHead className="text-right">Ação</TableHead>
             </TableRow>
           </TableHeader>
@@ -119,13 +124,15 @@ export function PendingConfirmationTable({
                   {formatTimeInTenantTz(appointment.starts_at, timeZone)}
                 </TableCell>
                 <TableCell className="font-medium text-foreground">
-                  {appointment.customers?.name ?? "Cliente removido"}
+                  {appointment.customers?.name ?? `${clienteLabel} removido`}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {appointment.services?.name ?? "Serviço removido"}
+                  {appointment.services?.name ??
+                    `${servicoLabelSingular} removido`}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {appointment.professionals?.name ?? "Profissional removido"}
+                  {appointment.professionals?.name ??
+                    `${profissionalLabelSingular} removido`}
                 </TableCell>
                 <TableCell className="text-right">
                   {linkFor(appointment)}

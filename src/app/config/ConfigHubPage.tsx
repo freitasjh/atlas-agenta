@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { cn } from "@/lib/utils";
 
 interface ConfigShortcut {
@@ -33,17 +34,18 @@ interface ConfigShortcut {
  */
 export function ConfigHubPage() {
   const { canManageMessageTemplates } = usePermissions();
+  const { servicosLabel, profissionaisLabel } = useSegmentTerms();
 
   const shortcuts: ConfigShortcut[] = [
     {
       to: "/app/config/servicos",
-      titulo: "Serviços",
+      titulo: servicosLabel,
       descricao: "O que você oferece: nome, duração, preço e quem executa.",
       icon: Scissors,
     },
     {
       to: "/app/config/profissionais",
-      titulo: "Profissionais",
+      titulo: profissionaisLabel,
       descricao: "Quem atende na sua empresa e os horários de cada um.",
       icon: Users,
     },

@@ -52,6 +52,7 @@ import { useServices } from "@/hooks/useServices";
 import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz, weekRangeOf } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
@@ -259,6 +260,9 @@ export function AgendaPage() {
   } = usePermissions();
   const { tenant } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
+  const { servicosLabel, profissionaisLabel } = useSegmentTerms();
+  const servicosLower = servicosLabel.toLowerCase();
+  const profissionaisLower = profissionaisLabel.toLowerCase();
 
   const { data: profile } = useProfile();
   const professionalsQuery = useProfessionals({ activeOnly: true });
@@ -502,7 +506,7 @@ export function AgendaPage() {
                   htmlFor="agenda-profissional"
                   className="text-sm font-medium text-foreground"
                 >
-                  Profissional
+                  {profissionaisLabel}
                 </label>
                 <Select
                   value={filterProfessionalId || "todos"}
@@ -513,13 +517,15 @@ export function AgendaPage() {
                   <SelectTrigger
                     id="agenda-profissional"
                     className="w-[220px]"
-                    aria-label="Filtrar por profissional"
+                    aria-label={`Filtrar por ${profissionaisLower}`}
                   >
-                    <SelectValue placeholder="Todos os profissionais" />
+                    <SelectValue
+                      placeholder={`Todos (${profissionaisLower})`}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="todos">
-                      Todos os profissionais
+                      {`Todos (${profissionaisLower})`}
                     </SelectItem>
                     {activeProfessionals.map((professional) => (
                       <SelectItem key={professional.id} value={professional.id}>
@@ -536,7 +542,7 @@ export function AgendaPage() {
                 htmlFor="agenda-servico"
                 className="text-sm font-medium text-foreground"
               >
-                Serviço
+                {servicosLabel}
               </label>
               <Select
                 value={filterServiceId || "todos"}
@@ -547,12 +553,12 @@ export function AgendaPage() {
                 <SelectTrigger
                   id="agenda-servico"
                   className="w-[200px]"
-                  aria-label="Filtrar por serviço"
+                  aria-label={`Filtrar por ${servicosLower}`}
                 >
-                  <SelectValue placeholder="Todos os serviços" />
+                  <SelectValue placeholder={`Todos (${servicosLower})`} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os serviços</SelectItem>
+                  <SelectItem value="todos">{`Todos (${servicosLower})`}</SelectItem>
                   {activeServices.map((service) => (
                     <SelectItem key={service.id} value={service.id}>
                       {service.name}
