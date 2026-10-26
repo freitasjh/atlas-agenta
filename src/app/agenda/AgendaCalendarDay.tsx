@@ -54,6 +54,8 @@ interface AgendaCalendarDayProps {
   workingHours: WorkingHour[];
   /** Weekday (0=domingo) do dia no fuso do tenant. */
   weekday: number;
+  /** Pode exibir a linha de comissão nos blocos (gating resolvido no pai). */
+  showCommission?: boolean;
   /** Abre o diálogo de edição com o mesmo menu de ações da lista. */
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
   /** Criar a partir de uma faixa vazia: profissional + `HH:MM` do clique. */
@@ -79,6 +81,7 @@ export function AgendaCalendarDay({
   singleColumn,
   workingHours,
   weekday,
+  showCommission = false,
   onOpenAppointment,
   onCreateAt,
 }: AgendaCalendarDayProps) {
@@ -301,6 +304,7 @@ export function AgendaCalendarDay({
                     appointment={appointment}
                     timeZone={timeZone}
                     compact={rawHeight < FULL_CONTENT_MIN_HEIGHT}
+                    showCommission={showCommission}
                     onOpen={onOpenAppointment}
                   />
                 </div>

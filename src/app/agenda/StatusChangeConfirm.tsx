@@ -15,6 +15,8 @@ import {
   mapSchedulingError,
   useChangeAppointmentStatus,
 } from "@/hooks/useAppointments";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { getTransitionLabel } from "@/lib/scheduling-status";
 import type {
   AppointmentStatus,
@@ -53,6 +55,13 @@ export function StatusChangeConfirm({
   onClose,
 }: StatusChangeConfirmProps) {
   const changeStatus = useChangeAppointmentStatus();
+  const { canViewCommission } = usePermissions();
+  const { commission: commissionFeature } = useSegmentFeatures();
+  // Aviso de comissão só ao concluir, e só para quem veria o valor depois
+  // (ramo libera + papel pode ler). Honesto: a comissão é apurada e registrada
+  // pelo banco ao concluir (trigger da ADR-03) — não promete nada além disso.
+  const showCommissionNote =
+    change?.to === "concluido" && commissionFeature && canViewCommission;
 
   async function confirm() {
     if (!change) return;
@@ -89,6 +98,11 @@ export function StatusChangeConfirm({
             {change ? CONSEQUENCE_COPY[change.to] : null}
           </DialogDescription>
         </DialogHeader>
+        {showCommissionNote ? (
+          <p className="text-sm text-muted-foreground">
+            A comissão do profissional será apurada e registrada ao concluir.
+          </p>
+        ) : null}
         <DialogFooter>
           <Button
             type="button"

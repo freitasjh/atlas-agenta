@@ -69,6 +69,8 @@ interface AgendaCalendarWeekProps {
   appointments: AppointmentWithRelations[];
   /** `YYYY-MM-DD` de hoje no fuso do tenant, para destacar a coluna. */
   todayIso: string;
+  /** Pode exibir a linha de comissão nos blocos (gating resolvido no pai). */
+  showCommission?: boolean;
   /** Troca o dia em foco (clicar numa coluna navega a semana). */
   onSelectDay: (day: string) => void;
   /** Abre o diálogo de edição. */
@@ -101,6 +103,7 @@ export function AgendaCalendarWeek({
   timeZone,
   appointments,
   todayIso,
+  showCommission = false,
   onSelectDay,
   onOpenAppointment,
 }: AgendaCalendarWeekProps) {
@@ -156,6 +159,7 @@ export function AgendaCalendarWeek({
           appointment={appointment}
           timeZone={timeZone}
           compact
+          showCommission={showCommission}
           onOpen={onOpenAppointment}
         />
       </div>

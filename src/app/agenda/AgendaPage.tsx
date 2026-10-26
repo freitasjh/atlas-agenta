@@ -11,6 +11,7 @@ import {
 
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
+import { CommissionAmount } from "@/components/CommissionAmount";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge, getAppointmentStatusLabel } from "@/components/StatusBadge";
@@ -53,6 +54,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz, weekRangeOf } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
@@ -117,6 +119,7 @@ function AgendaItem({
   timeZone,
   canManage,
   canSendMessage,
+  showCommission,
   onEdit,
   onChangeStatus,
   onSendMessage,
@@ -125,6 +128,8 @@ function AgendaItem({
   timeZone: string;
   canManage: boolean;
   canSendMessage: boolean;
+  /** Pode exibir a linha de comissão (gating de segmento + RBAC resolvido no pai). */
+  showCommission: boolean;
   onEdit: (appointment: AppointmentWithRelations) => void;
   onChangeStatus: (
     appointment: AppointmentWithRelations,
@@ -173,6 +178,12 @@ function AgendaItem({
             <p className="text-sm tabular-nums text-muted-foreground">
               {formatCentsToBRL(appointment.price_cents)}
             </p>
+            {/* Comissão só no atendimento concluído, gated por segmento+RBAC
+                (pai) e pelo RLS (que recorta o snapshot). CommissionAmount não
+                renderiza nada quando commission_cents é null. */}
+            {showCommission && appointment.status === "concluido" ? (
+              <CommissionAmount commissionCents={appointment.commission_cents} />
+            ) : null}
           </div>
         </div>
 
@@ -258,6 +269,12 @@ export function AgendaPage() {
     canScheduleForAnyProfessional,
     canSendWhatsAppMessage,
   } = usePermissions();
+  const { canViewCommission } = usePermissions();
+  const { commission: commissionFeature } = useSegmentFeatures();
+  // Linha de comissão só aparece quando o ramo libera (ex.: barbearia) E o papel
+  // pode ler comissão (admin/professional; receptionist nunca). Defesa em
+  // profundidade — a trava real do snapshot é o RLS financeiro da ADR-02.
+  const showCommission = commissionFeature && canViewCommission;
   const { tenant } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
@@ -633,6 +650,7 @@ export function AgendaPage() {
               singleColumn={!canScheduleForAnyProfessional || !!effectiveProfessionalId}
               workingHours={workingHoursQuery.data ?? []}
               weekday={weekdayOf(day)}
+              showCommission={showCommission}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}
               onCreateAt={canManageAppointments ? openCreateAt : undefined}
             />
@@ -642,6 +660,7 @@ export function AgendaPage() {
               timeZone={timeZone}
               appointments={weekAppointments}
               todayIso={todayInTenantTz(timeZone)}
+              showCommission={showCommission}
               onSelectDay={setDay}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}
             />
@@ -679,6 +698,7 @@ export function AgendaPage() {
                   timeZone={timeZone}
                   canManage={canManageAppointments}
                   canSendMessage={canSendWhatsAppMessage}
+                  showCommission={showCommission}
                   onEdit={openEdit}
                   onChangeStatus={handleChangeStatus}
                   onSendMessage={setMessageTarget}
