@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   GENERIC_TERMS,
+  SEGMENT_SEED_SERVICES,
   SEGMENT_TERMS,
+  resolveSeedServices,
   resolveTerms,
   type SegmentTerms,
 } from "@/lib/segment-presets";
@@ -78,5 +80,52 @@ describe("resolveTerms", () => {
     expect(clinica.clienteLabel).toBe("Paciente");
     expect(clinica.servicosLabel).toBe("Procedimentos");
     expect(clinica.clienteLabel).not.toBe(GENERIC_TERMS.clienteLabel);
+  });
+});
+
+/**
+ * Cobertura do catálogo-semente por ramo (ADR-06 / RF-10) pela peça pura. O
+ * `useOnboardingSeed` delega aqui a decisão "quais serviços semear"; a
+ * idempotência/RLS/montagem vive no hook (testado ao vivo no QA, ambiente
+ * `node` sem DOM). Aqui garantimos o contrato dos dados: ramo conhecido tem
+ * catálogo válido; legado/null não semeia (lista vazia).
+ */
+describe("resolveSeedServices", () => {
+  it("AC-06.1: ramo conhecido devolve o catálogo não vazio do ramo", () => {
+    for (const segment of BUSINESS_SEGMENTS) {
+      const catalog = resolveSeedServices(segment);
+      expect(catalog).toBe(SEGMENT_SEED_SERVICES[segment]);
+      expect(catalog.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("AC-06.3: null/undefined não semeia (lista vazia → estado vazio honesto)", () => {
+    expect(resolveSeedServices(null)).toEqual([]);
+    expect(resolveSeedServices(undefined)).toEqual([]);
+  });
+
+  it("AC-06.3: valor fora do enum não semeia e nunca lança", () => {
+    const dirty = "xpto" as unknown as BusinessSegment;
+    expect(() => resolveSeedServices(dirty)).not.toThrow();
+    expect(resolveSeedServices(dirty)).toEqual([]);
+  });
+
+  it("catálogo respeita o shape de services: *_cents inteiro, duração inteira positiva, nome 1–120", () => {
+    for (const segment of BUSINESS_SEGMENTS) {
+      for (const service of SEGMENT_SEED_SERVICES[segment]) {
+        expect(service.name.trim()).not.toBe("");
+        expect(service.name.length).toBeLessThanOrEqual(120);
+        expect(Number.isInteger(service.durationMinutes)).toBe(true);
+        expect(service.durationMinutes).toBeGreaterThan(0);
+        expect(Number.isInteger(service.priceCents)).toBe(true);
+        expect(service.priceCents).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("cada ramo conhecido tem catálogo (cobre o enum canônico)", () => {
+    expect(Object.keys(SEGMENT_SEED_SERVICES).sort()).toEqual(
+      [...BUSINESS_SEGMENTS].sort(),
+    );
   });
 });
