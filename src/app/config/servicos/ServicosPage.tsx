@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ServiceFormDialog } from "@/app/config/servicos/ServiceFormDialog";
 import { useServices, useDeactivateService } from "@/hooks/useServices";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { formatCentsToBRL } from "@/lib/money";
 import type { Service } from "@/types/domain";
 
@@ -74,6 +75,9 @@ function ServiceStatusBadge({ active }: { active: boolean }) {
  */
 export function ServicosPage() {
   const { canManageCatalog } = usePermissions();
+  const { servicosLabel, servicoLabelSingular } = useSegmentTerms();
+  const servicosLower = servicosLabel.toLowerCase();
+  const servicoLower = servicoLabelSingular.toLowerCase();
   const servicesQuery = useServices();
   const deactivateService = useDeactivateService();
 
@@ -99,10 +103,16 @@ export function ServicosPage() {
         id: serviceToToggle.id,
         active: next,
       });
-      toast.success(next ? "Serviço reativado." : "Serviço inativado.");
+      toast.success(
+        next
+          ? `${servicoLabelSingular} reativado.`
+          : `${servicoLabelSingular} inativado.`,
+      );
       setServiceToToggle(null);
     } catch {
-      toast.error("Não foi possível alterar o serviço. Tente novamente.");
+      toast.error(
+        `Não foi possível alterar o ${servicoLower}. Tente novamente.`,
+      );
     }
   }
 
@@ -111,13 +121,13 @@ export function ServicosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        titulo="Serviços"
+        titulo={servicosLabel}
         descricao="O que a sua empresa oferece: nome, duração, preço e quem executa."
         acoes={
           canManageCatalog ? (
             <Button onClick={openCreate}>
               <Plus aria-hidden="true" />
-              Novo serviço
+              Novo {servicoLower}
             </Button>
           ) : undefined
         }
@@ -131,7 +141,7 @@ export function ServicosPage() {
         </div>
       ) : servicesQuery.isError ? (
         <StatePanel
-          titulo="Não foi possível carregar os serviços"
+          titulo={`Não foi possível carregar os ${servicosLower}`}
           descricao="Verifique sua conexão e tente novamente."
         >
           <Button
@@ -143,17 +153,17 @@ export function ServicosPage() {
         </StatePanel>
       ) : services.length === 0 ? (
         <StatePanel
-          titulo="Nenhum serviço cadastrado"
+          titulo={`Nenhum ${servicoLower} cadastrado`}
           descricao={
             canManageCatalog
-              ? "Cadastre o primeiro serviço para começar a montar o catálogo."
-              : "Ainda não há serviços cadastrados."
+              ? `Cadastre o primeiro ${servicoLower} para começar a montar o catálogo.`
+              : `Ainda não há ${servicosLower} cadastrados.`
           }
         >
           {canManageCatalog ? (
             <Button onClick={openCreate}>
               <Plus aria-hidden="true" />
-              Novo serviço
+              Novo {servicoLower}
             </Button>
           ) : null}
         </StatePanel>
@@ -273,7 +283,9 @@ export function ServicosPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {serviceToToggle?.active ? "Inativar serviço" : "Reativar serviço"}
+              {serviceToToggle?.active
+                ? `Inativar ${servicoLower}`
+                : `Reativar ${servicoLower}`}
             </DialogTitle>
             <DialogDescription>
               {serviceToToggle?.active
