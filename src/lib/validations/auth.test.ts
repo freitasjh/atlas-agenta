@@ -26,9 +26,20 @@ describe("signupSchema.segment", () => {
     expect(issue?.message).toBe("Escolha o ramo da sua empresa.");
   });
 
-  it("AC-04.2: ramo fora do enum fechado é rejeitado", () => {
+  it("CA-02.1: a sentinela vazia '' (o que a UI submete) falha com a mensagem pt-BR", () => {
+    const result = signupSchema.safeParse({ ...baseInput, segment: "" });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "segment");
+    expect(issue?.message).toBe("Escolha o ramo da sua empresa.");
+  });
+
+  it("AC-04.2: ramo fora do enum fechado é rejeitado com a mensagem pt-BR", () => {
     const result = signupSchema.safeParse({ ...baseInput, segment: "outro" });
     expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path[0] === "segment");
+    expect(issue?.message).toBe("Escolha o ramo da sua empresa.");
   });
 
   it.each([...BUSINESS_SEGMENTS])(
