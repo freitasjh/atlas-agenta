@@ -5,7 +5,9 @@
 -- transação security definer: tenant trial 14d + profile admin + seed_message_templates() com
 -- os 4 templates genéricos (confirmacao, lembrete_d1, cobranca, comprovante). A Fase 1a precisa
 -- persistir o ramo escolhido no cadastro (tenants.segment) e seedar a redação pt-BR do ramo,
--- mantendo a invariante "nenhum tenant sem os 4 templates" (RF-03..RF-05 / RF-S03, RF-S04).
+-- mantendo a invariante "nenhum tenant sem os templates da régua" (RF-03..RF-05 / RF-S03,
+-- RF-S04). A régua tem 5 chaves desde a 20250223093000 (confirmacao, lembrete_d1, cobranca,
+-- comprovante, reagendar_retorno) — este seed por ramo cobre TODAS as 5 (a 5ª com texto do ramo).
 --
 -- Decisão D3 do gate (travada): os TEMPLATES continuam seedados NO TRIGGER (agora com variante
 -- de ramo), preservando atomicidade; o CATÁLOGO de services NÃO vai para o trigger (fica
@@ -26,9 +28,11 @@
 --     coerente com src/lib/message-templates.ts. Nenhum segredo no SQL.
 
 -- ============================================================================
--- 1. seed_message_templates(p_tenant_id, p_segment): insere as 4 chaves padrão para um tenant,
---    escolhendo a redação pt-BR conforme o ramo. Fallback genérico (cópia fiel da 20250222091000)
---    quando p_segment é NULL/desconhecido. security definer + search_path fixo: roda fora do RLS.
+-- 1. seed_message_templates(p_tenant_id, p_segment): insere as 5 chaves da régua para um tenant
+--    (confirmacao, lembrete_d1, cobranca, comprovante, reagendar_retorno — a 5ª introduzida pela
+--    20250223093000), escolhendo a redação pt-BR conforme o ramo. Fallback genérico (cópia fiel
+--    da 20250222091000 + 20250223093000) quando p_segment é NULL/desconhecido. security definer +
+--    search_path fixo: roda fora do RLS.
 --
 --    Adicionar o parâmetro com default null MUDA a assinatura; como o Postgres identifica função
 --    por assinatura, descartamos a forma antiga de 1 argumento antes de recriar, para não deixar
@@ -58,6 +62,8 @@ begin
        'Fala {nome}, segue a cobrança do seu {servico} na {empresa}.'),
       ('barbearia', 'comprovante',
        'Pagamento confirmado, {nome}! Valeu por escolher a {empresa}. Até a próxima!'),
+      ('barbearia', 'reagendar_retorno',
+       'Fala {nome}, recebemos seu pedido de reagendamento do {servico} na {empresa}. Já já a gente te chama pra marcar um novo horário.'),
 
       ('clinica', 'confirmacao',
        'Olá {nome}, sua consulta de {servico} na {empresa} está agendada para {dataHora}.'),
@@ -67,6 +73,8 @@ begin
        'Olá {nome}, segue a cobrança referente à sua consulta de {servico} na {empresa}.'),
       ('clinica', 'comprovante',
        'Recebemos o pagamento da sua consulta de {servico} na {empresa}. Obrigado, {nome}! Cuide-se.'),
+      ('clinica', 'reagendar_retorno',
+       'Olá {nome}, recebemos seu pedido de reagendamento da consulta de {servico} na {empresa}. Em breve entramos em contato para encontrar um novo horário.'),
 
       ('salao', 'confirmacao',
        'Oi {nome}! Seu horário de {servico} na {empresa} está confirmado para {dataHora}.'),
@@ -75,7 +83,9 @@ begin
       ('salao', 'cobranca',
        'Oi {nome}, segue a cobrança do seu {servico} na {empresa}.'),
       ('salao', 'comprovante',
-       'Pagamento recebido, {nome}! Obrigada por escolher a {empresa}. Até breve!')
+       'Pagamento recebido, {nome}! Obrigada por escolher a {empresa}. Até breve!'),
+      ('salao', 'reagendar_retorno',
+       'Oi {nome}, recebemos seu pedido de reagendamento do {servico} na {empresa}. Em breve entramos em contato para encontrar um novo horário.')
     ) as seg(segment, template_key, body)
     where seg.segment = p_segment
 
@@ -92,7 +102,9 @@ begin
       ('cobranca',
        'Olá {nome}, segue a cobrança do seu {servico} na {empresa}.'),
       ('comprovante',
-       'Recebemos o pagamento do seu {servico} na {empresa}. Obrigado, {nome}!')
+       'Recebemos o pagamento do seu {servico} na {empresa}. Obrigado, {nome}!'),
+      ('reagendar_retorno',
+       'Oi {nome}, recebemos seu pedido de reagendamento do {servico} na {empresa}. Em breve entramos em contato para encontrar um novo horário.')
     ) as gen(template_key, body)
     where not exists (
       select 1
@@ -152,8 +164,8 @@ begin
   insert into profiles (id, tenant_id, role, full_name)
   values (new.id, v_tenant_id, 'admin', new.raw_user_meta_data->>'full_name');
 
-  -- Baseline dos 4 templates da régua no mesmo fluxo atômico do signup, agora com a variante do
-  -- ramo (fallback genérico quando v_segment é NULL). Tenant novo nasce com exatamente 4 linhas,
+  -- Baseline das 5 chaves da régua no mesmo fluxo atômico do signup, agora com a variante do
+  -- ramo (fallback genérico quando v_segment é NULL). Tenant novo nasce com exatamente 5 linhas,
   -- sem janela de tenant sem template. Idempotente.
   perform seed_message_templates(v_tenant_id, v_segment);
 
