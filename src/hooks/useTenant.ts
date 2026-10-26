@@ -2,19 +2,26 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
-import { SUBSCRIPTION_STATUSES, type CurrentTenant } from "@/types/domain";
+import {
+  BUSINESS_SEGMENTS,
+  SUBSCRIPTION_STATUSES,
+  type CurrentTenant,
+} from "@/types/domain";
 import { useProfile } from "@/hooks/useProfile";
 
 /**
  * Schema de validação do shape devolvido pelo `tenants`. `subscription_status`
  * é estreitado contra a união canônica de `types/domain`.
  */
-const tenantSchema = z.object({
+export const tenantSchema = z.object({
   id: z.string(),
   trade_name: z.string().nullable(),
   legal_name: z.string().nullable(),
   subscription_status: z.enum(SUBSCRIPTION_STATUSES),
   timezone: z.string(),
+  // Valor inesperado do banco degrada para `null` (genérico) em vez de
+  // derrubar o parse do tenant — nunca transforma dado sujo em negação de acesso.
+  segment: z.enum(BUSINESS_SEGMENTS).nullable().catch(null),
 });
 
 /**
@@ -35,7 +42,9 @@ export function useTenant() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tenants")
-        .select("id, trade_name, legal_name, subscription_status, timezone")
+        .select(
+          "id, trade_name, legal_name, subscription_status, timezone, segment",
+        )
         .single();
       if (error) throw error;
       return tenantSchema.parse(data);

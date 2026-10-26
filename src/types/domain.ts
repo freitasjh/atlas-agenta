@@ -36,6 +36,10 @@ export const ROLES = [
 
 export type Role = (typeof ROLES)[number];
 
+/** Ramos de negócio suportados (enum persistido em tenants.segment). */
+export const BUSINESS_SEGMENTS = ["barbearia", "clinica", "salao"] as const;
+export type BusinessSegment = (typeof BUSINESS_SEGMENTS)[number];
+
 /**
  * Projeção do `profiles` do usuário logado lida pelos hooks de identidade.
  * `tenant_id` é `null` para `super_admin` (invariante garantida no banco).
@@ -56,6 +60,8 @@ export interface CurrentTenant {
   legal_name: string | null;
   subscription_status: SubscriptionStatus;
   timezone: string;
+  /** Ramo de negócio do tenant; `null` = legado/genérico. */
+  segment: BusinessSegment | null;
 }
 
 /**
