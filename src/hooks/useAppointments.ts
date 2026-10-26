@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
-import { tenantDayRangeUtc } from "@/lib/datetime";
+import { tenantDayRangeUtc, tenantRangeUtc } from "@/lib/datetime";
 import { mapSchedulingError } from "@/lib/scheduling-errors";
 import { isTransitionAllowed } from "@/lib/scheduling-status";
 import { useTenant } from "@/hooks/useTenant";
@@ -111,6 +111,71 @@ export function useAppointments({
     queryFn: async () => {
       const range = tenantDayRangeUtc(day, timeZone as string);
       if (!range) throw new Error("Dia inválido.");
+
+      let query = supabase
+        .from("appointments")
+        .select(APPOINTMENT_SELECT)
+        .gte("starts_at", range.startUtc.toISOString())
+        .lt("starts_at", range.endUtc.toISOString())
+        .order("starts_at", { ascending: true });
+      if (professionalId) query = query.eq("professional_id", professionalId);
+      if (serviceId) query = query.eq("service_id", serviceId);
+      if (status) query = query.eq("status", status);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return appointmentListSchema.parse(data);
+    },
+  });
+}
+
+/**
+ * Lista de agendamentos de uma **faixa de dias** (`startDay`..`endDay`,
+ * `YYYY-MM-DD` no fuso do tenant, ambos inclusivos) — usada pela visão Semana,
+ * que precisa dos 7 dias de uma vez. A borda `[início, fim)` é derivada por
+ * data de calendário local e convertida para UTC via `tenantRangeUtc` (ADR-01),
+ * correta sob horário de verão.
+ *
+ * Busca os 7 dias em **uma única** request PostgREST (reusa `APPOINTMENT_SELECT`
+ * e `appointmentListSchema`, sem waterfall — RNF01). Compartilha o prefixo de
+ * cache `["appointments"]` com `useAppointments`, então as mutações já invalidam
+ * a semana sem mudança extra.
+ *
+ * `professionalId`/`serviceId`/`status` são refinamento de UX no servidor (`.eq`),
+ * nunca fronteira de segurança — o isolamento por tenant continua 100% no RLS
+ * (derivado do JWT); nenhum `tenant_id` é enviado pelo cliente. `enabled` deixa a
+ * página ativar a busca só na visão Semana (não dispara em Dia/Lista).
+ */
+export function useAppointmentsRange({
+  startDay,
+  endDay,
+  professionalId,
+  serviceId,
+  status,
+  enabled,
+}: {
+  startDay: string;
+  endDay: string;
+  professionalId?: string;
+  serviceId?: string;
+  status?: AppointmentStatus;
+  enabled?: boolean;
+}) {
+  const { data: tenant } = useTenant();
+  const timeZone = tenant?.timezone;
+
+  return useQuery<AppointmentWithRelations[]>({
+    queryKey: [
+      ...APPOINTMENTS_KEY,
+      "range",
+      { startDay, endDay, professionalId, serviceId, status },
+    ],
+    // Precisa do fuso do tenant para derivar a faixa UTC e respeita o `enabled`
+    // da página (só busca na visão Semana).
+    enabled: !!timeZone && (enabled ?? true),
+    queryFn: async () => {
+      const range = tenantRangeUtc(startDay, endDay, timeZone as string);
+      if (!range) throw new Error("Semana inválida.");
 
       let query = supabase
         .from("appointments")

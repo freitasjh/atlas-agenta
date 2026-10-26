@@ -43,6 +43,7 @@ import {
 import {
   mapSchedulingError,
   useAppointments,
+  useAppointmentsRange,
   useChangeAppointmentStatus,
 } from "@/hooks/useAppointments";
 import { useProfessionals } from "@/hooks/useProfessionals";
@@ -51,7 +52,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
-import { formatTimeInTenantTz } from "@/lib/datetime";
+import { formatTimeInTenantTz, weekRangeOf } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
 import { serviceColorDotClass } from "@/lib/service-color";
 import { cn } from "@/lib/utils";
@@ -312,6 +313,24 @@ export function AgendaPage() {
     status: filterStatus || undefined,
   });
 
+  // Intervalo da semana (segunda→domingo) que contém `day`, no fuso do tenant.
+  // Mesma fonte única (`weekRangeOf`) que o `AgendaCalendarWeek` usa para montar
+  // as colunas, então o intervalo buscado nunca diverge das colunas renderizadas.
+  const weekRange = useMemo(() => weekRangeOf(day), [day]);
+
+  // Busca os 7 dias numa única request, mas só na visão Semana (`enabled`). Dia
+  // e Lista seguem no `useAppointments` por-dia acima. Os filtros de recorte
+  // (profissional/serviço/status) refinam o conteúdo sem colapsar a grade; o
+  // isolamento por tenant continua 100% no RLS.
+  const weekQuery = useAppointmentsRange({
+    startDay: weekRange?.start ?? day,
+    endDay: weekRange?.end ?? day,
+    professionalId: effectiveProfessionalId,
+    serviceId: filterServiceId || undefined,
+    status: filterStatus || undefined,
+    enabled: view === "semana",
+  });
+
   // Filtros de recorte ativos (serviço/status) — para distinguir o estado vazio
   // "sem agendamentos no dia" do "nada bate com os filtros".
   const hasActiveFilters = !!filterServiceId || !!filterStatus;
@@ -404,13 +423,19 @@ export function AgendaPage() {
     !ownProfessional;
 
   const appointments = appointmentsQuery.data ?? [];
+  const weekAppointments = weekQuery.data ?? [];
   const activeProfessionals = professionalsQuery.data ?? [];
   const activeServices = servicesQuery.data ?? [];
 
+  // Na Semana, o estado de dados (carregando/erro/refetch) vem do `weekQuery`;
+  // Dia e Lista seguem com o `appointmentsQuery` por-dia. A base de profissionais
+  // ainda bloqueia o render inicial para o `professional` (lista já filtrada
+  // pelo RLS) em todas as visões.
+  const dataQuery = view === "semana" ? weekQuery : appointmentsQuery;
+
   const isLoading =
-    (canScheduleForAnyProfessional
-      ? false
-      : professionalsQuery.isLoading) || appointmentsQuery.isLoading;
+    (canScheduleForAnyProfessional ? false : professionalsQuery.isLoading) ||
+    dataQuery.isLoading;
 
   return (
     <div className="space-y-6">
@@ -591,14 +616,14 @@ export function AgendaPage() {
               <Skeleton className="h-20 w-full" />
               <Skeleton className="h-20 w-full" />
             </div>
-          ) : appointmentsQuery.isError ? (
+          ) : dataQuery.isError ? (
             <StatePanel
               titulo="Não foi possível carregar a agenda"
               descricao="Verifique sua conexão e tente novamente."
             >
               <Button
                 variant="outline"
-                onClick={() => void appointmentsQuery.refetch()}
+                onClick={() => void dataQuery.refetch()}
               >
                 Tentar novamente
               </Button>
@@ -619,7 +644,7 @@ export function AgendaPage() {
             <AgendaCalendarWeek
               day={day}
               timeZone={timeZone}
-              appointments={appointments}
+              appointments={weekAppointments}
               todayIso={todayInTenantTz(timeZone)}
               onSelectDay={setDay}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}

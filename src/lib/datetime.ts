@@ -210,6 +210,116 @@ export function tenantDayRangeUtc(
 }
 
 /**
+ * Avança `YYYY-MM-DD` em `days` dias de **calendário** (aritmética em UTC pura,
+ * sem fuso) — mesmo padrão de `shiftIsoDate` em `AgendaPage`/`AgendaCalendarWeek`.
+ * Retorna `null` se a data for inválida.
+ */
+function shiftCalendarDate(dateStr: string, days: number): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  // Rejeita datas que o `Date` normaliza (ex.: "2025-13-40" → outro mês).
+  if (
+    base.getUTCFullYear() !== year ||
+    base.getUTCMonth() !== month - 1 ||
+    base.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+/**
+ * Faixa `[início, fim)` da janela de múltiplos dias `startDateStr..endDateStr`
+ * (ambos inclusivos, no fuso do tenant) como instantes UTC — para buscar os
+ * agendamentos de uma semana (7 dias) numa única request (ADR-01 fix da Semana).
+ *
+ * `startUtc` = 00:00 local do primeiro dia; `endUtc` = 00:00 local do dia
+ * **seguinte** ao último dia, derivado por **data de calendário** (avançar o dia
+ * e converter com `tenantDateTimeToUtc`), nunca somando `N×24h` — assim a janela
+ * fica correta mesmo em dia de transição de horário de verão (DST). Intervalo
+ * **semiaberto** `[startUtc, endUtc)`, coerente com o `tstzrange` do banco e com
+ * `tenantDayRangeUtc`.
+ *
+ * Retorna `null` se qualquer conversão falhar (data inválida) ou se `endDateStr`
+ * for anterior a `startDateStr`.
+ */
+export function tenantRangeUtc(
+  startDateStr: string,
+  endDateStr: string,
+  timeZone: string,
+): { startUtc: Date; endUtc: Date } | null {
+  const startUtc = tenantDateTimeToUtc(startDateStr, "00:00", timeZone);
+  if (!startUtc) return null;
+
+  const nextDayStr = shiftCalendarDate(endDateStr, 1);
+  if (!nextDayStr) return null;
+
+  const endUtc = tenantDateTimeToUtc(nextDayStr, "00:00", timeZone);
+  if (!endUtc) return null;
+
+  // `endDateStr < startDateStr` ⇒ janela vazia/invertida: rejeita.
+  if (endUtc.getTime() <= startUtc.getTime()) return null;
+
+  return { startUtc, endUtc };
+}
+
+/**
+ * Ordem de exibição da semana (segunda→domingo) usada na grade da agenda, igual
+ * ao `WeekScheduleForm`. `0` = domingo.
+ */
+const WEEK_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
+/**
+ * Semana (segunda→domingo) que contém `dateStr` (`YYYY-MM-DD`), como as sete
+ * datas de calendário `YYYY-MM-DD` em ordem de exibição, mais os extremos
+ * (`start` = segunda, `end` = domingo). Fonte única do intervalo da Semana da
+ * agenda: a `AgendaPage` usa `{ start, end }` para buscar os 7 dias numa request
+ * e o `AgendaCalendarWeek` usa `days` para renderizar as colunas — assim o
+ * intervalo buscado nunca diverge das colunas renderizadas (ADR-04 fix da
+ * Semana).
+ *
+ * Aritmética de **calendário** (sem fuso): o weekday vem de `Date.UTC` só para
+ * posicionar o dia na semana, não para converter instante. Retorna `null` se
+ * `dateStr` for inválido.
+ */
+export function weekRangeOf(
+  dateStr: string,
+): { start: string; end: string; days: string[] } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  // Rejeita datas que o `Date` normaliza (ex.: "2025-13-40").
+  if (
+    base.getUTCFullYear() !== year ||
+    base.getUTCMonth() !== month - 1 ||
+    base.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const weekday = base.getUTCDay();
+  const positionInOrder = WEEK_DISPLAY_ORDER.indexOf(
+    weekday as (typeof WEEK_DISPLAY_ORDER)[number],
+  );
+  const monday = shiftCalendarDate(dateStr, -positionInOrder);
+  if (!monday) return null;
+  const days: string[] = [];
+  for (let index = 0; index < WEEK_DISPLAY_ORDER.length; index += 1) {
+    const columnDay = shiftCalendarDate(monday, index);
+    if (!columnDay) return null;
+    days.push(columnDay);
+  }
+  return { start: days[0], end: days[days.length - 1], days };
+}
+
+/**
  * Soma `minutes` a um instante UTC (ex.: `ends_at = starts_at +
  * service.duration_minutes`). Opera no eixo absoluto — independe de fuso.
  */
