@@ -1,5 +1,5 @@
-import * as React from "react";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CalendarDays,
   ChevronLeft,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { StatePanel } from "@/components/StatePanel";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge, getAppointmentStatusLabel } from "@/components/StatusBadge";
@@ -94,6 +95,11 @@ function weekdayOf(dateStr: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
+/** Valida o formato `YYYY-MM-DD` de um dia vindo da URL (ex.: link do painel). */
+function isValidIsoDate(value: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 /** Borda-lateral de status na timeline (reforço redundante do `StatusBadge`). */
 const STATUS_BORDER: Record<AppointmentStatus, string> = {
   pendente: "border-status-pendente",
@@ -103,29 +109,6 @@ const STATUS_BORDER: Record<AppointmentStatus, string> = {
   cancelado: "border-status-cancelado",
   nao_compareceu: "border-status-nao-compareceu",
 };
-
-/** Painel de estado (vazio/erro), no mesmo molde das demais telas de `/app`. */
-function StatePanel({
-  titulo,
-  descricao,
-  children,
-}: {
-  titulo: string;
-  descricao: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-2xl rounded-lg border border-dashed border-border p-8 text-center">
-      <h2 className="font-display text-lg font-semibold tracking-tight">
-        {titulo}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
-      {children ? (
-        <div className="mt-4 flex justify-center">{children}</div>
-      ) : null}
-    </div>
-  );
-}
 
 /** Um item da timeline do dia. */
 function AgendaItem({
@@ -281,7 +264,14 @@ export function AgendaPage() {
   const professionalsQuery = useProfessionals({ activeOnly: true });
   const servicesQuery = useServices({ activeOnly: true });
 
-  const [day, setDay] = useState(() => todayInTenantTz(timeZone));
+  // Dia inicial: o `?dia=YYYY-MM-DD` da URL (deep-link do painel operacional),
+  // ou hoje no fuso do tenant. Lido só na montagem; a navegação interna segue
+  // pelo estado, sem reescrever a URL.
+  const [searchParams] = useSearchParams();
+  const [day, setDay] = useState(() => {
+    const fromUrl = searchParams.get("dia");
+    return isValidIsoDate(fromUrl) ? fromUrl : todayInTenantTz(timeZone);
+  });
   // Filtro de profissional livre (admin/recepção). Vazio = todos.
   const [filterProfessionalId, setFilterProfessionalId] = useState<string>("");
   // Filtro de serviço (todos os papéis). Vazio = todos os serviços.

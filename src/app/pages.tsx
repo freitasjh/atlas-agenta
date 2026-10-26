@@ -7,22 +7,12 @@ import { StatusBadge } from "@/components/StatusBadge";
 /**
  * Páginas-casca do painel do tenant (`/app`). Mínimas e em pt-BR; o conteúdo
  * real das telas vem nas fases seguintes. Rendem dentro do AppLayout.
+ *
+ * `DashboardPage` (`/app`) deixou de ser casca: agora é o painel operacional em
+ * `src/app/dashboard/`. Reexportado aqui para o router não mudar.
  */
 
-export function DashboardPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Visão geral"
-        descricao="Resumo da operação do dia. Painel em construção."
-      />
-      <PlaceholderPanel
-        titulo="Painel do tenant"
-        descricao="Indicadores de agenda e cobrança aparecem aqui nas próximas fases."
-      />
-    </div>
-  );
-}
+export { DashboardPage } from "@/app/dashboard/DashboardPage";
 
 export function CobrancasPage() {
   return (
