@@ -77,6 +77,11 @@ export function CadastroPage() {
     resolver: zodResolver(signupSchema),
     defaultValues: {
       tradeName: "",
+      // Sentinela vazia (mesmo padrão dos Selects de `AppointmentFormDialog`):
+      // mantém o campo CONTROLADO desde o primeiro render (sem o warning do
+      // React "uncontrolled → controlled"), sem virar default silencioso — o
+      // enum zod não aceita "" e a submissão sem escolha dispara o erro pt-BR.
+      segment: "" as BusinessSegment,
       email: "",
       password: "",
       confirmPassword: "",
@@ -203,7 +208,7 @@ export function CadastroPage() {
                 <FormItem>
                   <FormLabel>Ramo da empresa</FormLabel>
                   <Select
-                    value={field.value}
+                    value={field.value || undefined}
                     onValueChange={field.onChange}
                   >
                     <FormControl>
