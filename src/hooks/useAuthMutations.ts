@@ -37,20 +37,23 @@ export function useSignIn() {
 }
 
 /**
- * Cadastro da empresa. Mapeia `tradeName` (schema zod) → `trade_name` no
- * `options.data`, exatamente a chave que o trigger `handle_new_user` (ADR-04)
- * lê para nomear o tenant. Divergência aqui = tenant com nome nulo.
+ * Cadastro da empresa. Mapeia `tradeName` (schema zod) → `trade_name` e
+ * `segment` → `segment` no `options.data`, exatamente as chaves que o trigger
+ * `handle_new_user` lê (`raw_user_meta_data->>'trade_name'` / `->>'segment'`)
+ * para nomear o tenant e gravar o ramo. Divergência de chave = dado nascendo
+ * nulo silenciosamente. O `segment` é metadado de signup validado no servidor
+ * (defesa em profundidade com o `check` do banco); nunca é fronteira de acesso.
  * O cliente NUNCA envia `role` nem `tenant_id` — isso é decidido no servidor.
  */
 export function useSignUp() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ tradeName, email, password }: SignupInput) => {
+    mutationFn: async ({ tradeName, segment, email, password }: SignupInput) => {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { trade_name: tradeName },
+          data: { trade_name: tradeName, segment },
         },
       });
       if (error) throw error;

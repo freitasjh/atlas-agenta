@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { BUSINESS_SEGMENTS } from "@/types/domain";
+
 /**
  * Schemas de validação de autenticação (react-hook-form + resolver zod).
  *
@@ -28,6 +30,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export const signupSchema = z
   .object({
     tradeName: z.string().trim().min(2, "Informe o nome da empresa."),
+    segment: z.enum(BUSINESS_SEGMENTS, {
+      required_error: "Escolha o ramo da sua empresa.",
+      invalid_type_error: "Escolha o ramo da sua empresa.",
+    }),
     email: emailSchema,
     password: passwordSchema,
     confirmPassword: z.string(),

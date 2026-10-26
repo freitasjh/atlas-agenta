@@ -23,8 +23,16 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
+import type { BusinessSegment } from "@/types/domain";
 import { mapAuthError } from "@/lib/auth-errors";
 import { useSignUp } from "@/hooks/useAuthMutations";
 import { getPlan, parsePlanSlug } from "@/lib/plans";
@@ -33,9 +41,20 @@ import { getPlan, parsePlanSlug } from "@/lib/plans";
 const EMAIL_TAKEN_CODES = new Set(["user_already_exists", "email_exists"]);
 
 /**
- * Cadastro da empresa. Cria `auth.user` + (via trigger ADR-04) tenant em
- * `trial` e profile admin. Escopo do MVP: só nome da empresa, e-mail e senha —
- * CNPJ/segmento/plano ficam para uma fase posterior.
+ * Rótulos pt-BR dos ramos oferecidos no cadastro. Enum fechado de 3 valores
+ * (sem "Outro", sem default silencioso); os literais são a chave-contrato
+ * enviada em `options.data.segment` e validada pelo servidor.
+ */
+const SEGMENT_LABELS: Record<BusinessSegment, string> = {
+  barbearia: "Barbearia",
+  clinica: "Clínica",
+  salao: "Salão de beleza",
+};
+
+/**
+ * Cadastro da empresa. Cria `auth.user` + (via trigger `handle_new_user`)
+ * tenant em `trial` e profile admin. Coleta nome da empresa, ramo
+ * (obrigatório), e-mail e senha — CNPJ/plano ficam para uma fase posterior.
  *
  * Com confirmação de e-mail desligada (MVP), o `signUp` já abre sessão e
  * seguimos para `/app`. O código permanece tolerante ao ramo "verifique seu
@@ -173,6 +192,37 @@ export function CadastroPage() {
                   <FormControl>
                     <Input autoComplete="organization" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="segment"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ramo da empresa</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o ramo" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="barbearia">
+                        {SEGMENT_LABELS.barbearia}
+                      </SelectItem>
+                      <SelectItem value="clinica">
+                        {SEGMENT_LABELS.clinica}
+                      </SelectItem>
+                      <SelectItem value="salao">
+                        {SEGMENT_LABELS.salao}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
