@@ -84,12 +84,14 @@ function resolvePeriodDays(period: DashboardPeriod, today: string): PeriodDays {
     };
   }
   if (period === "semana") {
-    const { monday, sunday } = weekRangeOf(today);
+    const week = weekRangeOf(today);
+    if (!week) throw new Error("Semana inválida.");
+    const { start, end } = week;
     return {
-      from: monday,
-      to: sunday,
-      prevFrom: shiftIsoDate(monday, -7),
-      prevTo: shiftIsoDate(sunday, -7),
+      from: start,
+      to: end,
+      prevFrom: shiftIsoDate(start, -7),
+      prevTo: shiftIsoDate(end, -7),
     };
   }
   // mês
@@ -107,13 +109,16 @@ function trendWeekRanges(
   today: string,
   timeZone: string,
 ): { starts: string[]; ends: string[] } {
-  const { monday: currentMonday } = weekRangeOf(today);
+  const currentWeek = weekRangeOf(today);
+  if (!currentWeek) throw new Error("Semana inválida.");
+  const currentMonday = currentWeek.start;
   const starts: string[] = [];
   const ends: string[] = [];
   for (let i = TREND_WEEKS - 1; i >= 0; i--) {
     const weekMonday = shiftIsoDate(currentMonday, -7 * i);
-    const { monday, sunday } = weekRangeOf(weekMonday);
-    const range = tenantRangeUtc(monday, sunday, timeZone);
+    const wk = weekRangeOf(weekMonday);
+    if (!wk) continue;
+    const range = tenantRangeUtc(wk.start, wk.end, timeZone);
     if (!range) continue;
     starts.push(range.startUtc.toISOString());
     ends.push(range.endUtc.toISOString());
