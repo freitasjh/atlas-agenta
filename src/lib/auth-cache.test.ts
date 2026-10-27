@@ -31,6 +31,11 @@ describe("applyAuthEvent", () => {
 
     applyAuthEvent(queryClient, "SIGNED_OUT", null);
 
+    const cache = queryClient.getQueryCache();
+    expect(cache.find({ queryKey: ["profile", "user-1"], exact: true })).toBeDefined();
+    expect(cache.find({ queryKey: ["tenant", "tenant-1"], exact: true })).toBeDefined();
+    expect(cache.find({ queryKey: ["customers"], exact: true })).toBeDefined();
+    expect(cache.find({ queryKey: ["appointments"], exact: true })).toBeDefined();
     expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
     expect(queryClient.getQueryData(["tenant", "tenant-1"])).toBeUndefined();
     expect(queryClient.getQueryData(["customers"])).toBeUndefined();
@@ -115,6 +120,11 @@ describe("applyAuthEvent", () => {
 
     applyAuthEvent(queryClient, "SIGNED_IN", newSession);
 
+    const cache = queryClient.getQueryCache();
+    expect(cache.find({ queryKey: ["profile", "user-1"], exact: true })).toBeUndefined();
+    expect(cache.find({ queryKey: ["tenant", "tenant-1"], exact: true })).toBeUndefined();
+    expect(cache.find({ queryKey: ["customers"], exact: true })).toBeDefined();
+    expect(cache.find({ queryKey: ["appointments"], exact: true })).toBeDefined();
     expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
     expect(queryClient.getQueryData(["tenant", "tenant-1"])).toBeUndefined();
     expect(queryClient.getQueryData(["customers"])).toBeUndefined();
