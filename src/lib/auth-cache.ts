@@ -26,7 +26,7 @@ import { sessionQueryKey } from "@/lib/session-key";
  *   `resetQueries`: observadores montados são notificados e refeitos com a
  *   conta nova, sem dados da conta anterior.
  * - `SIGNED_IN` sem sessão anterior conhecida (`null` após `SIGNED_OUT`, que já
- *   limpou o cache; ou `undefined` quando a sessão ainda não carregou) e
+ *   resetou o cache; ou `undefined` quando a sessão ainda não carregou) e
  *   `SIGNED_IN` do mesmo usuário (reentrada, refresh) não removem nada.
  * - A chave de sessão é preservada em todos os casos: os observadores do guard
  *   continuam com o estado de sessão enquanto decidem o redirect.

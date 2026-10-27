@@ -218,4 +218,41 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "c-2" }]);
     expect(queryClient.getQueryData(["session"])).toEqual(sessionOf("user-1"));
   });
+  it("resposta em voo da conta anterior não repovoa o cache após a troca de conta", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["session"], sessionOf("user-1"));
+    // Cada chamada de queryFn fica pendente até o teste resolver, para controlar
+    // qual resposta chega primeiro.
+    const pending: Array<{ resolve: (rows: { id: string }[]) => void }> = [];
+    const queryFn = vi.fn(
+      () =>
+        new Promise<{ id: string }[]>((resolve) => {
+          pending.push({ resolve });
+        }),
+    );
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["customers"],
+      queryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      // Fetch da conta 1 em voo.
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      applyAuthEvent(queryClient, "SIGNED_IN", sessionOf("user-2"));
+      // A troca refaz a query observada com a conta nova.
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      pending[1].resolve([{ id: "B-cliente-user-2" }]);
+      await vi.waitFor(() => {
+        expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "B-cliente-user-2" }]);
+      });
+      // Resposta tardia da conta 1 não pode sobrescrever o cache.
+      pending[0].resolve([{ id: "A-cliente-user-1" }]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "B-cliente-user-2" }]);
+      expect(observer.getCurrentResult().data).toEqual([{ id: "B-cliente-user-2" }]);
+    } finally {
+      unsubscribe();
+    }
+  });
 });
