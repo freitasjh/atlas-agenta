@@ -15,10 +15,13 @@ import { sessionQueryKey } from "@/lib/session-key";
  *   compartilhado. O guard redireciona e desmonta as telas, então não há
  *   observador ativo que precise ser notificado.
  * - Em `SIGNED_IN` de OUTRO usuário (login sem sair antes, pela URL de
- *   `/login` ou por outra aba) faz `resetQueries` com o mesmo predicado. Ele
- *   notifica os observadores montados e refaz as queries ativas com a conta
- *   nova, então a tela não mostra dados da conta anterior. Um `SIGNED_IN` do
- *   mesmo usuário (reentrada, refresh) não remove nada.
+ *   `/login` ou por outra aba) remove as chaves de identidade (`profile` e
+ *   `tenant`) da conta anterior, para que não sejam refeitas com o token da
+ *   conta nova. As demais queries recebem `resetQueries`: observadores montados
+ *   são notificados e refeitos com a conta nova, sem dados da conta anterior.
+ * - `SIGNED_IN` sem sessão anterior conhecida (`null` após `SIGNED_OUT`, que já
+ *   limpou o cache; ou `undefined` quando a sessão ainda não carregou) e
+ *   `SIGNED_IN` do mesmo usuário (reentrada, refresh) não removem nada.
  * - A chave de sessão é preservada em todos os casos: os observadores do guard
  *   continuam com o estado de sessão enquanto decidem o redirect.
  *
@@ -40,16 +43,18 @@ export function applyAuthEvent(
     return;
   }
 
-  // `previous === undefined` significa que ["session"] ainda não foi preenchida
-  // (ex.: carregamento com sessão salva). Não é troca de conta: preserva o cache.
+  // Só `previous` com sessão válida conta como conta anterior. `undefined`
+  // (sessão ainda não carregada) e `null` (já deslogado) não são troca de conta.
   const switchedUser =
     event === "SIGNED_IN" &&
-    previous !== undefined &&
-    previous?.user.id !== session?.user.id;
+    !!previous &&
+    previous.user.id !== session?.user.id;
 
   if (switchedUser) {
-    // Reset em vez de remove: observadores montados recebem o estado vazio e as
-    // queries ativas são refeitas com a sessão nova.
+    const identityQuery = (query: { queryKey: readonly unknown[] }) =>
+      query.queryKey[0] === "profile" || query.queryKey[0] === "tenant";
+
+    queryClient.removeQueries({ predicate: identityQuery });
     void queryClient.resetQueries({ predicate: notSessionQuery });
   }
 }

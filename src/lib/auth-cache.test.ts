@@ -121,4 +121,44 @@ describe("applyAuthEvent", () => {
       unsubscribe();
     }
   });
+
+  it("SIGNED_IN de outro usuário não refaz o perfil da conta anterior", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["profile", "user-1"], { role: "admin" });
+    queryClient.setQueryData(["session"], sessionOf("user-1"));
+
+    // Simula o guard com o perfil de user-1 montado.
+    const profileFetch = vi.fn(async () => ({ role: "professional" }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["profile", "user-1"],
+      queryFn: profileFetch,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    try {
+      applyAuthEvent(queryClient, "SIGNED_IN", sessionOf("user-2"));
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(profileFetch).not.toHaveBeenCalled();
+      expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
+      expect(queryClient.getQueryCache().find({ queryKey: ["profile", "user-1"] })).toBeUndefined();
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("SIGNED_IN após SIGNED_OUT do mesmo usuário não limpa o cache recarregado", () => {
+    const queryClient = new QueryClient();
+    seedCache(queryClient);
+
+    applyAuthEvent(queryClient, "SIGNED_OUT", null);
+    queryClient.setQueryData(["customers"], [{ id: "c-2" }]);
+
+    applyAuthEvent(queryClient, "SIGNED_IN", sessionOf("user-1"));
+
+    expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "c-2" }]);
+    expect(queryClient.getQueryData(["session"])).toEqual(sessionOf("user-1"));
+  });
 });
