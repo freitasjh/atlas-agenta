@@ -3,15 +3,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { isSupabaseConfigured } from "@/lib/env";
-import { sessionQueryKey } from "@/hooks/useSession";
+import { applyAuthEvent } from "@/lib/auth-cache";
 
 /**
  * Assina `supabase.auth.onAuthStateChange` UMA vez e mantém o cache da sessão
  * (`["session"]`) em dia sem polling. Cobre login/logout/refresh de token e o
  * evento `PASSWORD_RECOVERY` (usado pela tela de redefinição, ADR-07).
  *
- * Em `SIGNED_OUT`, também remove as queries de identidade dependentes para não
- * servir profile/tenant obsoletos antes do redirect do guard.
+ * Em `SIGNED_OUT`, `applyAuthEvent` remove todo o cache de dados do usuário
+ * anterior (preservando a sessão), para não servir dados obsoletos antes do
+ * redirect do guard nem vazar dados entre contas no mesmo navegador.
  *
  * Único consumidor que toca o client no LOAD (montado no `RootLayout` que
  * envolve todas as rotas). Por isso traz o guard por `isSupabaseConfigured`:
@@ -32,12 +33,7 @@ export function AuthListener() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      queryClient.setQueryData(sessionQueryKey, session);
-
-      if (event === "SIGNED_OUT") {
-        queryClient.removeQueries({ queryKey: ["profile"] });
-        queryClient.removeQueries({ queryKey: ["tenant"] });
-      }
+      applyAuthEvent(queryClient, event, session);
     });
 
     return () => {
