@@ -37,9 +37,14 @@
 -- Validação de obrigatoriedade, conteúdo e cadeia em UM trigger (`clinical_records_validate`), não
 -- em CHECK constraints. Motivo: o PostgreSQL grava a linha inteira no DETAIL de erro de CHECK e de
 -- NOT NULL ("Failing row contains (...)"). Com texto clínico na linha, isso vazaria dado de saúde
--- para a resposta da API e para o log do banco. O trigger roda ANTES da verificação de CHECK e NOT
--- NULL, então cada regra falha primeiro com mensagem fixa, nome de constraint e SQLSTATE próprio,
--- sem eco de valor. Os NOT NULL continuam declarados no schema como documentação. O trigger checa
+-- para a resposta da API e para o DETAIL do log do banco. O trigger roda ANTES da verificação de
+-- CHECK e NOT NULL, então cada regra falha primeiro com mensagem fixa, nome de constraint e SQLSTATE
+-- próprio, sem eco de valor na mensagem, no DETAIL e no HINT.
+--
+-- RISCO RESIDUAL (LGPD): o trigger não protege o log de statement do Postgres. Com
+-- `log_min_error_statement = error` (padrão), o SQL que falhou, com os valores, vai ao log do banco.
+-- A migration não muda isso (exige privilégio de superusuário). Decisão de retenção e acesso aos logs
+-- do projeto hospedado: ver ADR-05, Consequências. Os NOT NULL continuam declarados no schema como documentação. O trigger checa
 -- antes todas as colunas NOT NULL (id, tenant_id, customer_id, appointment_id, created_by e
 -- created_at), então nenhum NOT NULL dispara com valor de cliente.
 --
@@ -135,8 +140,10 @@ $$;
 -- Existência: security INVOKER de propósito. A leitura passa pela RLS de quem insere. Registro de
 -- outro tenant fica invisível para o chamador e cai no mesmo erro de id inexistente. Com security
 -- definer, a falha de um id de outro tenant viraria 42501 (RLS), o que revela que o id existe.
--- Sem select concedido (estado desta ADR), qualquer id falha com a mesma resposta; a ADR-06
--- concede select com policy de tenant.
+-- Estado desta ADR: `authenticated` não tem insert nem select, então insert de sessão de usuário cai
+-- antes no privilégio da tabela (42501). Com insert concedido e select ausente, a leitura de
+-- existência falha com 42501 e não chega a 23503: a resposta uniforme (23503 para qualquer id) só
+-- vale com select. A ADR-06 concede select e insert juntos, com policy de tenant.
 create or replace function clinical_records_validate()
 returns trigger
 language plpgsql

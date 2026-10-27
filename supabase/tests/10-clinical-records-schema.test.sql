@@ -332,8 +332,56 @@ select ok(
   'anon e authenticated sem privilégio de tabela em clinical_records'
 );
 
--- 24 a 27 (vazamento). Nenhum erro de conteúdo, obrigatoriedade ou cadeia pode devolver o texto
--- clínico na mensagem, no DETAIL ou no HINT. Marcador único por caso, para o teste ser exato.
+-- Oráculo de existência entre tenants (22 e 23). Usuário do tenant A, com `tenant_id` de B informado
+-- no insert (o cliente não deveria fazer isso, mas o banco não pode vazar se fizer). O alvo é um
+-- original real de B. Concede select e insert só aqui, no papel authenticated, dentro desta
+-- transação (rollback), e revoga logo depois. O trigger roda antes da RLS e da FK, e o resultado
+-- tem que ser igual ao de um id inexistente: mesmo SQLSTATE e mesma mensagem. Com RLS sem policy, o
+-- trigger não enxerga o registro de B; se o trigger fosse security definer, enxergaria e a falha
+-- seria 42501. Estado com insert e sem select (42501 na leitura de existência) não é coberto aqui;
+-- a ADR-06 cobre com a policy de tenant.
+grant select, insert on clinical_records to authenticated;
+select tests.create_user(
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'admin',
+  'Oráculo A'
+);
+select tests.authenticate_as('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'authenticated');
+
+-- 22. Id existente de outro tenant: 23503 com a mensagem fixa, sem revelar que o registro existe.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b3333333-3333-4333-8333-333333333331',
+            'b4444444-4444-4444-8444-444444444441', 'cbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+            'Correção de outro tenant', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+  $sql$,
+  '23503',
+  'supersedes_id does not reference an existing record',
+  'id de registro de outro tenant é recusado com a mensagem fixa de inexistente'
+);
+
+-- 23. Id inexistente: mesma resposta do teste 22.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b3333333-3333-4333-8333-333333333331',
+            'b4444444-4444-4444-8444-444444444441', 'c9999999-9999-4999-8999-999999999999',
+            'Correção de id inexistente', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+  $sql$,
+  '23503',
+  'supersedes_id does not reference an existing record',
+  'id inexistente é recusado com a mesma resposta do id de outro tenant'
+);
+
+reset role;
+select tests.clear_authentication();
+revoke select, insert on clinical_records from authenticated;
+
+-- 24 a 27 e 30 a 33 (vazamento). Nenhum erro de conteúdo, obrigatoriedade ou cadeia pode devolver o
+-- texto clínico na mensagem, no DETAIL ou no HINT. Marcador único por caso, para o teste ser exato.
+-- Os testes 28 e 29 ficam no meio do bloco: são de FK de atendimento e de campo vazio, não de eco.
 
 -- 24. tenant_id nulo com texto clínico na linha: 23502 do trigger, sem eco. Antes do trigger,
 -- a linha inteira sairia no DETAIL do NOT NULL.
@@ -480,50 +528,6 @@ select is(
   '23502|-|false',
   'created_at nulo não ecoa o texto clínico na resposta de erro'
 );
-
--- Oráculo de existência entre tenants (22 e 23). Usuário do tenant A, com `tenant_id` de B informado
--- no insert (o cliente não deveria fazer isso, mas o banco não pode vazar se fizer). O alvo é um
--- original real de B. Concede select e insert só aqui, no papel authenticated, dentro desta
--- transação (rollback). O trigger roda antes da RLS e da FK, e o resultado tem que ser igual ao de
--- um id inexistente: mesmo SQLSTATE e mesma mensagem. Com RLS sem policy, o trigger não enxerga o
--- registro de B; se o trigger fosse security definer, enxergaria e a falha seria 42501.
-grant select, insert on clinical_records to authenticated;
-select tests.create_user(
-  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  'admin',
-  'Oráculo A'
-);
-select tests.authenticate_as('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'authenticated');
-
--- 22. Id existente de outro tenant: 23503 com a mensagem fixa, sem revelar que o registro existe.
-select throws_ok(
-  $sql$
-    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
-    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b3333333-3333-4333-8333-333333333331',
-            'b4444444-4444-4444-8444-444444444441', 'cbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
-            'Correção de outro tenant', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
-  $sql$,
-  '23503',
-  'supersedes_id does not reference an existing record',
-  'id de registro de outro tenant é recusado com a mensagem fixa de inexistente'
-);
-
--- 23. Id inexistente: mesma resposta do teste 22.
-select throws_ok(
-  $sql$
-    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
-    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b3333333-3333-4333-8333-333333333331',
-            'b4444444-4444-4444-8444-444444444441', 'c9999999-9999-4999-8999-999999999999',
-            'Correção de id inexistente', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd')
-  $sql$,
-  '23503',
-  'supersedes_id does not reference an existing record',
-  'id inexistente é recusado com a mesma resposta do id de outro tenant'
-);
-
-reset role;
-select tests.clear_authentication();
 
 select * from finish();
 rollback;
