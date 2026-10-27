@@ -72,7 +72,7 @@ create table if not exists clinical_records (
   -- um registro não pode ser correção de si mesmo.
   constraint clinical_records_supersedes_not_self check (supersedes_id is null or supersedes_id <> id),
   -- alvo da FK composta de correção: inclui atendimento e cliente para amarrar a cadeia.
-  constraint clinical_records_tenant_id_unique unique (tenant_id, id, appointment_id, customer_id),
+  constraint clinical_records_fk_target_unique unique (tenant_id, id, appointment_id, customer_id),
   constraint clinical_records_customer_fk
     foreign key (tenant_id, customer_id)
     references customers (tenant_id, id) on delete restrict,
