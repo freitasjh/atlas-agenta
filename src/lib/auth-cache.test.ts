@@ -132,6 +132,23 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["session"])).toEqual(newSession);
   });
 
+  it("PASSWORD_RECOVERY de outro usuário também troca a conta: remove identidade e esvazia o resto", () => {
+    const queryClient = new QueryClient();
+    seedCache(queryClient);
+    const recoverySession = sessionOf("user-2");
+
+    applyAuthEvent(queryClient, "PASSWORD_RECOVERY", recoverySession);
+
+    const cache = queryClient.getQueryCache();
+    expect(cache.find({ queryKey: ["profile", "user-1"], exact: true })).toBeUndefined();
+    expect(cache.find({ queryKey: ["tenant", "tenant-1"], exact: true })).toBeUndefined();
+    expect(cache.find({ queryKey: ["customers"], exact: true })).toBeDefined();
+    expect(cache.find({ queryKey: ["appointments"], exact: true })).toBeDefined();
+    expect(queryClient.getQueryData(["customers"])).toBeUndefined();
+    expect(queryClient.getQueryData(["appointments"])).toBeUndefined();
+    expect(queryClient.getQueryData(["session"])).toEqual(recoverySession);
+  });
+
   it("SIGNED_IN de outro usuário não deixa observador montado com dados da conta anterior", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["customers"], [{ id: "A-cliente" }]);
