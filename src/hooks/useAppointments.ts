@@ -109,20 +109,37 @@ export const appointmentListSchema = z.array(appointmentRowSchema);
  * extra (reusa o cache da agenda) e é recortado pelo RLS financeiro da ADR-02:
  * receptionist não recebe a relação, professional só a própria. */
 export const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name), appointment_commissions(commission_cents)";
+  "id, tenant_id, customer_id, professional_id, service_id, combo_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 
-/** Campos graváveis de um agendamento (derivados já calculados pela tela — ADR-08). */
+/**
+ * Campos graváveis de um agendamento (derivados já calculados pela tela — ADR-08
+ * para serviço; ADR-06 para pacote).
+ *
+ * `serviceId` e `comboId` estão em XOR (exatamente um preenchido): modo serviço
+ * envia `serviceId` + `comboId: null`; modo pacote envia `comboId` +
+ * `serviceId: null`. O CHECK `appointments_service_xor_combo` (ADR-03) é a trava
+ * real; a tela monta o payload já coerente. Nenhum `tenant_id` é enviado (RLS).
+ */
 export interface AppointmentInput {
   customerId: string;
   professionalId: string;
-  serviceId: string;
+  /** Serviço avulso (modo serviço) ou `null` quando é pacote. */
+  serviceId: string | null;
+  /** Pacote do salão (modo pacote) ou `null` quando é serviço avulso. */
+  comboId: string | null;
   /** Instante UTC (ISO string) — já convertido na borda pela tela. */
   startsAt: string;
-  /** Instante UTC (ISO string) — `startsAt + service.duration_minutes`. */
+  /**
+   * Instante UTC (ISO string): `startsAt + service.duration_minutes` (modo
+   * serviço) ou `startsAt + soma(durações dos serviços do pacote)` (modo pacote).
+   */
   endsAt: string;
-  /** Snapshot do preço do serviço no ato, em centavos inteiros. */
+  /**
+   * Snapshot do preço no ato, em centavos inteiros: preço do serviço (modo
+   * serviço) ou preço fechado do pacote (modo pacote).
+   */
   priceCents: number;
 }
 
@@ -255,6 +272,7 @@ export function useCreateAppointment() {
           customer_id: input.customerId,
           professional_id: input.professionalId,
           service_id: input.serviceId,
+          combo_id: input.comboId,
           starts_at: input.startsAt,
           ends_at: input.endsAt,
           price_cents: input.priceCents,
@@ -281,6 +299,7 @@ export function useUpdateAppointment() {
           customer_id: input.customerId,
           professional_id: input.professionalId,
           service_id: input.serviceId,
+          combo_id: input.comboId,
           starts_at: input.startsAt,
           ends_at: input.endsAt,
           price_cents: input.priceCents,

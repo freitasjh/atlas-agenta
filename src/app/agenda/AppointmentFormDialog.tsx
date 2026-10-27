@@ -33,6 +33,7 @@ import {
 import {
   appointmentSchema,
   type AppointmentInput,
+  type AppointmentSelection,
 } from "@/lib/validations/scheduling";
 import {
   addMinutes,
@@ -43,12 +44,16 @@ import {
 import { formatCentsToBRL } from "@/lib/money";
 import {
   mapSchedulingError,
+  type AppointmentInput as AppointmentMutationInput,
   useCreateAppointment,
   useUpdateAppointment,
 } from "@/hooks/useAppointments";
 import { useAvailableSlots } from "@/hooks/useAvailableSlots";
+import { useCombos } from "@/hooks/useCombos";
+import { useComboServices } from "@/hooks/useComboServices";
 import { useCustomers } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { useProfessionals, useScheduleValidity } from "@/hooks/useProfessionals";
 import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
@@ -99,14 +104,22 @@ interface AppointmentFormDialogProps {
 }
 
 /**
- * Diálogo de criar/editar agendamento. Deriva `ends_at` (início +
- * `duration_minutes`) e `price_cents` (snapshot do serviço) no ato — exibidos
- * como texto auxiliar read-only, nunca editáveis aqui. Converte a hora local do
- * tenant → UTC na borda (helpers de ADR-05).
+ * Diálogo de criar/editar agendamento. O operador escolhe **o que será feito**:
+ * um **serviço avulso** (caminho de ADR-05) ou — só para o ramo salão, gated por
+ * `useSegmentFeatures().combos` (ADR-06) — um **pacote**. A seleção é uma união
+ * discriminada (`selection`), espelhando o XOR `service_id`/`combo_id` do banco.
+ *
+ * Deriva `ends_at` e `price_cents` no ato (read-only, nunca editáveis aqui):
+ * - serviço: `starts_at + duration_minutes` e `price_cents` do serviço;
+ * - pacote: `starts_at + soma(durações dos serviços do pacote)` (D-3) e
+ *   `price_cents` = preço fechado do pacote (snapshot — mesmo princípio do
+ *   serviço).
+ * Converte a hora local do tenant → UTC na borda (helpers de ADR-05).
  *
  * A checagem de conflito local (contra o cache do dia) é feedback imediato
  * pt-BR; a trava real é a constraint de exclusão no banco (`23P01` →
- * `mapSchedulingError` → mesma mensagem).
+ * `mapSchedulingError`). A duração efetiva (serviço ou pacote) entra no range
+ * `[starts_at, ends_at)` que a `btree_gist` do banco valida.
  */
 export function AppointmentFormDialog({
   open,
@@ -121,6 +134,7 @@ export function AppointmentFormDialog({
   const isEdit = !!appointment;
 
   const { canEditAnySchedule, canEditOwnSchedule } = usePermissions();
+  const { combos: combosFeature } = useSegmentFeatures();
   const {
     servicoLabelSingular,
     profissionalLabelSingular,
@@ -133,15 +147,26 @@ export function AppointmentFormDialog({
   const customersQuery = useCustomers({ activeOnly: true });
   const professionalsQuery = useProfessionals({ activeOnly: true });
   const servicesQuery = useServices({ activeOnly: true });
+  // Pacotes ativos ofertáveis (só carrega/importa quando o ramo expõe o modo).
+  const combosQuery = useCombos({ activeOnly: true });
 
   const createAppointment = useCreateAppointment();
   const updateAppointment = useUpdateAppointment();
+
+  // Seleção inicial: edição lê da linha (combo_id → modo pacote); criação sempre
+  // nasce em modo serviço (o seletor de modo troca na UI quando disponível).
+  const initialSelection = useMemo<AppointmentSelection>(() => {
+    if (appointment?.combo_id) {
+      return { kind: "combo", comboId: appointment.combo_id };
+    }
+    return { kind: "service", serviceId: appointment?.service_id ?? "" };
+  }, [appointment?.combo_id, appointment?.service_id]);
 
   const emptyValues: AppointmentInput = useMemo(
     () => ({
       customerId: "",
       professionalId: lockedProfessionalId ?? prefill?.professionalId ?? "",
-      serviceId: "",
+      selection: { kind: "service", serviceId: "" },
       date: day,
       time: prefill?.time ?? "",
     }),
@@ -162,10 +187,7 @@ export function AppointmentFormDialog({
       form.reset({
         customerId: appointment.customer_id,
         professionalId: appointment.professional_id,
-        // `service_id` é nullable (XOR com `combo_id`, ADR-03); hoje só existem
-        // agendamentos de serviço, então o `?? ""` preserva o sentinela vazio
-        // do form. O modo "pacote" entra na ADR-06.
-        serviceId: appointment.service_id ?? "",
+        selection: initialSelection,
         date: `${local.year.toString().padStart(4, "0")}-${local.month
           .toString()
           .padStart(2, "0")}-${local.day.toString().padStart(2, "0")}`,
@@ -176,35 +198,106 @@ export function AppointmentFormDialog({
     } else {
       form.reset(emptyValues);
     }
-  }, [open, appointment, timeZone, emptyValues, form]);
+  }, [open, appointment, timeZone, emptyValues, initialSelection, form]);
 
-  const watchedServiceId = form.watch("serviceId");
+  const selection = form.watch("selection");
+  const mode = selection.kind;
+  const watchedServiceId =
+    selection.kind === "service" ? selection.serviceId : "";
+  const watchedComboId = selection.kind === "combo" ? selection.comboId : "";
   const watchedProfessionalId = form.watch("professionalId");
   const watchedDate = form.watch("date");
   const watchedTime = form.watch("time");
 
+  const services = servicesQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+  const combos = combosQuery.data ?? [];
+
   const selectedService = useMemo(
-    () => servicesQuery.data?.find((s) => s.id === watchedServiceId) ?? null,
-    [servicesQuery.data, watchedServiceId],
+    () => services.find((s) => s.id === watchedServiceId) ?? null,
+    [services, watchedServiceId],
   );
 
-  // Derivações read-only exibidas assim que serviço + data + hora estão prontos.
+  const selectedCombo = useMemo(
+    () => combos.find((c) => c.id === watchedComboId) ?? null,
+    [combos, watchedComboId],
+  );
+
+  // Serviços que compõem o pacote selecionado (só no modo pacote, com combo
+  // escolhido). A soma das durações deriva `ends_at` e, portanto, o slot/range.
+  const comboServiceIdsQuery = useComboServices(
+    mode === "combo" && watchedComboId ? watchedComboId : null,
+  );
+  const comboServiceIds = comboServiceIdsQuery.data ?? [];
+
+  // Em edição de um pacote, o combo pode ter sido INATIVADO depois (não vem em
+  // `useCombos({ activeOnly: true })`). Mantemos a opção visível como
+  // selecionada-porém-inativa para não perder o vínculo histórico.
+  const editingInactiveCombo =
+    mode === "combo" &&
+    !!watchedComboId &&
+    !combos.some((c) => c.id === watchedComboId);
+
+  // Duração do pacote = soma das durações dos serviços vinculados (D-3),
+  // resolvida no cliente a partir de `useComboServices` + `useServices`.
+  // `useServices({ activeOnly: true })` pode não conter um serviço inativado;
+  // nesse caso a parcela daquele serviço entra como 0 (defensivo). O caminho
+  // feliz (serviços ativos) soma corretamente.
+  const comboDurationMinutes = useMemo(() => {
+    if (mode !== "combo") return null;
+    if (comboServiceIds.length === 0) return null;
+    return comboServiceIds.reduce((total, id) => {
+      const svc = services.find((s) => s.id === id);
+      return total + (svc?.duration_minutes ?? 0);
+    }, 0);
+  }, [mode, comboServiceIds, services]);
+
+  // Nomes dos serviços do pacote, para o resumo "Inclui: …".
+  const comboServiceNames = useMemo(() => {
+    if (mode !== "combo") return [];
+    return comboServiceIds
+      .map((id) => services.find((s) => s.id === id)?.name)
+      .filter((name): name is string => !!name);
+  }, [mode, comboServiceIds, services]);
+
+  // Duração efetiva da seleção: serviço → `duration_minutes`; pacote → soma.
+  const effectiveDuration = useMemo(() => {
+    if (mode === "combo") return comboDurationMinutes;
+    return selectedService?.duration_minutes ?? null;
+  }, [mode, comboDurationMinutes, selectedService]);
+
+  // Preço efetivo (snapshot no submit): serviço → preço do serviço; pacote →
+  // preço fechado do pacote.
+  const effectivePriceCents = useMemo(() => {
+    if (mode === "combo") return selectedCombo?.price_cents ?? null;
+    return selectedService?.price_cents ?? null;
+  }, [mode, selectedCombo, selectedService]);
+
+  // Derivações read-only exibidas assim que a seleção + data + hora estão
+  // prontas (duração e preço efetivos resolvidos).
   const derived = useMemo(() => {
-    if (!selectedService) return null;
+    if (effectiveDuration == null || effectivePriceCents == null) return null;
     const startUtc = tenantDateTimeToUtc(watchedDate, watchedTime, timeZone);
     if (!startUtc) return null;
-    const endUtc = addMinutes(startUtc, selectedService.duration_minutes);
+    const endUtc = addMinutes(startUtc, effectiveDuration);
     return {
       startUtc,
       endUtc,
-      priceCents: selectedService.price_cents,
+      priceCents: effectivePriceCents,
       endLabel: formatTimeInTenantTz(endUtc, timeZone),
     };
-  }, [selectedService, watchedDate, watchedTime, timeZone]);
+  }, [
+    effectiveDuration,
+    effectivePriceCents,
+    watchedDate,
+    watchedTime,
+    timeZone,
+  ]);
 
-  // Slots livres sob demanda (ADR-05): dependem de profissional + serviço +
-  // data já escolhidos. Em edição, exclui o próprio agendamento do desconto de
-  // ocupados (o horário que ele ocupa continua ofertável).
+  // Slots livres sob demanda (ADR-05): dependem de profissional + duração
+  // efetiva + data. No modo pacote passamos `serviceId: null` e a duração já
+  // resolvida (soma do combo); no modo serviço, o `serviceId` (compatível com
+  // ADR-05). Em edição, exclui o próprio agendamento do desconto de ocupados.
   const {
     slots,
     isLoading: slotsLoading,
@@ -212,7 +305,8 @@ export function AppointmentFormDialog({
   } = useAvailableSlots({
     day: watchedDate,
     professionalId: watchedProfessionalId || null,
-    serviceId: watchedServiceId || null,
+    serviceId: mode === "service" ? watchedServiceId || null : null,
+    durationMinutes: mode === "combo" ? effectiveDuration : null,
     excludeAppointmentId: appointment?.id,
   });
 
@@ -275,9 +369,6 @@ export function AppointmentFormDialog({
 
   const isSaving = createAppointment.isPending || updateAppointment.isPending;
 
-  const customers = customersQuery.data ?? [];
-  const services = servicesQuery.data ?? [];
-
   // Profissionais ofertados: travado no próprio quando `professional`.
   const professionals = useMemo(() => {
     const all = professionalsQuery.data ?? [];
@@ -308,13 +399,61 @@ export function AppointmentFormDialog({
     });
   }
 
+  /** Troca o modo (serviço↔pacote) resetando o id da seleção anterior. */
+  function handleModeChange(next: AppointmentSelection["kind"]) {
+    if (next === mode) return;
+    const nextSelection: AppointmentSelection =
+      next === "combo"
+        ? { kind: "combo", comboId: "" }
+        : { kind: "service", serviceId: "" };
+    form.setValue("selection", nextSelection, {
+      shouldValidate: false,
+      shouldDirty: true,
+    });
+  }
+
   async function onSubmit(values: AppointmentInput) {
-    const service = services.find((s) => s.id === values.serviceId);
-    if (!service) {
-      form.setError("serviceId", {
-        message: `Selecione um ${servicoLower}.`,
-      });
-      return;
+    // Resolve a duração/preço efetivos e monta o payload conforme o modo.
+    // `sel` é const para a união discriminada narrowar dentro dos callbacks.
+    const sel = values.selection;
+    let serviceId: string | null;
+    let comboId: string | null;
+    let durationMinutes: number | null;
+    let priceCents: number | null;
+
+    if (sel.kind === "combo") {
+      const combo = combos.find((c) => c.id === sel.comboId);
+      // Em edição de pacote inativado, `combo` pode não estar na lista de
+      // ativos; caímos no estado selecionado (`selectedCombo`) resolvido acima.
+      const resolvedCombo = combo ?? selectedCombo;
+      if (!resolvedCombo) {
+        form.setError("selection.comboId", {
+          message: "Selecione um pacote.",
+        });
+        return;
+      }
+      if (comboDurationMinutes == null || comboDurationMinutes <= 0) {
+        form.setError("selection.comboId", {
+          message: "O pacote precisa de pelo menos um serviço com duração.",
+        });
+        return;
+      }
+      serviceId = null;
+      comboId = resolvedCombo.id;
+      durationMinutes = comboDurationMinutes;
+      priceCents = resolvedCombo.price_cents;
+    } else {
+      const service = services.find((s) => s.id === sel.serviceId);
+      if (!service) {
+        form.setError("selection.serviceId", {
+          message: `Selecione um ${servicoLower}.`,
+        });
+        return;
+      }
+      serviceId = service.id;
+      comboId = null;
+      durationMinutes = service.duration_minutes;
+      priceCents = service.price_cents;
     }
 
     const startUtc = tenantDateTimeToUtc(values.date, values.time, timeZone);
@@ -322,7 +461,7 @@ export function AppointmentFormDialog({
       form.setError("time", { message: "Informe um horário válido (HH:MM)." });
       return;
     }
-    const endUtc = addMinutes(startUtc, service.duration_minutes);
+    const endUtc = addMinutes(startUtc, durationMinutes);
 
     if (hasLocalConflict(startUtc, endUtc)) {
       form.setError("time", {
@@ -331,13 +470,14 @@ export function AppointmentFormDialog({
       return;
     }
 
-    const payload = {
+    const payload: AppointmentMutationInput = {
       customerId: values.customerId,
       professionalId: values.professionalId,
-      serviceId: values.serviceId,
+      serviceId,
+      comboId,
       startsAt: startUtc.toISOString(),
       endsAt: endUtc.toISOString(),
-      priceCents: service.price_cents,
+      priceCents,
     };
 
     try {
@@ -368,7 +508,7 @@ export function AppointmentFormDialog({
             {isEdit ? "Editar agendamento" : "Novo agendamento"}
           </DialogTitle>
           <DialogDescription>
-            {`Escolha ${clienteLower}, ${profissionalLower}, ${servicoLower} e horário. O término e o valor são calculados pelo ${servicoLower}.`}
+            {`Escolha ${clienteLower}, ${profissionalLower}, ${servicoLower} e horário. O término e o valor são calculados pela seleção.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -440,33 +580,113 @@ export function AppointmentFormDialog({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="serviceId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{servicoLabelSingular}</FormLabel>
-                  <Select
-                    value={field.value || undefined}
-                    onValueChange={field.onChange}
-                  >
-                    <FormControl>
-                      <SelectTrigger aria-label={servicoLabelSingular}>
-                        <SelectValue placeholder={`Selecione o ${servicoLower}`} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {services.map((service) => (
-                        <SelectItem key={service.id} value={service.id}>
-                          {service.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/*
+              Seletor de modo "Procedimento avulso / Pacote" — só para o ramo
+              salão (`combosFeature`). Controle segmentado construído com os
+              `Button` existentes (sem dependência nova): `role="group"` +
+              `aria-pressed`, navegável por teclado e com foco visível. Para os
+              demais ramos o seletor nem monta — o formulário fica idêntico a hoje.
+            */}
+            {combosFeature ? (
+              <div
+                role="group"
+                aria-label={`Tipo de ${servicoLower}`}
+                className="inline-flex rounded-md border border-border p-1"
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "service" ? "default" : "ghost"}
+                  aria-pressed={mode === "service"}
+                  onClick={() => handleModeChange("service")}
+                >
+                  {`${servicoLabelSingular} avulso`}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={mode === "combo" ? "default" : "ghost"}
+                  aria-pressed={mode === "combo"}
+                  onClick={() => handleModeChange("combo")}
+                >
+                  Pacote
+                </Button>
+              </div>
+            ) : null}
+
+            {mode === "service" ? (
+              <FormField
+                control={form.control}
+                name="selection.serviceId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{servicoLabelSingular}</FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger aria-label={servicoLabelSingular}>
+                          <SelectValue
+                            placeholder={`Selecione o ${servicoLower}`}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {services.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <FormField
+                control={form.control}
+                name="selection.comboId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pacote</FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger aria-label="Pacote">
+                          <SelectValue placeholder="Selecione o pacote" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {/*
+                          Pacote inativado em edição: mantém a opção selecionada
+                          marcada como "(inativo)" para não perder o vínculo
+                          histórico (mesmo cuidado do serviço removido).
+                        */}
+                        {editingInactiveCombo && watchedComboId ? (
+                          <SelectItem value={watchedComboId}>
+                            {`${
+                              appointment?.combos?.name ?? "Pacote"
+                            } (inativo)`}
+                          </SelectItem>
+                        ) : null}
+                        {combos.map((combo) => (
+                          <SelectItem key={combo.id} value={combo.id}>
+                            {`${combo.name} — ${formatCentsToBRL(
+                              combo.price_cents,
+                            )}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
@@ -509,7 +729,7 @@ export function AppointmentFormDialog({
               )}
             />
 
-            {/* Derivados read-only (término previsto + valor do serviço). */}
+            {/* Derivados read-only (término previsto + valor da seleção). */}
             {derived ? (
               <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
                 <p className="text-muted-foreground">
@@ -519,15 +739,25 @@ export function AppointmentFormDialog({
                   </span>
                 </p>
                 <p className="text-muted-foreground">
-                  Valor:{" "}
+                  {mode === "combo" ? "Valor do pacote:" : "Valor:"}{" "}
                   <span className="font-medium tabular-nums text-foreground">
                     {formatCentsToBRL(derived.priceCents)}
                   </span>
                 </p>
+                {mode === "combo" && comboServiceNames.length > 0 ? (
+                  <p className="text-muted-foreground">
+                    Inclui:{" "}
+                    <span className="text-foreground">
+                      {comboServiceNames.join(", ")}
+                    </span>
+                  </p>
+                ) : null}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                {`Escolha o ${servicoLower} e o horário para ver o término e o valor.`}
+                {mode === "combo"
+                  ? "Escolha o pacote e o horário para ver o término e o valor."
+                  : `Escolha o ${servicoLower} e o horário para ver o término e o valor.`}
               </p>
             )}
 
