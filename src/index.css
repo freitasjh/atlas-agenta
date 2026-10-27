@@ -23,7 +23,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 30% 12%;
 
-    --primary: 160 64% 38%;
+    --primary: 160 64% 30%;
     --primary-foreground: 160 40% 98%;
 
     --secondary: 210 20% 94%;
@@ -39,8 +39,8 @@
     --destructive-foreground: 0 0% 100%;
 
     --border: 214 20% 86%;
-    --input: 214 20% 86%;
-    --ring: 160 64% 42%;
+    --input: 214 16% 58%;
+    --ring: 160 64% 32%;
 
     /* Tokens de status dedicados (ADR-06) — pílula de 12px, contraste próprio
        calibrado para AA ≥ 4.5:1, nunca reusar --primary/--destructive. */
@@ -102,7 +102,7 @@
     --destructive-foreground: 0 0% 100%;
 
     --border: 222 15% 22%;
-    --input: 222 15% 22%;
+    --input: 222 12% 48%;
     --ring: 160 64% 55%;
 
     /* Tokens de status dedicados (ADR-06) — valores do tema escuro. */
