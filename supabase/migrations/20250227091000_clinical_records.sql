@@ -11,8 +11,6 @@
 -- Campos de conteúdo (PRD D-05): alergias (até 500), medicamentos (até 500) e observações do
 -- atendimento (até 2000). Não há campo de histórico relevante.
 --
--- Conteúdo mínimo (RF-03): pelo menos um dos três campos com texto depois de `btrim`.
---
 -- Coerência no schema (não só na app): FKs COMPOSTAS por tenant e por cliente.
 --   - (tenant_id, customer_id) -> customers: cliente do mesmo tenant.
 --   - (tenant_id, appointment_id, customer_id) -> appointments: o cliente da ficha é o cliente do
@@ -36,14 +34,25 @@
 -- `created_by` default `auth.uid()`. Fora de sessão de usuário (seed, service role) o banco não
 -- preenche sozinho: quem insere deve passar `tenant_id` e `created_by` explicitamente.
 --
--- Ciclo na cadeia de correção: `clinical_records_supersedes_not_self` barra auto-referência, e o
--- trigger `before insert` exige que o registro apontado já exista. Isso cobre o ciclo de dois
--- registros num mesmo insert, que a FK sozinha aceitaria (ela só checa no fim do statement).
+-- Validação de conteúdo e de cadeia em UM trigger (`clinical_records_validate`), não em CHECK
+-- constraints. Motivo: o PostgreSQL grava a linha inteira no DETAIL de erro de CHECK e de NOT NULL
+-- ("Failing row contains (...)"). Com texto clínico na linha, isso vazaria dado de saúde para a
+-- resposta da API e para o log do banco. O trigger roda ANTES da verificação de CHECK e NOT NULL,
+-- então cada regra falha primeiro com mensagem fixa, nome de constraint e SQLSTATE próprio, sem
+-- eco de valor. Os NOT NULL continuam declarados no schema como documentação; como o trigger
+-- valida antes, eles não chegam a disparar com valor de cliente.
 --
--- Idempotência: `create table if not exists` e `create index if not exists`; as constraints ficam
--- dentro do `create table`, então um re-apply não as recria. A função usa `create or replace`;
--- o trigger é recriado com `drop trigger if exists` antes de `create trigger`. `revoke` é
--- idempotente. Nenhum segredo no SQL.
+-- Ciclo na cadeia de correção: o mesmo trigger barra auto-referência e exige que o registro
+-- apontado já exista. Isso cobre o ciclo de dois registros num mesmo insert, que a FK sozinha
+-- aceitaria (ela só checa no fim do statement).
+--
+-- Idempotência: `create table if not exists` e `create index if not exists`. A função usa
+-- `create or replace`; o trigger é recriado com `drop trigger if exists` antes de `create trigger`.
+-- `revoke` é idempotente. Nenhum segredo no SQL.
+--
+-- Observação de re-apply: `create table if not exists` NÃO atualiza uma tabela que já existe. Num
+-- banco que já aplicou a versão anterior desta migration, use `supabase db reset` (banco local).
+-- Nenhum banco remoto recebeu esta migration ainda.
 
 -- ============================================================================
 -- clinical_records — ficha do cliente (registro append-only).
@@ -55,23 +64,14 @@ create table if not exists clinical_records (
   appointment_id  uuid not null,
   -- null = registro original; preenchido = correção do registro apontado.
   supersedes_id   uuid null,
-  -- conteúdo clínico (PRD D-05). O valor gravado já vem sem espaço, tab, CR ou LF nas pontas
-  -- (`x = btrim(x, E' \t\r\n')`), então o limite de caracteres vale para o que de fato fica armazenado.
-  -- A app (ADR-12) faz o trim com o mesmo conjunto antes de gravar.
-  allergies       text null check (allergies is null or (allergies = btrim(allergies, E' \t\r\n') and char_length(allergies) between 1 and 500)),
-  medications     text null check (medications is null or (medications = btrim(medications, E' \t\r\n') and char_length(medications) between 1 and 500)),
-  clinical_notes  text null check (clinical_notes is null or (clinical_notes = btrim(clinical_notes, E' \t\r\n') and char_length(clinical_notes) between 1 and 2000)),
+  -- conteúdo clínico (PRD D-05). Validado pelo trigger: o valor gravado precisa vir sem espaço,
+  -- tab, CR ou LF nas pontas, e o limite vale para o que fica armazenado. A app (ADR-12) faz o
+  -- trim com o mesmo conjunto antes de gravar.
+  allergies       text null,
+  medications     text null,
+  clinical_notes  text null,
   created_by      uuid not null default auth.uid(),
   created_at      timestamptz not null default now(),
-  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de btrim. O conjunto de espaços é
-  -- espaço, tab, CR e LF: o que não passa disso é vazio.
-  constraint clinical_records_has_content check (
-    nullif(btrim(allergies, E' \t\r\n'), '') is not null
-    or nullif(btrim(medications, E' \t\r\n'), '') is not null
-    or nullif(btrim(clinical_notes, E' \t\r\n'), '') is not null
-  ),
-  -- um registro não pode ser correção de si mesmo.
-  constraint clinical_records_supersedes_not_self check (supersedes_id is null or supersedes_id <> id),
   -- alvo da FK composta de correção: inclui atendimento e cliente para amarrar a cadeia.
   constraint clinical_records_fk_target_unique unique (tenant_id, id, appointment_id, customer_id),
   constraint clinical_records_customer_fk
@@ -110,24 +110,82 @@ alter table clinical_records enable row level security;
 -- RLS), tratado na ADR-07.
 revoke all on table clinical_records from anon, authenticated;
 
--- Ciclo na cadeia: o registro apontado por `supersedes_id` precisa existir ANTES da linha nova.
--- Trigger before insert, porque a FK só checa no fim do statement e aceitaria dois registros
--- que se apontam no mesmo insert.
+-- Função pura: true se o campo é nulo ou se, já sem espaço/tab/CR/LF nas pontas, tem entre 1 e
+-- `max_len` caracteres. Não lê a linha, então não toca dado de saúde em erro.
+create or replace function clinical_records_content_ok(v text, max_len int)
+returns boolean
+language sql
+immutable
+as $$
+  select v is null or (v = btrim(v, E' \t\r\n') and char_length(v) between 1 and max_len)
+$$;
+
+-- Validação de conteúdo, obrigatoriedade e cadeia. Roda BEFORE INSERT OR UPDATE, então cobre
+-- service_role e qualquer caminho que escreva na tabela. Ordem: obrigatoriedade, conteúdo mínimo,
+-- formato e limite de cada campo, auto-referência e, por último, existência do registro apontado.
 --
--- Security INVOKER de propósito: a leitura do trigger passa pela RLS de quem insere. Registro de
--- outro tenant fica invisível para o chamador e cai no mesmo erro de id inexistente. Com
--- security definer, o trigger veria o registro de outro tenant, e a falha viraria 42501 (RLS),
--- o que revela que o id existe. Por isso o caminho é invoker, não definer.
--- Erro fixo, sem eco de valor. Usa o SQLSTATE e o nome da FK, para o mapeamento da ADR-12.
--- Consequência: sem select concedido (estado desta ADR), o trigger falha com 42501 para qualquer
--- id; a ADR-06 concede select com policy de tenant, e a resposta fica uniforme.
-create or replace function clinical_records_check_supersedes_exists()
+-- Erros SEMPRE com mensagem fixa e `constraint`/`column` com nome técnico. Nunca incluir valor da
+-- linha na mensagem, no DETAIL ou no HINT.
+--
+-- Existência: security INVOKER de propósito. A leitura passa pela RLS de quem insere. Registro de
+-- outro tenant fica invisível para o chamador e cai no mesmo erro de id inexistente. Com security
+-- definer, a falha de um id de outro tenant viraria 42501 (RLS), o que revela que o id existe.
+-- Sem select concedido (estado desta ADR), qualquer id falha com a mesma resposta; a ADR-06
+-- concede select com policy de tenant.
+create or replace function clinical_records_validate()
 returns trigger
 language plpgsql
 security invoker
 set search_path = public
 as $$
 begin
+  -- obrigatoriedade (o mesmo que os NOT NULL declarados, mas com mensagem sem eco).
+  if new.tenant_id is null then
+    raise exception 'clinical record requires tenant_id'
+      using errcode = '23502', column = 'tenant_id';
+  end if;
+  if new.customer_id is null then
+    raise exception 'clinical record requires customer_id'
+      using errcode = '23502', column = 'customer_id';
+  end if;
+  if new.appointment_id is null then
+    raise exception 'clinical record requires appointment_id'
+      using errcode = '23502', column = 'appointment_id';
+  end if;
+  if new.created_by is null then
+    raise exception 'clinical record requires created_by'
+      using errcode = '23502', column = 'created_by';
+  end if;
+
+  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de remover espaço, tab, CR e LF.
+  if nullif(btrim(new.allergies, E' \t\r\n'), '') is null
+     and nullif(btrim(new.medications, E' \t\r\n'), '') is null
+     and nullif(btrim(new.clinical_notes, E' \t\r\n'), '') is null then
+    raise exception 'clinical record requires at least one filled content field'
+      using errcode = '23514', constraint = 'clinical_records_has_content';
+  end if;
+
+  -- formato e limite de cada campo (PRD D-05).
+  if not clinical_records_content_ok(new.allergies, 500) then
+    raise exception 'clinical content field is not trimmed or exceeds its limit'
+      using errcode = '23514', constraint = 'clinical_records_allergies_check', column = 'allergies';
+  end if;
+  if not clinical_records_content_ok(new.medications, 500) then
+    raise exception 'clinical content field is not trimmed or exceeds its limit'
+      using errcode = '23514', constraint = 'clinical_records_medications_check', column = 'medications';
+  end if;
+  if not clinical_records_content_ok(new.clinical_notes, 2000) then
+    raise exception 'clinical content field is not trimmed or exceeds its limit'
+      using errcode = '23514', constraint = 'clinical_records_clinical_notes_check', column = 'clinical_notes';
+  end if;
+
+  -- um registro não pode ser correção de si mesmo.
+  if new.supersedes_id is not null and new.supersedes_id = new.id then
+    raise exception 'clinical record cannot supersede itself'
+      using errcode = '23514', constraint = 'clinical_records_supersedes_not_self';
+  end if;
+
+  -- o registro apontado precisa existir ANTES da linha nova, no mesmo tenant (ver cabeçalho).
   if new.supersedes_id is not null and not exists (
     select 1 from clinical_records r
     where r.tenant_id = new.tenant_id and r.id = new.supersedes_id
@@ -135,11 +193,12 @@ begin
     raise exception 'supersedes_id does not reference an existing record'
       using errcode = '23503', constraint = 'clinical_records_supersedes_fk';
   end if;
+
   return new;
 end;
 $$;
 
-drop trigger if exists clinical_records_supersedes_exists on clinical_records;
-create trigger clinical_records_supersedes_exists
-  before insert on clinical_records
-  for each row execute function clinical_records_check_supersedes_exists();
+drop trigger if exists clinical_records_validate on clinical_records;
+create trigger clinical_records_validate
+  before insert or update on clinical_records
+  for each row execute function clinical_records_validate();

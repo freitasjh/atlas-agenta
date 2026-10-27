@@ -4,13 +4,42 @@
 -- pergunta ali é o que um usuário de outro tenant consegue descobrir. A RLS de leitura e
 -- inserção em si é da ADR-06.
 -- Prova: conteúdo mínimo (espaço, tab e quebra de linha), limites, unicidade de original e de
--- correção, amarração de tenant, atendimento e cliente, índice da FK de atendimento e que o
--- trigger de `supersedes_id` não revela existência entre tenants.
+-- correção, amarração de tenant, atendimento e cliente, índice da FK de atendimento, que o
+-- trigger de `supersedes_id` não revela existência entre tenants e que NENHUM erro de conteúdo
+-- ecoa o texto clínico (mensagem, DETAIL ou HINT).
 -- Fixture própria, domínio `.invalido` (guarda do harness, ADR-04). Roda numa transação e dá
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(23);
+select plan(27);
+
+-- Helper local (pg_temp, some com a transação). Executa o statement e devolve
+-- SQLSTATE | nome da constraint (ou '-') | 'true' se o marcador aparece na mensagem, no DETAIL ou
+-- no HINT da exceção. 'ok' se o statement passou.
+create or replace function pg_temp.clinical_probe(stmt text, marker text)
+returns text
+language plpgsql
+as $$
+declare
+  v_state      text;
+  v_msg        text;
+  v_detail     text;
+  v_hint       text;
+  v_constraint text;
+begin
+  execute stmt;
+  return 'ok';
+exception when others then
+  get stacked diagnostics
+    v_state      = returned_sqlstate,
+    v_msg        = message_text,
+    v_detail     = pg_exception_detail,
+    v_hint       = pg_exception_hint,
+    v_constraint = constraint_name;
+  return v_state || '|' || coalesce(nullif(v_constraint, ''), '-') || '|'
+    || (strpos(coalesce(v_msg, '') || ' ' || coalesce(v_detail, '') || ' ' || coalesce(v_hint, ''), marker) > 0)::text;
+end;
+$$;
 
 -- Fixture: tenant A (clínica) com cliente, profissional, serviço e três atendimentos.
 -- Tenant B com um cliente próprio, para provar a amarração entre tenants.
@@ -216,22 +245,21 @@ select throws_ok(
   'correção de registro de outro atendimento do mesmo cliente é recusada pela FK de correção'
 );
 
--- 15. Check clinical_records_supersedes_not_self isolada. Em uso normal, o trigger de existência
--- (BEFORE) recusa a auto-referência antes da check, então a check é defesa em profundidade. Para
--- provar a check sozinha, o trigger é desligado só dentro desta transação (rollback no fim).
-alter table clinical_records disable trigger clinical_records_supersedes_exists;
-select throws_ok(
-  $sql$
-    insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
-    values ('c7777777-7777-4777-8777-777777777771', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
-            'c7777777-7777-4777-8777-777777777771', 'Auto-correção', '99999999-9999-4999-8999-999999999999')
-  $sql$,
-  '23514',
-  'new row for relation "clinical_records" violates check constraint "clinical_records_supersedes_not_self"',
-  'check clinical_records_supersedes_not_self recusa registro que aponta para si mesmo'
+-- 15. Auto-referência é recusada pelo trigger de validação, com a constraint de nome
+-- clinical_records_supersedes_not_self (o trigger roda antes da FK e da checagem de existência).
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('c7777777-7777-4777-8777-777777777771', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
+              'c7777777-7777-4777-8777-777777777771', 'Auto-correção', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'MARCADOR_INEXISTENTE_AUTO'
+  ),
+  '23514|clinical_records_supersedes_not_self|false',
+  'registro que aponta para si mesmo é recusado pelo trigger, com a constraint nomeada'
 );
-alter table clinical_records enable trigger clinical_records_supersedes_exists;
 
 -- 16. Dois registros que se apontam no mesmo insert são recusados. O primeiro aponta para um id
 -- que ainda não existe no momento da linha, então o trigger recusa antes da FK ver o segundo.
@@ -302,6 +330,68 @@ select ok(
   not has_table_privilege('anon', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
   and not has_table_privilege('authenticated', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
   'anon e authenticated sem privilégio de tabela em clinical_records'
+);
+
+-- 24 a 27 (vazamento). Nenhum erro de conteúdo, obrigatoriedade ou cadeia pode devolver o texto
+-- clínico na mensagem, no DETAIL ou no HINT. Marcador único por caso, para o teste ser exato.
+
+-- 24. tenant_id nulo com texto clínico na linha: 23502 do trigger, sem eco. Antes do trigger,
+-- a linha inteira sairia no DETAIL do NOT NULL.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values (null, 'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
+              'DADO_CLINICO_TESTE_TENANT_NULO', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_TENANT_NULO'
+  ),
+  '23502|-|false',
+  'tenant_id nulo não ecoa o texto clínico na resposta de erro'
+);
+
+-- 25. customer_id nulo com medicamentos na linha: 23502 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, medications, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', null, 'a4444444-4444-4444-8444-444444444442',
+              'DADO_CLINICO_TESTE_CLIENTE_NULO', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_CLIENTE_NULO'
+  ),
+  '23502|-|false',
+  'customer_id nulo não ecoa o medicamento na resposta de erro'
+);
+
+-- 26. Observações com 3000 caracteres, marcador no início: 23514 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444442',
+              'DADO_CLINICO_TESTE_LIMITE' || repeat('a', 3000), '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_LIMITE'
+  ),
+  '23514|clinical_records_clinical_notes_check|false',
+  'observações acima do limite não ecoam o texto clínico na resposta de erro'
+);
+
+-- 27. Alergias com espaço nas pontas e marcador: a recusa de formato não ecoa o valor.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, allergies, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444442', '  DADO_CLINICO_TESTE_PADDING  ',
+              '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_PADDING'
+  ),
+  '23514|clinical_records_allergies_check|false',
+  'alergia com espaço nas pontas não ecoa o texto clínico na resposta de erro'
 );
 
 -- Oráculo de existência entre tenants (22 e 23). Usuário do tenant A, com `tenant_id` de B informado
