@@ -1,7 +1,8 @@
 -- Smoke test do harness (ADR-04).
 -- Prova que os helpers de autenticação e as funções current_tenant_id() / current_role_name()
 -- devolvem o tenant e o papel do usuário autenticado, e que a RLS de tenants separa empresas.
--- Roda numa transação e dá rollback: nada persiste no banco de teste.
+-- Os helpers são chamados como owner; a troca de papel é desfeita com `reset role` antes de
+-- cada nova chamada. Roda numa transação e dá rollback: nada persiste no banco de teste.
 
 create extension if not exists pgtap with schema extensions;
 
@@ -44,7 +45,9 @@ select is(
   'usuário A não enxerga a empresa B pela RLS de tenants'
 );
 
--- Troca para o usuário B: as funções precisam acompanhar a claim, não ficar fixas.
+-- Volta ao owner, limpa as claims e troca para o usuário B: as funções precisam acompanhar
+-- a claim, não ficar fixas.
+reset role;
 select tests.clear_authentication();
 select tests.authenticate_as('22222222-2222-4222-8222-222222222222', 'authenticated');
 
@@ -60,6 +63,8 @@ select is(
   'current_role_name() acompanha a claim e devolve o papel do usuário B'
 );
 
+-- Volta ao owner: clear_authentication() precisa restaurar o papel da sessão.
+reset role;
 select tests.clear_authentication();
 
 select is(
