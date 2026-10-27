@@ -54,18 +54,20 @@ create table if not exists clinical_records (
   appointment_id  uuid not null,
   -- null = registro original; preenchido = correção do registro apontado.
   supersedes_id   uuid null,
-  -- conteúdo clínico (PRD D-05). O valor gravado já vem sem espaços nas pontas (`x = btrim(x)`),
-  -- então o limite de caracteres vale para o que de fato fica armazenado.
-  allergies       text null check (allergies is null or (allergies = btrim(allergies) and char_length(allergies) between 1 and 500)),
-  medications     text null check (medications is null or (medications = btrim(medications) and char_length(medications) between 1 and 500)),
-  clinical_notes  text null check (clinical_notes is null or (clinical_notes = btrim(clinical_notes) and char_length(clinical_notes) between 1 and 2000)),
+  -- conteúdo clínico (PRD D-05). O valor gravado já vem sem espaço, tab, CR ou LF nas pontas
+  -- (`x = btrim(x, E' \t\r\n')`), então o limite de caracteres vale para o que de fato fica armazenado.
+  -- A app (ADR-12) faz o trim com o mesmo conjunto antes de gravar.
+  allergies       text null check (allergies is null or (allergies = btrim(allergies, E' \t\r\n') and char_length(allergies) between 1 and 500)),
+  medications     text null check (medications is null or (medications = btrim(medications, E' \t\r\n') and char_length(medications) between 1 and 500)),
+  clinical_notes  text null check (clinical_notes is null or (clinical_notes = btrim(clinical_notes, E' \t\r\n') and char_length(clinical_notes) between 1 and 2000)),
   created_by      uuid not null default auth.uid(),
   created_at      timestamptz not null default now(),
-  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de btrim.
+  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de btrim. O conjunto de espaços é
+  -- espaço, tab, CR e LF: o que não passa disso é vazio.
   constraint clinical_records_has_content check (
-    nullif(btrim(allergies), '') is not null
-    or nullif(btrim(medications), '') is not null
-    or nullif(btrim(clinical_notes), '') is not null
+    nullif(btrim(allergies, E' \t\r\n'), '') is not null
+    or nullif(btrim(medications, E' \t\r\n'), '') is not null
+    or nullif(btrim(clinical_notes, E' \t\r\n'), '') is not null
   ),
   -- um registro não pode ser correção de si mesmo.
   constraint clinical_records_supersedes_not_self check (supersedes_id is null or supersedes_id <> id),
@@ -94,6 +96,11 @@ create unique index if not exists clinical_records_one_correction_per_record
 create index if not exists clinical_records_tenant_customer_created_idx
   on clinical_records (tenant_id, customer_id, created_at);
 
+-- cobre a FK de atendimento: apagar ou trocar atendimento não varre a tabela inteira. Os índices
+-- acima são parciais em supersedes_id ou começam por customer_id, e não servem a essa checagem.
+create index if not exists clinical_records_tenant_appointment_customer_idx
+  on clinical_records (tenant_id, appointment_id, customer_id);
+
 -- RLS ligado, sem policy: deny-all para anon e authenticated até a ADR-06.
 alter table clinical_records enable row level security;
 
@@ -104,12 +111,19 @@ revoke all on table clinical_records from anon, authenticated;
 
 -- Ciclo na cadeia: o registro apontado por `supersedes_id` precisa existir ANTES da linha nova.
 -- Trigger before insert, porque a FK só checa no fim do statement e aceitaria dois registros
--- que se apontam no mesmo insert. Security definer só para ler a tabela sem RLS; devolve erro
--- fixo, sem eco de valor. Usa o SQLSTATE e o nome da FK, para o mapeamento da ADR-12.
+-- que se apontam no mesmo insert.
+--
+-- Security INVOKER de propósito: a leitura do trigger passa pela RLS de quem insere. Registro de
+-- outro tenant fica invisível para o chamador e cai no mesmo erro de id inexistente. Com
+-- security definer, o trigger veria o registro de outro tenant, e a falha viraria 42501 (RLS),
+-- o que revela que o id existe. Por isso o caminho é invoker, não definer.
+-- Erro fixo, sem eco de valor. Usa o SQLSTATE e o nome da FK, para o mapeamento da ADR-12.
+-- Consequência: sem select concedido (estado desta ADR), o trigger falha com 42501 para qualquer
+-- id; a ADR-06 concede select com policy de tenant, e a resposta fica uniforme.
 create or replace function clinical_records_check_supersedes_exists()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 begin
