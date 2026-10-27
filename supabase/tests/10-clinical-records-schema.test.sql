@@ -325,12 +325,13 @@ select has_index(
   'índice da FK de atendimento existe'
 );
 
--- 21. anon e authenticated não têm nenhum privilégio de tabela em clinical_records (TRUNCATE
--- incluído, porque RLS não o cobre).
+-- 21. anon não tem nenhum privilégio de tabela em clinical_records, e authenticated não tem UPDATE,
+-- DELETE nem TRUNCATE (TRUNCATE não passa pela RLS). A ADR-06 devolve SELECT e INSERT a authenticated,
+-- com policy; por isso esta asserção não exige mais "nenhum privilégio" para authenticated.
 select ok(
   not has_table_privilege('anon', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
-  and not has_table_privilege('authenticated', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
-  'anon e authenticated sem privilégio de tabela em clinical_records'
+  and not has_table_privilege('authenticated', 'public.clinical_records', 'UPDATE,DELETE,TRUNCATE'),
+  'anon sem privilégio de tabela e authenticated sem UPDATE, DELETE e TRUNCATE em clinical_records'
 );
 
 -- Oráculo de existência entre tenants (22 e 23). Usuário do tenant A, com `tenant_id` de B informado
