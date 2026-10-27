@@ -1,6 +1,6 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import type { AuthSession } from "@supabase/supabase-js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { applyAuthEvent } from "@/lib/auth-cache";
 
@@ -90,5 +90,35 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["customers"])).toBeUndefined();
     expect(queryClient.getQueryData(["appointments"])).toBeUndefined();
     expect(queryClient.getQueryData(["session"])).toEqual(newSession);
+  });
+
+  it("SIGNED_IN de outro usuário não deixa observador montado com dados da conta anterior", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["customers"], [{ id: "A-cliente" }]);
+    queryClient.setQueryData(["session"], sessionOf("user-1"));
+
+    // Simula a tela de clientes montada: observador ativo sem refetch no mount.
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["customers"],
+      queryFn: async () => [{ id: "B-cliente" }],
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    try {
+      expect(observer.getCurrentResult().data).toEqual([{ id: "A-cliente" }]);
+
+      applyAuthEvent(queryClient, "SIGNED_IN", sessionOf("user-2"));
+
+      // Logo após o reset, nenhum dado da conta anterior pode aparecer.
+      expect(observer.getCurrentResult().data).not.toEqual([{ id: "A-cliente" }]);
+
+      // Depois do refetch, a tela recebe a conta nova.
+      await vi.waitFor(() => {
+        expect(observer.getCurrentResult().data).toEqual([{ id: "B-cliente" }]);
+      });
+    } finally {
+      unsubscribe();
+    }
   });
 });

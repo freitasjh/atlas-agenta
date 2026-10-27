@@ -12,9 +12,12 @@ import { sessionQueryKey } from "@/lib/session-key";
  * - Sempre grava a sessão em `["session"]`.
  * - Em `SIGNED_OUT` remove TODAS as demais queries, para que dados da conta
  *   anterior (clientes, agendamentos, ficha, etc.) não sobrem num navegador
- *   compartilhado.
+ *   compartilhado. O guard redireciona e desmonta as telas, então não há
+ *   observador ativo que precise ser notificado.
  * - Em `SIGNED_IN` de OUTRO usuário (login sem sair antes, pela URL de
- *   `/login`) remove as demais queries pelo mesmo motivo. Um `SIGNED_IN` do
+ *   `/login` ou por outra aba) faz `resetQueries` com o mesmo predicado. Ele
+ *   notifica os observadores montados e refaz as queries ativas com a conta
+ *   nova, então a tela não mostra dados da conta anterior. Um `SIGNED_IN` do
  *   mesmo usuário (reentrada, refresh) não remove nada.
  * - A chave de sessão é preservada em todos os casos: os observadores do guard
  *   continuam com o estado de sessão enquanto decidem o redirect.
@@ -29,18 +32,24 @@ export function applyAuthEvent(
   const previous = queryClient.getQueryData<AuthSession | null>(sessionQueryKey);
   queryClient.setQueryData(sessionQueryKey, session);
 
-  const signedOut = event === "SIGNED_OUT";
+  const notSessionQuery = (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey[0] !== sessionQueryKey[0];
+
+  if (event === "SIGNED_OUT") {
+    queryClient.removeQueries({ predicate: notSessionQuery });
+    return;
+  }
+
   // `previous === undefined` significa que ["session"] ainda não foi preenchida
   // (ex.: carregamento com sessão salva). Não é troca de conta: preserva o cache.
-  // `previous === null` (após SIGNED_OUT) cai na remoção, que é inofensiva.
   const switchedUser =
     event === "SIGNED_IN" &&
     previous !== undefined &&
     previous?.user.id !== session?.user.id;
 
-  if (signedOut || switchedUser) {
-    queryClient.removeQueries({
-      predicate: (query) => query.queryKey[0] !== sessionQueryKey[0],
-    });
+  if (switchedUser) {
+    // Reset em vez de remove: observadores montados recebem o estado vazio e as
+    // queries ativas são refeitas com a sessão nova.
+    void queryClient.resetQueries({ predicate: notSessionQuery });
   }
 }
