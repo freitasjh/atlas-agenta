@@ -1,9 +1,9 @@
-import * as React from "react";
 import { useMemo, useState } from "react";
 import { Loader2, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
+import { StatePanel } from "@/components/StatePanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,29 +31,6 @@ import { useServices } from "@/hooks/useServices";
 import { usePermissions } from "@/hooks/usePermissions";
 import { formatCentsToBRL } from "@/lib/money";
 import type { Combo } from "@/types/domain";
-
-/** Painel de estado (vazio/erro) desta tela. */
-function StatePanel({
-  titulo,
-  descricao,
-  children,
-}: {
-  titulo: string;
-  descricao: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-2xl rounded-lg border border-dashed border-border p-8 text-center">
-      <h2 className="font-display text-lg font-semibold tracking-tight">
-        {titulo}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
-      {children ? (
-        <div className="mt-4 flex justify-center">{children}</div>
-      ) : null}
-    </div>
-  );
-}
 
 function ComboStatusBadge({ active }: { active: boolean }) {
   return (
