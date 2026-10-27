@@ -29,6 +29,7 @@ import { useCombos, useDeactivateCombo } from "@/hooks/useCombos";
 import { useComboServices } from "@/hooks/useComboServices";
 import { useServices } from "@/hooks/useServices";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { formatCentsToBRL } from "@/lib/money";
 import type { Combo } from "@/types/domain";
 
@@ -77,10 +78,16 @@ function ComboServicesSummary({ comboId }: { comboId: string }) {
  * por diálogo e inativa com confirmação (soft-delete). No desktop é tabela; no
  * mobile vira cards (sem overflow horizontal). Botões de escrita só aparecem
  * para quem pode gerenciar o catálogo (`usePermissions().canManageCatalog`) —
- * defesa em profundidade; a trava real é o RLS. O gating por ramo (salão) é
- * feito na exposição do atalho em Configurações.
+ * defesa em profundidade; a trava real é o RLS.
+ *
+ * Gating por ramo (salão), espelhando a `ComissoesPage`: fora de salão
+ * (`!combos`) a tela mostra um `StatePanel` de indisponibilidade no lugar do
+ * CRUD. É só de UI — `segment` nunca é fronteira de RLS; o isolamento real é o
+ * RLS por `tenant_id`. `useSegmentFeatures()` devolve `combos: false` durante o
+ * load (nunca `undefined`), então não há flash.
  */
 export function CombosPage() {
+  const { combos: combosFeature } = useSegmentFeatures();
   const { canManageCatalog } = usePermissions();
   const combosQuery = useCombos();
   const deactivateCombo = useDeactivateCombo();
@@ -88,6 +95,25 @@ export function CombosPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCombo, setEditingCombo] = useState<Combo | null>(null);
   const [comboToToggle, setComboToToggle] = useState<Combo | null>(null);
+
+  // Guard de ramo depois de todos os hooks (Regras de Hooks). Em tenant
+  // não-salão, `useCombos()` acima ainda dispara: é uma leitura benigna que a
+  // RLS resolve e que nunca é renderizada — análogo à nota de gating da
+  // `ComissoesPage`.
+  if (!combosFeature) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          titulo="Pacotes"
+          descricao="Combine procedimentos num preço fechado para seus clientes."
+        />
+        <StatePanel
+          titulo="Pacotes"
+          descricao="Os pacotes estão disponíveis apenas para salões de beleza."
+        />
+      </div>
+    );
+  }
 
   function openCreate() {
     setEditingCombo(null);
