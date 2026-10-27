@@ -15,8 +15,9 @@
 --
 -- Coerência no schema (não só na app): FKs COMPOSTAS por tenant e por cliente.
 --   - (tenant_id, customer_id) -> customers: cliente do mesmo tenant.
---   - (tenant_id, appointment_id, customer_id) -> appointments (exige unique da ADR-03): o
---     cliente da ficha é o cliente do atendimento.
+--   - (tenant_id, appointment_id, customer_id) -> appointments: o cliente da ficha é o cliente do
+--     atendimento. Exige a constraint `appointments_tenant_id_customer_unique`, criada pela migration
+--     20250227090000 (ADR-03) nesta mesma entrega.
 --   - (tenant_id, supersedes_id, appointment_id, customer_id) -> clinical_records: a correção
 --     vale para o mesmo atendimento e o mesmo cliente do original. Com match simple, não é
 --     checada quando `supersedes_id` é null.

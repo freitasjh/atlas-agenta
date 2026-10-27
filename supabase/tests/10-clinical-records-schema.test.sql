@@ -33,7 +33,9 @@ insert into services (id, tenant_id, name, duration_minutes, price_cents) values
 insert into appointments (id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents) values
   ('a4444444-4444-4444-8444-444444444441', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-10 10:00:00+00', '2030-03-10 11:00:00+00', 15000),
   ('a4444444-4444-4444-8444-444444444442', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-10 13:00:00+00', '2030-03-10 14:00:00+00', 15000),
-  ('a4444444-4444-4444-8444-444444444443', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-10 15:00:00+00', '2030-03-10 16:00:00+00', 15000);
+  ('a4444444-4444-4444-8444-444444444443', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-10 15:00:00+00', '2030-03-10 16:00:00+00', 15000),
+  -- Atendimento do cliente A2 (usado no teste 12, para isolar a FK de correção).
+  ('a4444444-4444-4444-8444-444444444444', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-10 17:00:00+00', '2030-03-10 18:00:00+00', 15000);
 
 -- Fixture do tenant B: um original real, para o oráculo de existência entre tenants (22 e 23).
 insert into professionals (id, tenant_id, name) values
@@ -171,18 +173,19 @@ select throws_ok(
   'segunda correção do mesmo registro é recusada'
 );
 
--- 12. Correção com cliente diferente do atendimento é recusada. Aponta para a correção 10
--- (sem sucessora), para que a falha venha da FK e não do índice de correção única.
+-- 12. Correção de outro cliente é recusada pela FK de correção. O atendimento usado é do cliente A2
+-- (fixture própria), então as FKs de cliente e de atendimento passam, e só a FK de correção falha.
+-- Aponta para a correção 6666 (sem sucessora), para o índice de correção única não barrar antes.
 select throws_ok(
   $sql$
     insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
     values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332',
-            'a4444444-4444-4444-8444-444444444441', 'c6666666-6666-4666-8666-666666666661',
+            'a4444444-4444-4444-8444-444444444444', 'c6666666-6666-4666-8666-666666666661',
             'Correção com outro cliente', '99999999-9999-4999-8999-999999999999')
   $sql$,
   '23503',
-  null,
-  'correção com customer_id de outro cliente do atendimento é recusada'
+  'insert or update on table "clinical_records" violates foreign key constraint "clinical_records_supersedes_fk"',
+  'correção de outro cliente é recusada pela FK clinical_records_supersedes_fk'
 );
 
 -- 13. Registro com tenant B e atendimento do tenant A é recusado.
@@ -213,8 +216,10 @@ select throws_ok(
   'correção de registro de outro atendimento do mesmo cliente é recusada pela FK de correção'
 );
 
--- 15. Registro que aponta para si mesmo é recusado. O trigger roda antes da check constraint
--- (BEFORE triggers rodam antes das checks), então o rejeitado é o trigger, com 23503.
+-- 15. Check clinical_records_supersedes_not_self isolada. Em uso normal, o trigger de existência
+-- (BEFORE) recusa a auto-referência antes da check, então a check é defesa em profundidade. Para
+-- provar a check sozinha, o trigger é desligado só dentro desta transação (rollback no fim).
+alter table clinical_records disable trigger clinical_records_supersedes_exists;
 select throws_ok(
   $sql$
     insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
@@ -222,10 +227,11 @@ select throws_ok(
             'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
             'c7777777-7777-4777-8777-777777777771', 'Auto-correção', '99999999-9999-4999-8999-999999999999')
   $sql$,
-  '23503',
-  null,
-  'registro que aponta para si mesmo é recusado'
+  '23514',
+  'new row for relation "clinical_records" violates check constraint "clinical_records_supersedes_not_self"',
+  'check clinical_records_supersedes_not_self recusa registro que aponta para si mesmo'
 );
+alter table clinical_records enable trigger clinical_records_supersedes_exists;
 
 -- 16. Dois registros que se apontam no mesmo insert são recusados. O primeiro aponta para um id
 -- que ainda não existe no momento da linha, então o trigger recusa antes da FK ver o segundo.
