@@ -11,7 +11,7 @@
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(34);
+select plan(36);
 
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve
 -- SQLSTATE | nome da constraint (ou '-') | 'true' se o marcador aparece na mensagem, no DETAIL ou
@@ -261,8 +261,9 @@ select is(
   'registro que aponta para si mesmo é recusado pelo trigger, com a constraint nomeada'
 );
 
--- 16. Dois registros que se apontam no mesmo insert são recusados. O primeiro aponta para um id
--- que ainda não existe no momento da linha, então o trigger recusa antes da FK ver o segundo.
+-- 16. Referência a registro ainda não inserido no mesmo statement é recusada. O primeiro registro
+-- aponta para um id que, no momento da linha, ainda não existe (o segundo só entra depois), então o
+-- trigger recusa antes da FK ver o segundo. Não é um ciclo testado de fato: é a recusa da referência.
 select throws_ok(
   $sql$
     insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by) values
@@ -275,7 +276,7 @@ select throws_ok(
   $sql$,
   '23503',
   null,
-  'dois registros que se apontam no mesmo insert são recusados'
+  'referência a registro ainda não inserido no mesmo statement é recusada'
 );
 
 -- 17. Campo com espaço nas pontas é recusado: o valor gravado precisa vir sem espaços.
@@ -527,6 +528,32 @@ select is(
   ),
   '23502|-|false',
   'created_at nulo não ecoa o texto clínico na resposta de erro'
+);
+
+-- 34. Campo só com U+00A0 (espaço sem quebra) é tratado como vazio: recusado pela regra de conteúdo mínimo.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, allergies, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444442', E'\u00a0', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'MARCADOR_INEXISTENTE_NBSP_VAZIO'
+  ),
+  '23514|clinical_records_has_content|false',
+  'campo só com U+00A0 é recusado como vazio'
+);
+
+-- 35. Campo com U+00A0 nas pontas é recusado pela regra de formato, mesmo com texto no meio.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, medications, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444442', E'\u00a0Dipirona', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23514',
+  null,
+  'campo com U+00A0 nas pontas é recusado'
 );
 
 select * from finish();

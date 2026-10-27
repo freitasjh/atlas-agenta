@@ -42,14 +42,17 @@
 -- próprio, sem eco de valor na mensagem, no DETAIL e no HINT.
 --
 -- RISCO RESIDUAL (LGPD): o trigger não protege o log de statement do Postgres. Com
--- `log_min_error_statement = error` (padrão), o SQL que falhou, com os valores, vai ao log do banco.
--- A migration não muda isso (exige privilégio de superusuário). Decisão de retenção e acesso aos logs
--- do projeto hospedado: ver ADR-05, Consequências. Os NOT NULL continuam declarados no schema como documentação. O trigger checa
--- antes todas as colunas NOT NULL (id, tenant_id, customer_id, appointment_id, created_by e
--- created_at), então nenhum NOT NULL dispara com valor de cliente.
+-- `log_min_error_statement = error` (padrão), um SQL com LITERAL que falhou grava os valores no log do
+-- banco (reproduzido localmente). O caminho parametrizado do PostgREST, que é o da aplicação, não
+-- gravou o valor no log local. A migration não muda isso (exige privilégio de superusuário).
+-- Decisão de retenção e acesso aos logs do projeto hospedado: ver ADR-05, Consequências. Os NOT NULL
+-- continuam declarados no schema como documentação. O trigger checa antes todas as colunas NOT NULL
+-- (id, tenant_id, customer_id, appointment_id, created_by e created_at), então nenhum NOT NULL dispara
+-- com valor de cliente.
 --
--- Campo de texto vazio ('') é normalizado para null no trigger, antes das regras. Espaço, tab, CR
--- e LF nas pontas continuam recusados (não são normalizados).
+-- Campo de texto vazio ('') é normalizado para null no trigger, antes das regras. Espaço, tab, CR,
+-- LF e U+00A0 (espaço sem quebra) nas pontas continuam recusados (não são normalizados). O conjunto
+-- de trim é o mesmo em todo lugar: E' \t\r\n\u00a0'. Outros espaços Unicode não são cobertos (ADR-05).
 --
 -- Ciclo na cadeia de correção: o mesmo trigger barra auto-referência e exige que o registro
 -- apontado já exista. Isso cobre o ciclo de dois registros num mesmo insert, que a FK sozinha
@@ -74,8 +77,8 @@ create table if not exists clinical_records (
   -- null = registro original; preenchido = correção do registro apontado.
   supersedes_id   uuid null,
   -- conteúdo clínico (PRD D-05). Validado pelo trigger: o valor gravado precisa vir sem espaço,
-  -- tab, CR ou LF nas pontas, e o limite vale para o que fica armazenado. A app (ADR-12) faz o
-  -- trim com o mesmo conjunto antes de gravar.
+  -- tab, CR, LF ou U+00A0 nas pontas, e o limite vale para o que fica armazenado. A app (ADR-12)
+  -- faz o trim com o mesmo conjunto antes de gravar.
   allergies       text null,
   medications     text null,
   clinical_notes  text null,
@@ -119,14 +122,14 @@ alter table clinical_records enable row level security;
 -- RLS), tratado na ADR-07.
 revoke all on table clinical_records from anon, authenticated;
 
--- Função pura: true se o campo é nulo ou se, já sem espaço/tab/CR/LF nas pontas, tem entre 1 e
+-- Função pura: true se o campo é nulo ou se, já sem espaço/tab/CR/LF/U+00A0 nas pontas, tem entre 1 e
 -- `max_len` caracteres. Não lê a linha, então não toca dado de saúde em erro.
 create or replace function clinical_records_content_ok(v text, max_len int)
 returns boolean
 language sql
 immutable
 as $$
-  select v is null or (v = btrim(v, E' \t\r\n') and char_length(v) between 1 and max_len)
+  select v is null or (v = btrim(v, E' \t\r\n\u00a0') and char_length(v) between 1 and max_len)
 $$;
 
 -- Validação de obrigatoriedade, conteúdo e cadeia. Roda BEFORE INSERT OR UPDATE, então cobre
@@ -182,10 +185,10 @@ begin
       using errcode = '23502', column = 'created_by';
   end if;
 
-  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de remover espaço, tab, CR e LF.
-  if nullif(btrim(new.allergies, E' \t\r\n'), '') is null
-     and nullif(btrim(new.medications, E' \t\r\n'), '') is null
-     and nullif(btrim(new.clinical_notes, E' \t\r\n'), '') is null then
+  -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de remover espaço, tab, CR, LF e U+00A0.
+  if nullif(btrim(new.allergies, E' \t\r\n\u00a0'), '') is null
+     and nullif(btrim(new.medications, E' \t\r\n\u00a0'), '') is null
+     and nullif(btrim(new.clinical_notes, E' \t\r\n\u00a0'), '') is null then
     raise exception 'clinical record requires at least one filled content field'
       using errcode = '23514', constraint = 'clinical_records_has_content';
   end if;
