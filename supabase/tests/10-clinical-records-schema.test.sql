@@ -11,7 +11,7 @@
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(36);
+select plan(39);
 
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve
 -- SQLSTATE | nome da constraint (ou '-') | 'true' se o marcador aparece na mensagem, no DETAIL ou
@@ -554,6 +554,35 @@ select throws_ok(
   '23514',
   null,
   'campo com U+00A0 nas pontas é recusado'
+);
+
+-- 36. UPDATE: alergias com 501 caracteres é recusado pelo trigger (o trigger roda em before insert or
+-- update, então o caminho de UPDATE também precisa de prova).
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      update clinical_records set allergies = repeat('a', 501)
+      where id = 'c5555555-5555-4555-8555-555555555551'
+    $sql$,
+    'MARCADOR_INEXISTENTE_UPDATE_501'
+  ),
+  '23514|clinical_records_allergies_check|false',
+  'UPDATE de alergias acima do limite é recusado pelo trigger'
+);
+
+-- 37 e 38. UPDATE: observações como string vazia, com alergias preenchidas, grava null e não reprova.
+select lives_ok(
+  $sql$
+    update clinical_records set allergies = 'Penicilina', clinical_notes = ''
+    where id = 'c5555555-5555-4555-8555-555555555551'
+  $sql$,
+  'UPDATE com observações vazia e alergias preenchida é aceito'
+);
+
+select is(
+  (select clinical_notes from clinical_records where id = 'c5555555-5555-4555-8555-555555555551'),
+  null::text,
+  'UPDATE grava observações vazia como null'
 );
 
 select * from finish();
