@@ -34,13 +34,17 @@
 -- `created_by` default `auth.uid()`. Fora de sessão de usuário (seed, service role) o banco não
 -- preenche sozinho: quem insere deve passar `tenant_id` e `created_by` explicitamente.
 --
--- Validação de conteúdo e de cadeia em UM trigger (`clinical_records_validate`), não em CHECK
--- constraints. Motivo: o PostgreSQL grava a linha inteira no DETAIL de erro de CHECK e de NOT NULL
--- ("Failing row contains (...)"). Com texto clínico na linha, isso vazaria dado de saúde para a
--- resposta da API e para o log do banco. O trigger roda ANTES da verificação de CHECK e NOT NULL,
--- então cada regra falha primeiro com mensagem fixa, nome de constraint e SQLSTATE próprio, sem
--- eco de valor. Os NOT NULL continuam declarados no schema como documentação; como o trigger
--- valida antes, eles não chegam a disparar com valor de cliente.
+-- Validação de obrigatoriedade, conteúdo e cadeia em UM trigger (`clinical_records_validate`), não
+-- em CHECK constraints. Motivo: o PostgreSQL grava a linha inteira no DETAIL de erro de CHECK e de
+-- NOT NULL ("Failing row contains (...)"). Com texto clínico na linha, isso vazaria dado de saúde
+-- para a resposta da API e para o log do banco. O trigger roda ANTES da verificação de CHECK e NOT
+-- NULL, então cada regra falha primeiro com mensagem fixa, nome de constraint e SQLSTATE próprio,
+-- sem eco de valor. Os NOT NULL continuam declarados no schema como documentação. O trigger checa
+-- antes todas as colunas NOT NULL (id, tenant_id, customer_id, appointment_id, created_by e
+-- created_at), então nenhum NOT NULL dispara com valor de cliente.
+--
+-- Campo de texto vazio ('') é normalizado para null no trigger, antes das regras. Espaço, tab, CR
+-- e LF nas pontas continuam recusados (não são normalizados).
 --
 -- Ciclo na cadeia de correção: o mesmo trigger barra auto-referência e exige que o registro
 -- apontado já exista. Isso cobre o ciclo de dois registros num mesmo insert, que a FK sozinha
@@ -120,9 +124,10 @@ as $$
   select v is null or (v = btrim(v, E' \t\r\n') and char_length(v) between 1 and max_len)
 $$;
 
--- Validação de conteúdo, obrigatoriedade e cadeia. Roda BEFORE INSERT OR UPDATE, então cobre
--- service_role e qualquer caminho que escreva na tabela. Ordem: obrigatoriedade, conteúdo mínimo,
--- formato e limite de cada campo, auto-referência e, por último, existência do registro apontado.
+-- Validação de obrigatoriedade, conteúdo e cadeia. Roda BEFORE INSERT OR UPDATE, então cobre
+-- service_role e qualquer caminho que escreva na tabela. Ordem: normalização de '' para null,
+-- obrigatoriedade, conteúdo mínimo, formato e limite de cada campo, auto-referência e, por último,
+-- existência do registro apontado.
 --
 -- Erros SEMPRE com mensagem fixa e `constraint`/`column` com nome técnico. Nunca incluir valor da
 -- linha na mensagem, no DETAIL ou no HINT.
@@ -139,7 +144,20 @@ security invoker
 set search_path = public
 as $$
 begin
+  -- campo opcional vazio é o mesmo que ausente: grava null, para não reprovar outro campo válido.
+  new.allergies      := nullif(new.allergies, '');
+  new.medications    := nullif(new.medications, '');
+  new.clinical_notes := nullif(new.clinical_notes, '');
+
   -- obrigatoriedade (o mesmo que os NOT NULL declarados, mas com mensagem sem eco).
+  if new.id is null then
+    raise exception 'clinical record requires id'
+      using errcode = '23502', column = 'id';
+  end if;
+  if new.created_at is null then
+    raise exception 'clinical record requires created_at'
+      using errcode = '23502', column = 'created_at';
+  end if;
   if new.tenant_id is null then
     raise exception 'clinical record requires tenant_id'
       using errcode = '23502', column = 'tenant_id';

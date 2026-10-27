@@ -11,7 +11,7 @@
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(27);
+select plan(34);
 
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve
 -- SQLSTATE | nome da constraint (ou '-') | 'true' se o marcador aparece na mensagem, no DETAIL ou
@@ -392,6 +392,93 @@ select is(
   ),
   '23514|clinical_records_allergies_check|false',
   'alergia com espaço nas pontas não ecoa o texto clínico na resposta de erro'
+);
+
+-- 28. Registro com customer_id de outro cliente do atendimento é recusado pela FK de atendimento.
+-- O atendimento 444 é do cliente A2; o registro diz A1. Não há original no 444, então o índice de
+-- original único não barra antes da FK.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444444', 'Cliente de outro atendimento', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23503',
+  'insert or update on table "clinical_records" violates foreign key constraint "clinical_records_appointment_fk"',
+  'registro com cliente diferente do atendimento é recusado pela FK clinical_records_appointment_fk'
+);
+
+-- 29. Campo opcional vazio ('') é gravado como null, e não reprova o registro com outro campo válido.
+select lives_ok(
+  $sql$
+    insert into clinical_records (id, tenant_id, customer_id, appointment_id, allergies, medications, created_by)
+    values ('c0000000-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444444',
+            '', 'Dipirona', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  'campo vazio com outro campo preenchido é aceito'
+);
+
+select is(
+  (select allergies from clinical_records where id = 'c0000000-0000-4000-8000-000000000001'),
+  null::text,
+  'campo vazio é gravado como null'
+);
+
+-- 30. id nulo com texto clínico na linha: 23502 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (id, tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values (null, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444443', 'DADO_CLINICO_TESTE_ID_NULO', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_ID_NULO'
+  ),
+  '23502|-|false',
+  'id nulo não ecoa o texto clínico na resposta de erro'
+);
+
+-- 31. appointment_id nulo com texto clínico na linha: 23502 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331', null,
+              'DADO_CLINICO_TESTE_ATENDIMENTO_NULO', '99999999-9999-4999-8999-999999999999')
+    $sql$,
+    'DADO_CLINICO_TESTE_ATENDIMENTO_NULO'
+  ),
+  '23502|-|false',
+  'appointment_id nulo não ecoa o texto clínico na resposta de erro'
+);
+
+-- 32. created_by nulo com texto clínico na linha: 23502 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444443', 'DADO_CLINICO_TESTE_AUTOR_NULO', null)
+    $sql$,
+    'DADO_CLINICO_TESTE_AUTOR_NULO'
+  ),
+  '23502|-|false',
+  'created_by nulo não ecoa o texto clínico na resposta de erro'
+);
+
+-- 33. created_at nulo com texto clínico na linha: 23502 do trigger, sem eco.
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by, created_at)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444443', 'DADO_CLINICO_TESTE_DATA_NULA', '99999999-9999-4999-8999-999999999999', null)
+    $sql$,
+    'DADO_CLINICO_TESTE_DATA_NULA'
+  ),
+  '23502|-|false',
+  'created_at nulo não ecoa o texto clínico na resposta de erro'
 );
 
 -- Oráculo de existência entre tenants (22 e 23). Usuário do tenant A, com `tenant_id` de B informado
