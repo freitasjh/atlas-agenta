@@ -6,7 +6,7 @@
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(13);
+select plan(14);
 
 -- Fixture: tenant A (clínica) com cliente, profissional, serviço e três atendimentos.
 -- Tenant B com um cliente próprio, para provar a amarração entre tenants.
@@ -176,6 +176,22 @@ select throws_ok(
   '23503',
   null,
   'tenant de um registro com atendimento de outro tenant é recusado'
+);
+
+-- 14. Correção de outro atendimento do mesmo cliente é recusada pela FK de correção. Aponta para
+-- a correção 6666 (sem sucessora), para o índice de correção única não barrar antes da FK. O
+-- cliente é o mesmo (A1) e o atendimento 442 tem A1, então as FKs de cliente e de atendimento
+-- passam: só a FK de correção falha.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444442', 'c6666666-6666-4666-8666-666666666661',
+            'Correção em outro atendimento', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23503',
+  'insert or update on table "clinical_records" violates foreign key constraint "clinical_records_supersedes_fk"',
+  'correção de registro de outro atendimento do mesmo cliente é recusada pela FK de correção'
 );
 
 select * from finish();
