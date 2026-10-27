@@ -61,7 +61,12 @@ export const appointmentRowSchema = z
     tenant_id: z.string(),
     customer_id: z.string(),
     professional_id: z.string(),
-    service_id: z.string(),
+    // XOR com `combo_id` (ADR-03): exatamente um vem preenchido. Ambos nullable
+    // no shape lido; a garantia de "exatamente um" é do CHECK no banco.
+    service_id: z.string().nullable(),
+    // `combo_id` pode não vir na resposta até o SELECT embutir o pacote
+    // (ADR-06/07); ausente → `undefined` → normalizado para `null`.
+    combo_id: z.string().nullable().optional(),
     starts_at: z.string(),
     ends_at: z.string(),
     price_cents: z.number().int(),
@@ -79,13 +84,21 @@ export const appointmentRowSchema = z
         price_cents: z.number().int(),
       })
       .nullable(),
+    // Embed do pacote (ADR-04 contrato; o SELECT passa a trazê-lo em ADR-06/07).
+    // Ausente na resposta atual → `undefined` → normalizado para `null`.
+    combos: z
+      .object({ name: z.string(), price_cents: z.number().int() })
+      .nullable()
+      .optional(),
     professionals: z.object({ name: z.string() }).nullable(),
     // Pode não vir na resposta (ex.: insert/update que não seleciona o embed):
     // ausente → `undefined` → normaliza para `null`.
     appointment_commissions: commissionEmbedSchema.optional(),
   })
-  .transform(({ appointment_commissions, ...rest }) => ({
+  .transform(({ appointment_commissions, combo_id, combos, ...rest }) => ({
     ...rest,
+    combo_id: combo_id ?? null,
+    combos: combos ?? null,
     commission_cents: normalizeCommissionCents(appointment_commissions ?? null),
   }));
 
@@ -96,20 +109,37 @@ export const appointmentListSchema = z.array(appointmentRowSchema);
  * extra (reusa o cache da agenda) e é recortado pelo RLS financeiro da ADR-02:
  * receptionist não recebe a relação, professional só a própria. */
 export const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), professionals(name), appointment_commissions(commission_cents)";
+  "id, tenant_id, customer_id, professional_id, service_id, combo_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 
-/** Campos graváveis de um agendamento (derivados já calculados pela tela — ADR-08). */
+/**
+ * Campos graváveis de um agendamento (derivados já calculados pela tela — ADR-08
+ * para serviço; ADR-06 para pacote).
+ *
+ * `serviceId` e `comboId` estão em XOR (exatamente um preenchido): modo serviço
+ * envia `serviceId` + `comboId: null`; modo pacote envia `comboId` +
+ * `serviceId: null`. O CHECK `appointments_service_xor_combo` (ADR-03) é a trava
+ * real; a tela monta o payload já coerente. Nenhum `tenant_id` é enviado (RLS).
+ */
 export interface AppointmentInput {
   customerId: string;
   professionalId: string;
-  serviceId: string;
+  /** Serviço avulso (modo serviço) ou `null` quando é pacote. */
+  serviceId: string | null;
+  /** Pacote do salão (modo pacote) ou `null` quando é serviço avulso. */
+  comboId: string | null;
   /** Instante UTC (ISO string) — já convertido na borda pela tela. */
   startsAt: string;
-  /** Instante UTC (ISO string) — `startsAt + service.duration_minutes`. */
+  /**
+   * Instante UTC (ISO string): `startsAt + service.duration_minutes` (modo
+   * serviço) ou `startsAt + soma(durações dos serviços do pacote)` (modo pacote).
+   */
   endsAt: string;
-  /** Snapshot do preço do serviço no ato, em centavos inteiros. */
+  /**
+   * Snapshot do preço no ato, em centavos inteiros: preço do serviço (modo
+   * serviço) ou preço fechado do pacote (modo pacote).
+   */
   priceCents: number;
 }
 
@@ -242,6 +272,7 @@ export function useCreateAppointment() {
           customer_id: input.customerId,
           professional_id: input.professionalId,
           service_id: input.serviceId,
+          combo_id: input.comboId,
           starts_at: input.startsAt,
           ends_at: input.endsAt,
           price_cents: input.priceCents,
@@ -268,6 +299,7 @@ export function useUpdateAppointment() {
           customer_id: input.customerId,
           professional_id: input.professionalId,
           service_id: input.serviceId,
+          combo_id: input.comboId,
           starts_at: input.startsAt,
           ends_at: input.endsAt,
           price_cents: input.priceCents,

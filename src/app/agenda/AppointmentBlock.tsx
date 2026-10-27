@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
+import { ComboTag } from "@/components/ComboTag";
 import { CommissionAmount } from "@/components/CommissionAmount";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
@@ -56,7 +57,16 @@ export function AppointmentBlock({
   style,
 }: AppointmentBlockProps) {
   const customerName = appointment.customers?.name ?? "Cliente removido";
+  // Agendamento de pacote (`combo_id` preenchido, XOR com `service_id`, ADR-03):
+  // o nome do pacote toma o lugar do serviço avulso e ganha o selo "Pacote".
+  // Um `combo_id` só existe quando criado como pacote (segmento salão), então a
+  // exibição reage ao dado da linha, não ao segmento (não quebra se a flag mudar).
+  const isCombo = appointment.combo_id != null;
+  const comboName = appointment.combos?.name ?? "Pacote removido";
   const serviceName = appointment.services?.name ?? "Serviço removido";
+  // Nome principal: pacote tem prioridade; fallback defensivo quando ambos
+  // ausentes num shape inesperado.
+  const itemName = isCombo ? comboName : serviceName;
   const professionalName =
     appointment.professionals?.name ?? "Profissional removido";
   const startLabel = formatTimeInTenantTz(appointment.starts_at, timeZone);
@@ -66,15 +76,17 @@ export function AppointmentBlock({
     appointment.status === "confirmado" &&
     appointment.confirmed_via === "cliente_whatsapp";
 
+  // Texto do item para title/aria-label: "Pacote: <nome>" quando há combo.
+  const itemLabel = isCombo ? `Pacote: ${comboName}` : serviceName;
   const title =
-    `${startLabel}–${endLabel} · ${customerName} · ${serviceName} · ${professionalName}` +
+    `${startLabel}–${endLabel} · ${customerName} · ${itemLabel} · ${professionalName}` +
     (confirmedByClient ? " · Confirmado pelo cliente no WhatsApp" : "");
 
   return (
     <button
       type="button"
       title={title}
-      aria-label={`${customerName}, ${serviceName} às ${startLabel}`}
+      aria-label={`${customerName}, ${itemLabel} às ${startLabel}`}
       onClick={onOpen ? () => onOpen(appointment) : undefined}
       className={cn(
         "flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-md border border-border border-l-2 bg-card p-2 text-left",
@@ -104,14 +116,17 @@ export function AppointmentBlock({
             aria-hidden="true"
             className={cn(
               "inline-block h-2 w-2 shrink-0 rounded-full",
-              serviceColorDotClass(appointment.service_id),
+              // Chave de cor: `combo_id` quando é pacote, senão `service_id`
+              // (mesma função, outra chave — sem caso especial).
+              serviceColorDotClass(appointment.combo_id ?? appointment.service_id),
             )}
           />
           <span className="truncate">
-            {serviceName}
+            {itemName}
             {" · "}
             {professionalName}
           </span>
+          {isCombo ? <ComboTag /> : null}
         </span>
       ) : null}
       {/* Comissão só no bloco com espaço (não-compacto) e atendimento concluído,

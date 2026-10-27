@@ -12,6 +12,7 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
 import { CommissionAmount } from "@/components/CommissionAmount";
+import { ComboTag } from "@/components/ComboTag";
 import { SendMessageDialog } from "@/app/whatsapp/SendMessageDialog";
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { StatusBadge, getAppointmentStatusLabel } from "@/components/StatusBadge";
@@ -143,6 +144,13 @@ function AgendaItem({
   // Opt-in na borda: sem consentimento, a ação fica desabilitada com o motivo
   // em texto (defesa dupla; a trava real é o servidor).
   const optIn = appointment.customers?.whatsapp_opt_in ?? false;
+  // Agendamento de pacote (`combo_id` preenchido, XOR com `service_id`): o nome
+  // do pacote toma o lugar do serviço e ganha o selo "Pacote". Reage ao dado da
+  // linha, não ao segmento (um `combo_id` só existe no ramo salão).
+  const isCombo = appointment.combo_id != null;
+  const itemName = isCombo
+    ? (appointment.combos?.name ?? "Pacote removido")
+    : (appointment.services?.name ?? "Serviço removido");
 
   return (
     <li
@@ -161,19 +169,23 @@ function AgendaItem({
             <p className="font-medium text-foreground">
               {appointment.customers?.name ?? "Cliente removido"}
             </p>
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
               <span
                 aria-hidden="true"
                 className={cn(
                   "inline-block h-2 w-2 shrink-0 rounded-full",
-                  serviceColorDotClass(appointment.service_id),
+                  // Chave de cor: `combo_id` quando é pacote, senão `service_id`.
+                  serviceColorDotClass(
+                    appointment.combo_id ?? appointment.service_id,
+                  ),
                 )}
               />
               <span>
-                {appointment.services?.name ?? "Serviço removido"}
+                {itemName}
                 {" · "}
                 {appointment.professionals?.name ?? "Profissional removido"}
               </span>
+              {isCombo ? <ComboTag /> : null}
             </p>
             <p className="text-sm tabular-nums text-muted-foreground">
               {formatCentsToBRL(appointment.price_cents)}

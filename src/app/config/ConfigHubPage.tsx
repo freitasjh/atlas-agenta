@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import {
+  Layers,
   MessageCircle,
   MessageSquareText,
   Scissors,
@@ -15,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +35,8 @@ interface ConfigShortcut {
  * chegam nas ADRs seguintes; o atalho de Profissionais já aponta para o destino.
  */
 export function ConfigHubPage() {
-  const { canManageMessageTemplates } = usePermissions();
+  const { canManageMessageTemplates, canManageCatalog } = usePermissions();
+  const { combos: combosFeature } = useSegmentFeatures();
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
 
   const shortcuts: ConfigShortcut[] = [
@@ -42,6 +45,14 @@ export function ConfigHubPage() {
       titulo: servicosLabel,
       descricao: "O que você oferece: nome, duração, preço e quem executa.",
       icon: Scissors,
+    },
+    {
+      to: "/app/config/combos",
+      titulo: "Pacotes",
+      descricao:
+        "Combine procedimentos num preço fechado para seus clientes.",
+      icon: Layers,
+      visible: combosFeature && canManageCatalog,
     },
     {
       to: "/app/config/profissionais",

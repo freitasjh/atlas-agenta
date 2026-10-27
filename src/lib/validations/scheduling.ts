@@ -49,15 +49,39 @@ export const customerSchema = z.object({
 export type CustomerInput = z.infer<typeof customerSchema>;
 
 /**
- * `appointments` (form): cliente/profissional/serviço (uuid) + início
- * (data+hora). `endsAt` e `priceCents` **não** são campos do form — são
- * derivados no submit a partir do serviço escolhido (ADR-08) e recalculados/
- * travados no banco.
+ * `appointments` (form): cliente/profissional + início (data+hora) + a
+ * **seleção** do que será feito, em XOR serviço↔pacote (ADR-06). `endsAt` e
+ * `priceCents` **não** são campos do form — são derivados no submit a partir da
+ * seleção (duração do serviço, ou soma das durações do pacote) e travados no
+ * banco.
+ *
+ * `selection` é uma **união discriminada** por `kind`:
+ * - `{ kind: 'service', serviceId }` — procedimento avulso (caminho de ADR-05,
+ *   sem afrouxar nada: `serviceId` segue uuid obrigatório);
+ * - `{ kind: 'combo', comboId }` — pacote do salão (gated por
+ *   `useSegmentFeatures().combos`, só salão expõe o seletor de modo).
+ *
+ * O XOR real (exatamente um de `service_id`/`combo_id`) é o CHECK do banco
+ * (`appointments_service_xor_combo`, ADR-03); aqui a união garante que o payload
+ * do caminho feliz nunca envia os dois juntos. Mensagens em pt-BR.
  */
+const appointmentSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("service"),
+    serviceId: z.string().uuid("Selecione um serviço."),
+  }),
+  z.object({
+    kind: z.literal("combo"),
+    comboId: z.string().uuid("Selecione um pacote."),
+  }),
+]);
+
+export type AppointmentSelection = z.infer<typeof appointmentSelectionSchema>;
+
 export const appointmentSchema = z.object({
   customerId: z.string().uuid("Selecione um cliente."),
   professionalId: z.string().uuid("Selecione um profissional."),
-  serviceId: z.string().uuid("Selecione um serviço."),
+  selection: appointmentSelectionSchema,
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida."),

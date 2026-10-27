@@ -30,6 +30,33 @@ export const serviceSchema = z.object({
 export type ServiceInput = z.infer<typeof serviceSchema>;
 
 /**
+ * `combos` (pacotes do salão — ADR-04 Fase 1b). Espelha o CHECK do banco
+ * (migration `20250226094000_combos.sql`): `name` 1–120, `price_cents` inteiro
+ * `>= 0` (centavos, nunca float — RF-S13), `active`. `serviceIds` carrega o
+ * invariante de APP "pacote tem ≥1 serviço" (prd.md §7.3): o schema do banco
+ * (N:N) não exige "pelo menos um filho" no INSERT do pai, então a trava de ≥1 é
+ * da camada de app — aqui na UI + escrita transacional (criar combo → inserir
+ * vínculos). Mensagens em pt-BR.
+ */
+export const comboSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "Informe o nome do pacote.")
+    .max(120, "O nome deve ter no máximo 120 caracteres."),
+  priceCents: z
+    .number({ invalid_type_error: "Informe o preço." })
+    .int("O preço deve ser um valor inteiro em centavos.")
+    .min(0, "O preço não pode ser negativo."),
+  serviceIds: z
+    .array(z.string().uuid())
+    .min(1, "Selecione pelo menos um serviço."),
+  active: z.boolean(),
+});
+
+export type ComboInput = z.infer<typeof comboSchema>;
+
+/**
  * `professionals`: name 1–120, active. `profile_id` é somente-leitura.
  *
  * `commissionBps` é **opcional** (ADR-06): a % de comissão mora em
