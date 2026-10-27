@@ -25,7 +25,7 @@ function seedCache(queryClient: QueryClient): void {
 }
 
 describe("applyAuthEvent", () => {
-  it("SIGNED_OUT remove profile, tenant, customers e appointments", () => {
+  it("SIGNED_OUT esvazia profile, tenant, customers e appointments (sem dados)", () => {
     const queryClient = new QueryClient();
     seedCache(queryClient);
 
@@ -35,8 +35,38 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["tenant", "tenant-1"])).toBeUndefined();
     expect(queryClient.getQueryData(["customers"])).toBeUndefined();
     expect(queryClient.getQueryData(["appointments"])).toBeUndefined();
-    expect(queryClient.getQueryCache().find({ queryKey: ["profile"] })).toBeUndefined();
-    expect(queryClient.getQueryCache().find({ queryKey: ["customers"] })).toBeUndefined();
+  });
+
+  it("SIGNED_OUT com observador montado não expõe dados nem dispara queryFn no re-render", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["customers"], [{ id: "A-cliente" }]);
+    queryClient.setQueryData(["session"], sessionOf("user-1"));
+    // Simula a tela de clientes montada: observador ativo, sem refetch no mount.
+    const queryFn = vi.fn(async () => [{ id: "B-cliente" }]);
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["customers"],
+      queryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      expect(observer.getCurrentResult().data).toEqual([{ id: "A-cliente" }]);
+
+      applyAuthEvent(queryClient, "SIGNED_OUT", null);
+      expect(observer.getCurrentResult().data).toBeUndefined();
+
+      // Re-render da tela ainda montada: não pode buscar dados sem sessão.
+      observer.setOptions({
+        queryKey: ["customers"],
+        queryFn,
+        staleTime: Infinity,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(queryFn).not.toHaveBeenCalled();
+      expect(observer.getCurrentResult().data).toBeUndefined();
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("SIGNED_OUT mantém a chave session existindo com valor null", () => {

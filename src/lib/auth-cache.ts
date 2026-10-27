@@ -10,10 +10,14 @@ import { sessionQueryKey } from "@/lib/session-key";
  * Testing Library). Chamada pelo `AuthListener` dentro do callback.
  *
  * - Sempre grava a sessão em `["session"]`.
- * - Em `SIGNED_OUT` remove TODAS as demais queries, para que dados da conta
- *   anterior (clientes, agendamentos, ficha, etc.) não sobrem num navegador
- *   compartilhado. O guard redireciona e desmonta as telas, então não há
- *   observador ativo que precise ser notificado.
+ * - Em `SIGNED_OUT` esvazia TODAS as demais queries (`query.reset()` sobre o
+ *   cache), para que dados da conta anterior (clientes, agendamentos, ficha,
+ *   etc.) não sobrem num navegador compartilhado. `reset` mantém o objeto da
+ *   query no cache e não refaz fetch: observadores montados recebem o estado
+ *   vazio e, no re-render, não disparam `queryFn` sem sessão. Com
+ *   `removeQueries`, o re-render recriaria a query e buscaria dados sem
+ *   sessão. `resetQueries` também não serve: refaz as queries ativas.
+ *   O guard redireciona e desmonta as telas em seguida.
  * - Em `SIGNED_IN` de OUTRO usuário (login sem sair antes, pela URL de
  *   `/login` ou por outra aba) remove as chaves de identidade (`profile` e
  *   `tenant`) da conta anterior, para que não sejam refeitas com o token da
@@ -39,7 +43,11 @@ export function applyAuthEvent(
     query.queryKey[0] !== sessionQueryKey[0];
 
   if (event === "SIGNED_OUT") {
-    queryClient.removeQueries({ predicate: notSessionQuery });
+    // `query.reset()` sem refetch: `resetQueries` refaria as queries ativas.
+    queryClient
+      .getQueryCache()
+      .findAll({ predicate: notSessionQuery })
+      .forEach((query) => query.reset());
     return;
   }
 
