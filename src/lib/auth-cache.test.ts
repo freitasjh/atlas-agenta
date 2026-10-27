@@ -74,6 +74,40 @@ describe("applyAuthEvent", () => {
     }
   });
 
+  it("SIGNED_OUT com fetch em voo descarta a resposta tardia e mantém o cache vazio", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["session"], sessionOf("user-1"));
+    // Fetch de customers fica pendente até o teste resolver a resposta.
+    const pending: Array<{ resolve: (rows: { id: string }[]) => void }> = [];
+    const queryFn = vi.fn(
+      () =>
+        new Promise<{ id: string }[]>((resolve) => {
+          pending.push({ resolve });
+        }),
+    );
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["customers"],
+      queryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+
+      applyAuthEvent(queryClient, "SIGNED_OUT", null);
+
+      // Resposta tardia da conta anterior chega depois do logout.
+      pending[0].resolve([{ id: "A-cliente-user-1" }]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(queryClient.getQueryData(["customers"])).toBeUndefined();
+      expect(observer.getCurrentResult().data).toBeUndefined();
+      expect(queryFn).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("SIGNED_OUT mantém a chave session existindo com valor null", () => {
     const queryClient = new QueryClient();
     seedCache(queryClient);
@@ -196,11 +230,13 @@ describe("applyAuthEvent", () => {
     try {
       applyAuthEvent(queryClient, "SIGNED_IN", sessionOf("user-2"));
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(profileFetch).not.toHaveBeenCalled();
-      expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
+      // Prova principal: a identidade da conta anterior sai do cache.
       expect(queryClient.getQueryCache().find({ queryKey: ["profile", "user-1"] })).toBeUndefined();
+      expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
+
+      // Guarda opcional: nenhum fetch tardio do perfil da conta anterior.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(profileFetch).not.toHaveBeenCalled();
     } finally {
       unsubscribe();
     }
@@ -218,6 +254,7 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "c-2" }]);
     expect(queryClient.getQueryData(["session"])).toEqual(sessionOf("user-1"));
   });
+
   it("resposta em voo da conta anterior não repovoa o cache após a troca de conta", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["session"], sessionOf("user-1"));
