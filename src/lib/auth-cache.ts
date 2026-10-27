@@ -30,8 +30,13 @@ export function applyAuthEvent(
   queryClient.setQueryData(sessionQueryKey, session);
 
   const signedOut = event === "SIGNED_OUT";
+  // `previous === undefined` significa que ["session"] ainda não foi preenchida
+  // (ex.: carregamento com sessão salva). Não é troca de conta: preserva o cache.
+  // `previous === null` (após SIGNED_OUT) cai na remoção, que é inofensiva.
   const switchedUser =
-    event === "SIGNED_IN" && previous?.user.id !== session?.user.id;
+    event === "SIGNED_IN" &&
+    previous !== undefined &&
+    previous?.user.id !== session?.user.id;
 
   if (signedOut || switchedUser) {
     queryClient.removeQueries({

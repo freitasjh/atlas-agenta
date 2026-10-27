@@ -63,6 +63,21 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["session"])).toEqual(renewed);
   });
 
+  it("SIGNED_IN sem ['session'] prévia no cache preserva os dados e grava a sessão", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["profile", "user-1"], { role: "admin" });
+    queryClient.setQueryData(["tenant", "tenant-1"], { trade_name: "Studio" });
+    queryClient.setQueryData(["customers"], [{ id: "c-1" }]);
+    queryClient.setQueryData(["appointments"], [{ id: "a-1" }]);
+    const restored = sessionOf("user-1");
+    applyAuthEvent(queryClient, "SIGNED_IN", restored);
+    expect(queryClient.getQueryData(["profile", "user-1"])).toEqual({ role: "admin" });
+    expect(queryClient.getQueryData(["tenant", "tenant-1"])).toEqual({ trade_name: "Studio" });
+    expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "c-1" }]);
+    expect(queryClient.getQueryData(["appointments"])).toEqual([{ id: "a-1" }]);
+    expect(queryClient.getQueryData(["session"])).toEqual(restored);
+  });
+
   it("SIGNED_IN de outro usuário remove os dados da conta anterior e grava a nova sessão", () => {
     const queryClient = new QueryClient();
     seedCache(queryClient);
