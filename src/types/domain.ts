@@ -83,6 +83,36 @@ export interface Service {
 }
 
 /**
+ * Linha de `combos` (pacote/combo do salão — ADR-01 Fase 1b). Agrupa serviços
+ * do próprio tenant por um preço próprio fechado (`price_cents`, centavos
+ * inteiros — nunca float). `active` é soft-delete (sem DELETE físico na app). A
+ * duração do pacote NÃO mora aqui: é derivada da soma das durações dos serviços
+ * vinculados (D-3). Shape lido sob RLS — o cliente nunca envia `tenant_id`.
+ */
+export interface Combo {
+  id: string;
+  tenant_id: string;
+  name: string;
+  price_cents: number;
+  active: boolean;
+  created_at: string;
+}
+
+/**
+ * Linha de `combo_services` (vínculo N:N combo↔services — ADR-02 Fase 1b).
+ * FK composta por tenant dos dois lados garante que combo e serviço são do
+ * mesmo tenant (cross-tenant impossível no schema). Espelho de
+ * `ServiceProfessional`.
+ */
+export interface ComboService {
+  id: string;
+  tenant_id: string;
+  combo_id: string;
+  service_id: string;
+  created_at: string;
+}
+
+/**
  * Linha de `professionals`. `profile_id` é somente-leitura nesta fase.
  * `schedule_start_date`/`schedule_end_date` são a vigência da grade (dia de
  * calendário `YYYY-MM-DD`, ambas opcionais; `null` = sem limite naquela ponta).
@@ -199,16 +229,22 @@ export type AppointmentConfirmedVia =
   (typeof APPOINTMENT_CONFIRMED_VIA)[number];
 
 /**
- * Linha de `appointments`. `price_cents` é snapshot do serviço no ato;
+ * Linha de `appointments`. `price_cents` é snapshot do serviço/pacote no ato;
  * `starts_at`/`ends_at`/`confirmed_at`/`created_at` são `timestamptz` UTC.
  * `confirmed_via` registra a ORIGEM da confirmação (ver `AppointmentConfirmedVia`).
+ *
+ * `service_id` e `combo_id` estão em **XOR** (ADR-03, CHECK
+ * `appointments_service_xor_combo`): exatamente um dos dois é preenchido — um
+ * agendamento é de um serviço avulso OU de um pacote, nunca ambos nem nenhum.
+ * Por isso ambos são nullable no tipo; a garantia de "exatamente um" é do banco.
  */
 export interface Appointment {
   id: string;
   tenant_id: string;
   customer_id: string;
   professional_id: string;
-  service_id: string;
+  service_id: string | null;
+  combo_id: string | null;
   starts_at: string;
   ends_at: string;
   price_cents: number;
@@ -234,6 +270,14 @@ export interface Appointment {
 export interface AppointmentWithRelations extends Appointment {
   customers: { name: string; whatsapp_opt_in: boolean } | null;
   services: { name: string } | null;
+  /**
+   * Join embutido do pacote quando o agendamento veio de um combo (`combo_id`
+   * preenchido, XOR com `service_id`). `null` quando é serviço avulso ou a
+   * relação não foi selecionada — nullable defensivo, como `services`. O preço
+   * exibido continua vindo de `price_cents` (snapshot); `combos.price_cents` é
+   * o preço-base do pacote, mantido aqui para referência na exibição.
+   */
+  combos: { name: string; price_cents: number } | null;
   professionals: { name: string } | null;
   commission_cents: number | null;
 }

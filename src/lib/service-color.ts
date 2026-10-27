@@ -41,17 +41,24 @@ function fnv1a(value: string): number {
 }
 
 /**
- * Índice determinístico `0..SERVICE_COLOR_COUNT-1` para um `service_id`.
- * Mesmo id → sempre o mesmo índice.
+ * Índice determinístico `0..SERVICE_COLOR_COUNT-1` para uma chave de cor.
+ * Mesma chave → sempre o mesmo índice. Aceita `null`/`undefined` (agendamento
+ * de pacote tem `service_id` nulo — XOR com `combo_id`, ADR-03) degradando para
+ * a chave vazia de forma determinística; a chave de cor real do pacote é
+ * decidida na exibição da agenda (ADR-07). Comportamento inalterado para
+ * qualquer id não-nulo.
  */
-export function serviceColorIndex(serviceId: string): number {
-  return fnv1a(serviceId) % SERVICE_COLOR_COUNT;
+export function serviceColorIndex(serviceId: string | null | undefined): number {
+  return fnv1a(serviceId ?? "") % SERVICE_COLOR_COUNT;
 }
 
 /**
- * Classe Tailwind do dot de cor (`bg-service-N`) para um `service_id`.
- * Mesmo id → sempre a mesma classe.
+ * Classe Tailwind do dot de cor (`bg-service-N`) para uma chave de cor.
+ * Mesma chave → sempre a mesma classe. `null`/`undefined` degrada para a chave
+ * vazia (ver `serviceColorIndex`).
  */
-export function serviceColorDotClass(serviceId: string): string {
+export function serviceColorDotClass(
+  serviceId: string | null | undefined,
+): string {
   return SERVICE_DOT_CLASSES[serviceColorIndex(serviceId)];
 }

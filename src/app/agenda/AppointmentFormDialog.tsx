@@ -162,7 +162,10 @@ export function AppointmentFormDialog({
       form.reset({
         customerId: appointment.customer_id,
         professionalId: appointment.professional_id,
-        serviceId: appointment.service_id,
+        // `service_id` é nullable (XOR com `combo_id`, ADR-03); hoje só existem
+        // agendamentos de serviço, então o `?? ""` preserva o sentinela vazio
+        // do form. O modo "pacote" entra na ADR-06.
+        serviceId: appointment.service_id ?? "",
         date: `${local.year.toString().padStart(4, "0")}-${local.month
           .toString()
           .padStart(2, "0")}-${local.day.toString().padStart(2, "0")}`,

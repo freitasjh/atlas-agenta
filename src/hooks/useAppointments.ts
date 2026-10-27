@@ -61,7 +61,12 @@ export const appointmentRowSchema = z
     tenant_id: z.string(),
     customer_id: z.string(),
     professional_id: z.string(),
-    service_id: z.string(),
+    // XOR com `combo_id` (ADR-03): exatamente um vem preenchido. Ambos nullable
+    // no shape lido; a garantia de "exatamente um" é do CHECK no banco.
+    service_id: z.string().nullable(),
+    // `combo_id` pode não vir na resposta até o SELECT embutir o pacote
+    // (ADR-06/07); ausente → `undefined` → normalizado para `null`.
+    combo_id: z.string().nullable().optional(),
     starts_at: z.string(),
     ends_at: z.string(),
     price_cents: z.number().int(),
@@ -79,13 +84,21 @@ export const appointmentRowSchema = z
         price_cents: z.number().int(),
       })
       .nullable(),
+    // Embed do pacote (ADR-04 contrato; o SELECT passa a trazê-lo em ADR-06/07).
+    // Ausente na resposta atual → `undefined` → normalizado para `null`.
+    combos: z
+      .object({ name: z.string(), price_cents: z.number().int() })
+      .nullable()
+      .optional(),
     professionals: z.object({ name: z.string() }).nullable(),
     // Pode não vir na resposta (ex.: insert/update que não seleciona o embed):
     // ausente → `undefined` → normaliza para `null`.
     appointment_commissions: commissionEmbedSchema.optional(),
   })
-  .transform(({ appointment_commissions, ...rest }) => ({
+  .transform(({ appointment_commissions, combo_id, combos, ...rest }) => ({
     ...rest,
+    combo_id: combo_id ?? null,
+    combos: combos ?? null,
     commission_cents: normalizeCommissionCents(appointment_commissions ?? null),
   }));
 

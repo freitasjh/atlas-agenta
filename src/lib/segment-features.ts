@@ -27,17 +27,23 @@ export interface SegmentFeatures {
    * clínica, salão e legado (`null`) não veem nenhum ponto de entrada.
    */
   commission: boolean;
+  /**
+   * Pacotes/combos de serviços (Fase 1b). Habilitada só para `salao`;
+   * barbearia, clínica e legado (`null`) não veem nenhum ponto de entrada.
+   */
+  combos: boolean;
 }
 
 /** Flags com tudo desligado — fallback para legado/valor sujo. */
 const NO_FEATURES: SegmentFeatures = {
   commission: false,
+  combos: false,
 };
 
 /**
- * Resolve as features de um ramo. Devolve `{ commission: true }` apenas para
- * `barbearia`; para qualquer outro ramo conhecido, `null`/`undefined` ou valor
- * fora do enum, devolve `{ commission: false }`.
+ * Resolve as features de um ramo. Liga `commission` só para `barbearia` e
+ * `combos` só para `salao`; para qualquer outro ramo conhecido,
+ * `null`/`undefined` ou valor fora do enum, devolve tudo desligado.
  *
  * Função pura: **nunca lança, nunca devolve `undefined`** — a UI sempre recebe
  * um objeto de flags completo, cobrindo tenant legado e qualquer valor sujo.
@@ -46,7 +52,10 @@ export function resolveFeatures(
   segment: BusinessSegment | null | undefined,
 ): SegmentFeatures {
   if (segment === "barbearia") {
-    return { commission: true };
+    return { commission: true, combos: false };
+  }
+  if (segment === "salao") {
+    return { commission: false, combos: true };
   }
   return NO_FEATURES;
 }
