@@ -4,7 +4,9 @@
 --
 -- Modelo append-only (PRD RF-04, D-01): correção é um registro NOVO que aponta para o original
 -- por `supersedes_id`. `supersedes_id is null` = registro original. Não há UPDATE nem DELETE
--- nesta migration; o revoke de grants de escrita e o trigger de imutabilidade entram na ADR-07.
+-- nesta migration; o trigger de imutabilidade entra na ADR-07. Os grants de `anon` e
+-- `authenticated` são revogados aqui (TRUNCATE não passa por RLS); a ADR-06 devolve select e
+-- insert com policy.
 --
 -- Campos de conteúdo (PRD D-05): alergias (até 500), medicamentos (até 500) e observações do
 -- atendimento (até 2000). Não há campo de histórico relevante.
@@ -33,9 +35,14 @@
 -- `created_by` default `auth.uid()`. Fora de sessão de usuário (seed, service role) o banco não
 -- preenche sozinho: quem insere deve passar `tenant_id` e `created_by` explicitamente.
 --
--- Idempotência: `create ... if not exists` em tabela e índices; constraints ficam dentro do
--- `create table`, então um re-apply não recria nada. Migration aplicada não é editada.
--- Nenhum segredo no SQL.
+-- Ciclo na cadeia de correção: `clinical_records_supersedes_not_self` barra auto-referência, e o
+-- trigger `before insert` exige que o registro apontado já exista. Isso cobre o ciclo de dois
+-- registros num mesmo insert, que a FK sozinha aceitaria (ela só checa no fim do statement).
+--
+-- Idempotência: `create table if not exists` e `create index if not exists`; as constraints ficam
+-- dentro do `create table`, então um re-apply não as recria. A função usa `create or replace`;
+-- o trigger é recriado com `drop trigger if exists` antes de `create trigger`. `revoke` é
+-- idempotente. Nenhum segredo no SQL.
 
 -- ============================================================================
 -- clinical_records — ficha do cliente (registro append-only).
@@ -47,10 +54,11 @@ create table if not exists clinical_records (
   appointment_id  uuid not null,
   -- null = registro original; preenchido = correção do registro apontado.
   supersedes_id   uuid null,
-  -- conteúdo clínico (PRD D-05). Limites aplicados sobre o texto sem espaços das pontas.
-  allergies       text null check (allergies is null or char_length(btrim(allergies)) between 1 and 500),
-  medications     text null check (medications is null or char_length(btrim(medications)) between 1 and 500),
-  clinical_notes  text null check (clinical_notes is null or char_length(btrim(clinical_notes)) between 1 and 2000),
+  -- conteúdo clínico (PRD D-05). O valor gravado já vem sem espaços nas pontas (`x = btrim(x)`),
+  -- então o limite de caracteres vale para o que de fato fica armazenado.
+  allergies       text null check (allergies is null or (allergies = btrim(allergies) and char_length(allergies) between 1 and 500)),
+  medications     text null check (medications is null or (medications = btrim(medications) and char_length(medications) between 1 and 500)),
+  clinical_notes  text null check (clinical_notes is null or (clinical_notes = btrim(clinical_notes) and char_length(clinical_notes) between 1 and 2000)),
   created_by      uuid not null default auth.uid(),
   created_at      timestamptz not null default now(),
   -- conteúdo mínimo (RF-03): ao menos um campo com texto depois de btrim.
@@ -59,6 +67,8 @@ create table if not exists clinical_records (
     or nullif(btrim(medications), '') is not null
     or nullif(btrim(clinical_notes), '') is not null
   ),
+  -- um registro não pode ser correção de si mesmo.
+  constraint clinical_records_supersedes_not_self check (supersedes_id is null or supersedes_id <> id),
   -- alvo da FK composta de correção: inclui atendimento e cliente para amarrar a cadeia.
   constraint clinical_records_tenant_id_unique unique (tenant_id, id, appointment_id, customer_id),
   constraint clinical_records_customer_fk
@@ -86,3 +96,35 @@ create index if not exists clinical_records_tenant_customer_created_idx
 
 -- RLS ligado, sem policy: deny-all para anon e authenticated até a ADR-06.
 alter table clinical_records enable row level security;
+
+-- Grants: o padrão do Supabase dá a anon e authenticated todos os privilégios de tabela. RLS não
+-- cobre TRUNCATE, então os grants saem já nesta migration. service_role mantém acesso (bypass de
+-- RLS), tratado na ADR-07.
+revoke all on table clinical_records from anon, authenticated;
+
+-- Ciclo na cadeia: o registro apontado por `supersedes_id` precisa existir ANTES da linha nova.
+-- Trigger before insert, porque a FK só checa no fim do statement e aceitaria dois registros
+-- que se apontam no mesmo insert. Security definer só para ler a tabela sem RLS; devolve erro
+-- fixo, sem eco de valor. Usa o SQLSTATE e o nome da FK, para o mapeamento da ADR-12.
+create or replace function clinical_records_check_supersedes_exists()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.supersedes_id is not null and not exists (
+    select 1 from clinical_records r
+    where r.tenant_id = new.tenant_id and r.id = new.supersedes_id
+  ) then
+    raise exception 'supersedes_id does not reference an existing record'
+      using errcode = '23503', constraint = 'clinical_records_supersedes_fk';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists clinical_records_supersedes_exists on clinical_records;
+create trigger clinical_records_supersedes_exists
+  before insert on clinical_records
+  for each row execute function clinical_records_check_supersedes_exists();

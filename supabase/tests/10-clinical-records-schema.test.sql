@@ -6,7 +6,7 @@
 -- rollback: nada persiste no banco de teste.
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(14);
+select plan(18);
 
 -- Fixture: tenant A (clínica) com cliente, profissional, serviço e três atendimentos.
 -- Tenant B com um cliente próprio, para provar a amarração entre tenants.
@@ -192,6 +192,57 @@ select throws_ok(
   '23503',
   'insert or update on table "clinical_records" violates foreign key constraint "clinical_records_supersedes_fk"',
   'correção de registro de outro atendimento do mesmo cliente é recusada pela FK de correção'
+);
+
+-- 15. Registro que aponta para si mesmo é recusado. O trigger roda antes da check constraint
+-- (BEFORE triggers rodam antes das checks), então o rejeitado é o trigger, com 23503.
+select throws_ok(
+  $sql$
+    insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+    values ('c7777777-7777-4777-8777-777777777771', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
+            'c7777777-7777-4777-8777-777777777771', 'Auto-correção', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23503',
+  null,
+  'registro que aponta para si mesmo é recusado'
+);
+
+-- 16. Dois registros que se apontam no mesmo insert são recusados. O primeiro aponta para um id
+-- que ainda não existe no momento da linha, então o trigger recusa antes da FK ver o segundo.
+select throws_ok(
+  $sql$
+    insert into clinical_records (id, tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by) values
+      ('c8888888-8888-4888-8888-888888888881', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+       'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
+       'c8888888-8888-4888-8888-888888888882', 'Ciclo 1', '99999999-9999-4999-8999-999999999999'),
+      ('c8888888-8888-4888-8888-888888888882', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+       'a3333333-3333-4333-8333-333333333331', 'a4444444-4444-4444-8444-444444444442',
+       'c8888888-8888-4888-8888-888888888881', 'Ciclo 2', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23503',
+  null,
+  'dois registros que se apontam no mesmo insert são recusados'
+);
+
+-- 17. Campo com espaço nas pontas é recusado: o valor gravado precisa vir sem espaços.
+select throws_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, medications, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444442', '  Dipirona  ', '99999999-9999-4999-8999-999999999999')
+  $sql$,
+  '23514',
+  null,
+  'campo com espaço nas pontas é recusado'
+);
+
+-- 18. anon e authenticated não têm nenhum privilégio de tabela em clinical_records (TRUNCATE
+-- incluído, porque RLS não o cobre).
+select ok(
+  not has_table_privilege('anon', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+  and not has_table_privilege('authenticated', 'public.clinical_records', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE'),
+  'anon e authenticated sem privilégio de tabela em clinical_records'
 );
 
 select * from finish();
