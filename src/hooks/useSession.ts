@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import type { AuthSession } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
+import { sessionQueryKey } from "@/lib/session-key";
 
-/** Chave de cache da sessão Supabase. O `AuthListener` escreve nela. */
-export const sessionQueryKey = ["session"] as const;
+export { sessionQueryKey };
 
 /**
  * Sessão Supabase como fonte única de verdade (TanStack Query).

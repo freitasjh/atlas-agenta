@@ -5,18 +5,23 @@ import { describe, expect, it } from "vitest";
 import { applyAuthEvent } from "@/lib/auth-cache";
 
 /**
- * ADR-02: limpeza do cache de dados no evento SIGNED_OUT (RF-11, AC-15).
+ * ADR-02: limpeza do cache de dados no login/logout (RF-11, AC-15).
  * QueryClient real, sem rede.
  */
 
-const fakeSession = { access_token: "token-fake" } as unknown as AuthSession;
+function sessionOf(userId: string): AuthSession {
+  return {
+    access_token: `token-${userId}`,
+    user: { id: userId },
+  } as unknown as AuthSession;
+}
 
 function seedCache(queryClient: QueryClient): void {
   queryClient.setQueryData(["profile", "user-1"], { role: "admin" });
   queryClient.setQueryData(["tenant", "tenant-1"], { trade_name: "Studio" });
   queryClient.setQueryData(["customers"], [{ id: "c-1" }]);
   queryClient.setQueryData(["appointments"], [{ id: "a-1" }]);
-  queryClient.setQueryData(["session"], fakeSession);
+  queryClient.setQueryData(["session"], sessionOf("user-1"));
 }
 
 describe("applyAuthEvent", () => {
@@ -44,16 +49,31 @@ describe("applyAuthEvent", () => {
     expect(queryClient.getQueryData(["session"])).toBeNull();
   });
 
-  it("SIGNED_IN não remove nenhuma query e grava a sessão", () => {
+  it("SIGNED_IN do mesmo usuário não remove nenhuma query", () => {
     const queryClient = new QueryClient();
     seedCache(queryClient);
+    const renewed = sessionOf("user-1");
 
-    applyAuthEvent(queryClient, "SIGNED_IN", fakeSession);
+    applyAuthEvent(queryClient, "SIGNED_IN", renewed);
 
     expect(queryClient.getQueryData(["profile", "user-1"])).toEqual({ role: "admin" });
     expect(queryClient.getQueryData(["tenant", "tenant-1"])).toEqual({ trade_name: "Studio" });
     expect(queryClient.getQueryData(["customers"])).toEqual([{ id: "c-1" }]);
     expect(queryClient.getQueryData(["appointments"])).toEqual([{ id: "a-1" }]);
-    expect(queryClient.getQueryData(["session"])).toBe(fakeSession);
+    expect(queryClient.getQueryData(["session"])).toEqual(renewed);
+  });
+
+  it("SIGNED_IN de outro usuário remove os dados da conta anterior e grava a nova sessão", () => {
+    const queryClient = new QueryClient();
+    seedCache(queryClient);
+    const newSession = sessionOf("user-2");
+
+    applyAuthEvent(queryClient, "SIGNED_IN", newSession);
+
+    expect(queryClient.getQueryData(["profile", "user-1"])).toBeUndefined();
+    expect(queryClient.getQueryData(["tenant", "tenant-1"])).toBeUndefined();
+    expect(queryClient.getQueryData(["customers"])).toBeUndefined();
+    expect(queryClient.getQueryData(["appointments"])).toBeUndefined();
+    expect(queryClient.getQueryData(["session"])).toEqual(newSession);
   });
 });

@@ -12,7 +12,9 @@ import { applyAuthEvent } from "@/lib/auth-cache";
  *
  * Em `SIGNED_OUT`, `applyAuthEvent` remove todo o cache de dados do usuário
  * anterior (preservando a sessão), para não servir dados obsoletos antes do
- * redirect do guard nem vazar dados entre contas no mesmo navegador.
+ * redirect do guard. Em `SIGNED_IN` de OUTRA conta (login sem sair antes) faz
+ * o mesmo, para que a nova conta não veja clientes ou agendamentos da anterior
+ * no cache enquanto o refetch não termina.
  *
  * Único consumidor que toca o client no LOAD (montado no `RootLayout` que
  * envolve todas as rotas). Por isso traz o guard por `isSupabaseConfigured`:
