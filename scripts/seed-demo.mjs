@@ -28,19 +28,19 @@ const DEMO_TENANTS = [
   {
     segment: 'barbearia',
     tradeName: 'Barbearia Demo',
-    phone: '(11) 90000-0001',
+    phone: '(00) 00000-0001',
     admin: { email: 'admin.barbearia@demo.invalido', fullName: 'Admin Demo Barbearia' },
   },
   {
     segment: 'salao',
     tradeName: 'Salão Demo',
-    phone: '(11) 90000-0002',
+    phone: '(00) 00000-0002',
     admin: { email: 'admin.salao@demo.invalido', fullName: 'Admin Demo Salão' },
   },
   {
     segment: 'clinica',
     tradeName: 'Clínica Demo',
-    phone: '(11) 90000-0003',
+    phone: '(00) 00000-0003',
     admin: { email: 'admin.clinica@demo.invalido', fullName: 'Admin Demo Clínica' },
   },
 ];
