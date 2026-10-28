@@ -3,18 +3,24 @@
  * seed-demo.mjs: base de exemplo local, parte 1 (ADR-08).
  *
  * Cria um tenant por ramo (barbearia, salão e clínica), com um usuário administrador em cada um.
- * Idempotente: rodar de novo reaproveita tenants e usuários, sem duplicar.
+ * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
+ * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
  *
  * Uso (somente com `supabase start` local):
  *   ATLAS_DEMO_SEED=1 \
  *   SUPABASE_URL=http://127.0.0.1:54321 \
  *   SUPABASE_SERVICE_ROLE_KEY=<service role local> \
  *   ATLAS_DEMO_PASSWORD=<6+ caracteres> \
+ *   [ATLAS_DEMO_REALIGN_PASSWORD=1] \
  *   node scripts/seed-demo.mjs
+ *
+ * ATLAS_DEMO_REALIGN_PASSWORD=1 realinha a senha dos admins já existentes à ATLAS_DEMO_PASSWORD.
+ * É opção explícita: sem ela, a senha atual de um usuário existente é mantida.
  *
  * Segurança:
  * - Service role e senha vêm só do ambiente. Nunca são impressas nem gravadas em arquivo.
  * - Recusa qualquer host que não seja 127.0.0.1 ou localhost, antes de qualquer requisição.
+ *   A guarda olha só a URL: um túnel que mapeie projeto remoto para localhost passa por ela.
  * - E-mails usam o domínio reservado `.invalido` (RFC 2606), exigido pela guarda do harness pgTAP.
  * - Dados fictícios. Nada aqui é dado real de cliente.
  */
@@ -81,7 +87,12 @@ function readConfig(env) {
     fail('SUPABASE_SERVICE_ROLE_KEY não definida.');
   }
 
-  return { supabaseUrl, password, serviceRoleKey };
+  return {
+    supabaseUrl,
+    password,
+    serviceRoleKey,
+    realignPassword: env.ATLAS_DEMO_REALIGN_PASSWORD === '1',
+  };
 }
 
 /** Busca usuário por e-mail varrendo as páginas do Auth admin. Retorna null se não existir. */
@@ -107,50 +118,69 @@ async function findTenantsByNaturalKey(admin, def) {
   return data;
 }
 
-/**
- * Garante o tenant e o admin de um ramo.
- * A criação do usuário dispara o trigger handle_new_user, que cria tenant + profile admin
- * e os templates de mensagem do ramo. Depois ajustamos o tenant para o padrão de demonstração.
- */
-async function ensureTenantAdmin(admin, def, password) {
-  let user = await findUserByEmail(admin, def.admin.email);
-  const created = user === null;
-
-  if (created) {
-    // Tenant sem usuário administrador (órfão, após remoção do usuário): criar de novo duplicaria a empresa.
-    const existingTenants = await findTenantsByNaturalKey(admin, def);
-    if (existingTenants.length > 0) {
-      throw new Error(
-        `tenant "${def.tradeName}" (${def.segment}) existe sem usuário administrador. Remova a linha órfã em tenants no banco local e rode de novo.`,
-      );
-    }
-    const { data, error } = await admin.auth.admin.createUser({
-      email: def.admin.email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        trade_name: def.tradeName,
-        full_name: def.admin.fullName,
-        segment: def.segment,
-      },
-    });
-    if (error) throw error;
-    user = data.user;
-  } else {
-    // Mantém a senha alinhada ao ambiente atual, para o login por papel continuar funcionando.
-    const { error } = await admin.auth.admin.updateUserById(user.id, { password });
-    if (error) throw error;
-  }
-
-  const { data: profile, error: profileError } = await admin
+/** Lê o perfil do admin e falha com instrução de limpeza se ele não existir ou estiver fora do esperado. */
+async function loadAdminProfile(admin, def, userId) {
+  const { data: profile, error } = await admin
     .from('profiles')
     .select('tenant_id, role')
-    .eq('id', user.id)
-    .single();
-  if (profileError) throw profileError;
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!profile) {
+    throw new Error(
+      `usuário ${def.admin.email} existe sem perfil. Remova o usuário e o tenant "${def.tradeName}" (${def.segment}) no banco local e rode de novo.`,
+    );
+  }
   if (profile.role !== 'admin' || !profile.tenant_id) {
     throw new Error(`perfil de ${def.admin.email} fora do esperado (papel ou tenant ausente).`);
   }
+  return profile;
+}
+
+/**
+ * Garante o tenant e o admin de um ramo.
+ *
+ * - Usuário novo: createUser dispara o trigger handle_new_user, que cria tenant + profile admin
+ *   e os templates do ramo. Em seguida o tenant recebe o padrão de demonstração.
+ * - Usuário existente: não altera tenant nem senha, salvo com realignPassword ativo.
+ *
+ * Retorna { created, realigned }.
+ */
+async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
+  const existing = await findUserByEmail(admin, def.admin.email);
+
+  if (existing) {
+    let realigned = false;
+    if (realignPassword) {
+      const { error } = await admin.auth.admin.updateUserById(existing.id, { password });
+      if (error) throw error;
+      realigned = true;
+    }
+    await loadAdminProfile(admin, def, existing.id);
+    return { created: false, realigned };
+  }
+
+  // Tenant sem usuário administrador (órfão, após remoção do usuário): criar de novo duplicaria a empresa.
+  const existingTenants = await findTenantsByNaturalKey(admin, def);
+  if (existingTenants.length > 0) {
+    throw new Error(
+      `tenant "${def.tradeName}" (${def.segment}) existe sem usuário administrador. Remova a linha órfã em tenants no banco local e rode de novo.`,
+    );
+  }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email: def.admin.email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      trade_name: def.tradeName,
+      full_name: def.admin.fullName,
+      segment: def.segment,
+    },
+  });
+  if (error) throw error;
+
+  const profile = await loadAdminProfile(admin, def, data.user.id);
 
   const { error: tenantError } = await admin
     .from('tenants')
@@ -169,19 +199,21 @@ async function ensureTenantAdmin(admin, def, password) {
     .eq('id', profile.tenant_id);
   if (tenantError) throw tenantError;
 
-  return { created, tenantId: profile.tenant_id };
+  return { created: true, realigned: false };
 }
 
 async function main() {
-  const { supabaseUrl, password, serviceRoleKey } = readConfig(process.env);
+  const { supabaseUrl, password, serviceRoleKey, realignPassword } = readConfig(process.env);
 
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   for (const def of DEMO_TENANTS) {
-    const { created } = await ensureTenantAdmin(admin, def, password);
-    console.log(`${created ? 'criado' : 'reaproveitado'}: ${def.segment} (${def.admin.email})`);
+    const { created, realigned } = await ensureTenantAdmin(admin, def, { password, realignPassword });
+    const status = created ? 'criado' : 'reaproveitado (estado preservado)';
+    const suffix = realigned ? ', senha realinhada' : '';
+    console.log(`${status}: ${def.segment} (${def.admin.email})${suffix}`);
   }
 }
 
