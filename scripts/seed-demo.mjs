@@ -11,7 +11,7 @@
  * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
  * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade, a distribuição
  * de status e o confirmed_via 'manual' dos confirmados da demonstração, a etapa é pulada. Qualquer outra
- * situação (ex.: execução anterior interrompida, ou status alterado pela UI) interrompe a etapa do ramo
+ * situação (ex.: execução anterior interrompida, ou agendamento criado, removido ou com status alterado pela UI) interrompe a etapa do ramo
  * com erro, sem gravar nada na agenda.
  * Um erro em um ramo não impede os demais; o processo termina com código 1 se algum ramo falhar.
  * Tenant fora do padrão de demonstração não recebe dados operacionais; o aviso indica a correção.
@@ -493,7 +493,7 @@ function sameStatusCounts(actual, expected) {
  * - Quantidade igual, status certos, mas confirmado sem confirmed_via 'manual': lança erro. Base gravada
  *   por versão anterior do seed.
  * - Qualquer outra quantidade: lança erro sem gravar nada. Isso acontece quando uma execução anterior
- *   parou no meio; o tenant precisa ser limpo antes de rodar de novo.
+ *   parou no meio, ou quando a UI criou ou removeu agendamento; o tenant precisa ser limpo antes de rodar de novo.
  * Cada agendamento nasce em 'pendente' e avança pelas transições válidas, para que o trigger de
  * máquina de estados e o de comissão rodem como em produção.
  * Retorna a quantidade criada, ou null se a etapa foi pulada.
@@ -517,7 +517,7 @@ async function seedAppointments(admin, tenantId, spec, refs) {
   }
   if (current > 0) {
     throw new Error(
-      `o tenant ${spec.label} tem ${current} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+      `o tenant ${spec.label} tem ${current} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio, ou um agendamento foi criado ou removido pela UI. Apague os agendamentos desse tenant no banco local e rode de novo.`,
     );
   }
 
