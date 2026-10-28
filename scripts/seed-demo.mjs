@@ -9,7 +9,9 @@
  *
  * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
  * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
- * A agenda só é semeada se o tenant ainda não tiver nenhum agendamento.
+ * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade da demonstração,
+ * a etapa é pulada. Qualquer outra quantidade (ex.: execução anterior interrompida) para o script com
+ * erro, sem alterar nada.
  *
  * Uso (somente com `supabase start` local):
  *   ATLAS_DEMO_SEED=1 \
@@ -62,7 +64,8 @@ const TRANSITION_PATH = {
  * repetida aqui; ao mudar uma, mude a outra.
  *
  * Agendamento: `day` é a quantidade de dias a partir de hoje (fuso do tenant); `target` é o
- * estado final. O seed cria em 'pendente' e avança pelas transições válidas do banco.
+ * estado final. O seed cria em 'pendente' e avança pelas transições válidas do banco. Se a data
+ * cair em domingo (sem grade), o agendamento vai para a segunda seguinte.
  */
 const BARBEARIA_OPERATIONAL = {
   label: 'Barbearia',
@@ -359,6 +362,15 @@ function addDays(ymd, days) {
   return date.toISOString().slice(0, 10);
 }
 
+/** Dia de atendimento: se `ymd` cair fora de WEEK_DAYS (domingo), avança até o próximo dia de grade. */
+function nextWorkday(ymd) {
+  let current = ymd;
+  while (!WEEK_DAYS.includes(new Date(`${current}T00:00:00Z`).getUTCDay())) {
+    current = addDays(current, 1);
+  }
+  return current;
+}
+
 /** Converte dia (AAAA-MM-DD) e hora (HH:MM) do fuso do tenant para instante UTC em ISO. */
 function instantAt(ymd, time) {
   return new Date(`${ymd}T${time}:00${TIMEZONE_OFFSET}`).toISOString();
@@ -386,6 +398,40 @@ async function findOrCreate(admin, table, match, row = {}) {
   return inserted.id;
 }
 
+/**
+ * Cliente demo pela chave natural (tenant_id, phone). O telefone é E.164-BR de 13 dígitos (+55, DDD 00
+ * reservado para ficção, 9 + 8 dígitos), o mesmo formato que `toE164BR` devolve na UI. Assim, editar o
+ * cliente pela UI e rodar o seed de novo não cria duplicata.
+ * Linha gravada pela versão anterior do seed (telefone de 10 dígitos após o `+`) é migrada para o
+ * telefone canônico, identificada pelo nome. Só migra se o telefone canônico ainda não existir.
+ */
+async function findOrCreateCustomer(admin, tenantId, spec, index) {
+  const seq = String(index + 1).padStart(3, '0');
+  const name = `Cliente ${spec.label} ${String(index + 1).padStart(2, '0')}`;
+  const phone = `+550090000${spec.phoneSegmentDigit}${seq}`;
+  const legacyPhone = `+550000${spec.phoneSegmentDigit}${seq}`;
+
+  const { data: canonical, error } = await admin
+    .from('customers')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('phone', phone)
+    .limit(1);
+  if (error) throw error;
+
+  if (canonical.length === 0) {
+    const { error: migrateError } = await admin
+      .from('customers')
+      .update({ phone })
+      .eq('tenant_id', tenantId)
+      .eq('name', name)
+      .eq('phone', legacyPhone);
+    if (migrateError) throw migrateError;
+  }
+
+  return findOrCreate(admin, 'customers', { tenant_id: tenantId, phone }, { name, whatsapp_opt_in: false });
+}
+
 /** Vínculo N:N ou taxa: insere se não existir e mantém o que já existe (ON CONFLICT DO NOTHING). */
 async function linkIgnoringDuplicates(admin, table, row, onConflict) {
   const { error } = await admin.from(table).upsert(row, { onConflict, ignoreDuplicates: true });
@@ -393,7 +439,11 @@ async function linkIgnoringDuplicates(admin, table, row, onConflict) {
 }
 
 /**
- * Cria a agenda de demonstração do tenant. Só roda se o tenant não tiver agendamento nenhum.
+ * Cria a agenda de demonstração do tenant.
+ * - Tenant sem agendamento: cria a agenda inteira.
+ * - Tenant já com a quantidade da demonstração: pula a etapa (null).
+ * - Qualquer outra quantidade: lança erro sem gravar nada. Isso acontece quando uma execução anterior
+ *   parou no meio; o tenant precisa ser limpo antes de rodar de novo.
  * Cada agendamento nasce em 'pendente' e avança pelas transições válidas, para que o trigger de
  * máquina de estados e o de comissão rodem como em produção.
  * Retorna a quantidade criada, ou null se a etapa foi pulada.
@@ -404,13 +454,19 @@ async function seedAppointments(admin, tenantId, spec, refs) {
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId);
   if (error) throw error;
-  if (count > 0) return null;
+  const expected = spec.appointments.length;
+  if (count === expected) return null;
+  if (count > 0) {
+    throw new Error(
+      `o tenant ${spec.label} tem ${count} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+    );
+  }
 
   const today = todayInTimezone(TIMEZONE);
   let created = 0;
   for (const [index, appt] of spec.appointments.entries()) {
     const line = appt.combo ? refs.combos.get(appt.combo) : refs.services.get(appt.service);
-    const startsAt = instantAt(addDays(today, appt.day), appt.time);
+    const startsAt = instantAt(nextWorkday(addDays(today, appt.day)), appt.time);
     const endsAt = new Date(Date.parse(startsAt) + line.durationMinutes * 60_000).toISOString();
 
     const { data: inserted, error: insertError } = await admin
@@ -522,16 +578,7 @@ async function seedOperational(admin, tenantId, spec) {
 
   const customers = [];
   for (let i = 0; i < spec.customerCount; i += 1) {
-    const customerId = await findOrCreate(
-      admin,
-      'customers',
-      { tenant_id: tenantId, phone: `+550000${spec.phoneSegmentDigit}${String(i + 1).padStart(3, '0')}` },
-      {
-        name: `Cliente ${spec.label} ${String(i + 1).padStart(2, '0')}`,
-        whatsapp_opt_in: false,
-      },
-    );
-    customers.push(customerId);
+    customers.push(await findOrCreateCustomer(admin, tenantId, spec, i));
   }
 
   return seedAppointments(admin, tenantId, spec, { professionals, services, combos, customers });
