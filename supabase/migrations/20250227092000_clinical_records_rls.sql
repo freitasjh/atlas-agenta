@@ -4,8 +4,10 @@
 --   - grants: authenticated recebe SOMENTE select e insert. A RLS filtra as linhas. Sem UPDATE,
 --     DELETE e TRUNCATE. anon segue sem nenhum privilégio (a ADR-05 revogou tudo).
 --   - policy de SELECT: admin lê todo o tenant; professional lê só registros de atendimentos em
---     que é o profissional responsável (professionals.profile_id = auth.uid()); recepção e
---     super_admin não entram em nenhum ramo, então recebem zero linhas.
+--     que é o profissional responsável (professionals.profile_id = auth.uid() e active = true);
+--     recepção e super_admin não entram em nenhum ramo, então recebem zero linhas.
+--     Profissional inativo (active = false) perde o acesso à ficha, mesmo com vínculo (decisão do PO
+--     no review da ADR-06). Escopo restrito à ficha: agenda e comissão seguem como estão.
 --   - policy de INSERT (WITH CHECK): mesmo predicado de vínculo, mais:
 --       * created_by = auth.uid() e created_at = now() (o default já grava now(); a app não envia
 --         created_at, e um valor forjado é recusado);
@@ -48,6 +50,7 @@ create policy clinical_records_select on clinical_records for select
               select p.id from professionals p
               where p.tenant_id = current_tenant_id()
                 and p.profile_id = auth.uid()
+                and p.active = true
             )
           )
         )
@@ -75,6 +78,7 @@ create policy clinical_records_insert on clinical_records for insert
               select p.id from professionals p
               where p.tenant_id = current_tenant_id()
                 and p.profile_id = auth.uid()
+                and p.active = true
             )
           )
         )

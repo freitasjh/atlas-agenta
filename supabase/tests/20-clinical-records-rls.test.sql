@@ -15,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(34);
+select plan(37);
 
 -- ----------------------------------------------------------------------------
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve SQLSTATE do erro
@@ -529,6 +529,45 @@ select lives_ok(
             'a4444444-4444-4444-8444-444444444411', 'Tenant em trial', '10000000-0000-4000-8000-000000000001')
   $sql$,
   'tenant trial aceita registro'
+);
+
+-- ============================================================================
+-- Profissional desativado (active = false) com vínculo e atendimento próprio: sem leitura e sem
+-- registro de ficha (decisão do PO, review da ADR-06). Como owner, desativa o profissional 1 e
+-- reativa ao final, para o controle positivo provar que o flag é a causa.
+-- ============================================================================
+reset role;
+update professionals set active = false where id = 'a1111111-1111-4111-8111-111111111111';
+select tests.authenticate_as('10000000-0000-4000-8000-000000000002', 'authenticated');
+
+-- 35. Profissional inativo não lê ficha do próprio atendimento (R1).
+select is(
+  (select count(*)::int from clinical_records where id = 'c5555555-5555-4555-8555-555555555501'),
+  0,
+  'profissional inativo não lê ficha do próprio atendimento'
+);
+
+-- 36. Profissional inativo não registra em atendimento próprio em_atendimento (402).
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444402', 'Profissional inativo', '10000000-0000-4000-8000-000000000002')
+    $sql$
+  ),
+  '42501',
+  'profissional inativo não registra ficha em atendimento próprio'
+);
+
+-- 37. Controle: com active = true de volta, o mesmo profissional volta a ler R1.
+reset role;
+update professionals set active = true where id = 'a1111111-1111-4111-8111-111111111111';
+select tests.authenticate_as('10000000-0000-4000-8000-000000000002', 'authenticated');
+select is(
+  (select count(*)::int from clinical_records where id = 'c5555555-5555-4555-8555-555555555501'),
+  1,
+  'profissional reativado volta a ler a ficha do próprio atendimento'
 );
 
 reset role;
