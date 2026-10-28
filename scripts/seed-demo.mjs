@@ -9,8 +9,10 @@
  * Parte 3 (ADR-10): para clínica, cria profissional com login, profissional sem vínculo, recepção,
  * agendamentos em todos os estados e fichas (clinical_records) fictícias, com uma correção.
  *
- * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
- * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
+ * Idempotente e não destrutivo: rodar de novo cria só o que falta. Admin já existente mantém tenant e
+ * senha, para preservar estados de teste (ex.: tenant bloqueado). Membro de equipe já existente
+ * (profissional ou recepção) tem o perfil movido para o tenant do ramo, e o tenant que o cadastro criou
+ * para ele é removido.
  * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade, a distribuição
  * de status e o confirmed_via 'manual' dos confirmados da demonstração, a etapa é pulada. Qualquer outra
  * situação (ex.: execução anterior interrompida, ou agendamento criado, removido ou com status alterado pela UI) interrompe a etapa do ramo
@@ -332,6 +334,18 @@ async function classifyNaturalKeyTenants(admin, def) {
   return data.length > 0 ? 'owned' : 'orphan';
 }
 
+/**
+ * Orientação de recuperação para o operador. Ramo com fichas (ADR-10) não pode ter agendamento nem tenant
+ * apagado: clinical_records tem FK on delete restrict e a ADR-07 impede apagar as fichas. Para esse ramo a
+ * única saída é recriar o banco local. Os demais ramos recebem a instrução de apagar, em `deleteInstruction`.
+ */
+function recoveryHint(hasClinicalRecords, deleteInstruction) {
+  if (hasClinicalRecords) {
+    return 'Este ramo tem fichas clínicas, que o banco não permite apagar (ADR-07). Recrie o banco local com `supabase db reset` e rode de novo.';
+  }
+  return deleteInstruction;
+}
+
 /** Lê o perfil do admin e falha com instrução de limpeza se ele não existir ou estiver fora do esperado. */
 async function loadAdminProfile(admin, def, userId) {
   const { data: profile, error } = await admin
@@ -342,7 +356,10 @@ async function loadAdminProfile(admin, def, userId) {
   if (error) throw error;
   if (!profile) {
     throw new Error(
-      `usuário ${def.admin.email} existe sem perfil. No banco local, remova esse usuário em auth.users e, se a linha do tenant "${def.tradeName}" (${def.segment}) ainda existir sem outros usuários vinculados, remova também essa linha em tenants. Atenção: apagar a linha de tenants remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant. Depois rode de novo.`,
+      `usuário ${def.admin.email} existe sem perfil. ${recoveryHint(
+        def.operational?.clinicalRecords === true,
+        `No banco local, remova esse usuário em auth.users e, se a linha do tenant "${def.tradeName}" (${def.segment}) ainda existir sem outros usuários vinculados, remova também essa linha em tenants. Atenção: apagar a linha de tenants remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant. Depois rode de novo.`,
+      )}`,
     );
   }
   if (profile.role !== 'admin' || !profile.tenant_id) {
@@ -409,7 +426,10 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   }
   if (naturalKeyState === 'orphan') {
     throw new Error(
-      `tenant "${def.tradeName}" (${def.segment}) existe sem usuários vinculados. Remova a linha órfã em tenants no banco local e rode de novo. Atenção: isso remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant.`,
+      `tenant "${def.tradeName}" (${def.segment}) existe sem usuários vinculados. ${recoveryHint(
+        def.operational?.clinicalRecords === true,
+        'Remova a linha órfã em tenants no banco local e rode de novo. Atenção: isso remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant.',
+      )}`,
     );
   }
 
@@ -719,19 +739,28 @@ async function seedAppointments(admin, tenantId, spec, refs) {
   if (current === expected) {
     if (!sameStatusCounts(actual, expectedStatusCounts(spec))) {
       throw new Error(
-        `o tenant ${spec.label} já tem ${expected} agendamentos, mas os status não batem com a demonstração. Uma execução anterior pode ter parado no meio, ou um status foi alterado manualmente pela UI. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+        `o tenant ${spec.label} já tem ${expected} agendamentos, mas os status não batem com a demonstração. Uma execução anterior pode ter parado no meio, ou um status foi alterado manualmente pela UI. ${recoveryHint(
+          spec.clinicalRecords === true,
+          'Apague os agendamentos desse tenant no banco local e rode de novo.',
+        )}`,
       );
     }
     if (confirmedWithoutManual > 0) {
       throw new Error(
-        `o tenant ${spec.label} tem ${confirmedWithoutManual} agendamento(s) confirmado(s) sem confirmed_via = 'manual', gravados por uma versão anterior do seed. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+        `o tenant ${spec.label} tem ${confirmedWithoutManual} agendamento(s) confirmado(s) sem confirmed_via = 'manual', gravados por uma versão anterior do seed. ${recoveryHint(
+          spec.clinicalRecords === true,
+          'Apague os agendamentos desse tenant no banco local e rode de novo.',
+        )}`,
       );
     }
     return null;
   }
   if (current > 0) {
     throw new Error(
-      `o tenant ${spec.label} tem ${current} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio, ou um agendamento foi criado ou removido pela UI. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+      `o tenant ${spec.label} tem ${current} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio, ou um agendamento foi criado ou removido pela UI. ${recoveryHint(
+        spec.clinicalRecords === true,
+        'Apague os agendamentos desse tenant no banco local e rode de novo.',
+      )}`,
     );
   }
 
