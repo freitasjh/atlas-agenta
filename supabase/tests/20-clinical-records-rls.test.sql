@@ -15,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(40);
+select plan(42);
 
 -- ----------------------------------------------------------------------------
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve SQLSTATE do erro
@@ -275,16 +275,24 @@ select lives_ok(
   'profissional registra em atendimento próprio concluido'
 );
 
--- 6b. Profissional corrige um original do próprio atendimento (409, sem original até aqui). O
--- original é criado pelo owner com created_by = profissional 1, então a correção também é de
--- autoria própria e passa em qualquer leitura de "próprio registro" (ver ADR-06, pendência com PO).
+-- 6b a 6d. Correção pelo profissional 1 (decisão do PO: só registro de autoria própria). Três
+-- fixtures, criadas pelo owner, num atendimento próprio cada (um original por atendimento):
+--   409: original de autoria do profissional 1 (correção permitida);
+--   413: original de autoria do admin (correção recusada);
+--   414: original de autoria do profissional 2 (correção recusada).
 reset role;
-insert into clinical_records (id, tenant_id, customer_id, appointment_id, clinical_notes, created_by)
-values ('c5555555-5555-4555-8555-555555555504', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444409',
-        'Original do profissional 1 para correção', '10000000-0000-4000-8000-000000000002');
+insert into appointments (id, tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status) values
+  ('a4444444-4444-4444-8444-444444444413', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-16 10:00:00+00', '2030-03-16 11:00:00+00', 15000, 'concluido'),
+  ('a4444444-4444-4444-8444-444444444414', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a1111111-1111-4111-8111-111111111111', 'a2222222-2222-4222-8222-222222222222', '2030-03-16 13:00:00+00', '2030-03-16 14:00:00+00', 15000, 'concluido');
+
+insert into clinical_records (id, tenant_id, customer_id, appointment_id, clinical_notes, created_by) values
+  ('c5555555-5555-4555-8555-555555555504', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444409', 'Original do profissional 1 para correção', '10000000-0000-4000-8000-000000000002'),
+  ('c5555555-5555-4555-8555-555555555505', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444413', 'Original do admin no atendimento do profissional 1', '10000000-0000-4000-8000-000000000001'),
+  ('c5555555-5555-4555-8555-555555555506', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444414', 'Original do profissional 2 no atendimento do profissional 1', '10000000-0000-4000-8000-000000000003');
+
 select tests.authenticate_as('10000000-0000-4000-8000-000000000002', 'authenticated');
 
+-- 6b. Profissional corrige o próprio original no próprio atendimento: permitido.
 select lives_ok(
   $sql$
     insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
@@ -292,7 +300,35 @@ select lives_ok(
             'a4444444-4444-4444-8444-444444444409', 'c5555555-5555-4555-8555-555555555504',
             'Correção pelo profissional 1', '10000000-0000-4000-8000-000000000002')
   $sql$,
-  'profissional corrige registro original do próprio atendimento'
+  'profissional corrige registro de autoria própria no próprio atendimento'
+);
+
+-- 6c. Profissional corrige original do admin no próprio atendimento: recusado (42501).
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332',
+              'a4444444-4444-4444-8444-444444444413', 'c5555555-5555-4555-8555-555555555505',
+              'Correção de registro do admin', '10000000-0000-4000-8000-000000000002')
+    $sql$
+  ),
+  '42501',
+  'profissional não corrige registro de admin no próprio atendimento'
+);
+
+-- 6d. Profissional corrige original de outro profissional no próprio atendimento: recusado (42501).
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332',
+              'a4444444-4444-4444-8444-444444444414', 'c5555555-5555-4555-8555-555555555506',
+              'Correção de registro de outro profissional', '10000000-0000-4000-8000-000000000002')
+    $sql$
+  ),
+  '42501',
+  'profissional não corrige registro de outro profissional no próprio atendimento'
 );
 
 -- 7. Profissional não registra em atendimento de outro profissional (410, do profissional 2).

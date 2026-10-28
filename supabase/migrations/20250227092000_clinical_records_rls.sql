@@ -14,7 +14,9 @@
 --       * atendimento com status em_atendimento ou concluido (PRD D-02);
 --       * tenant com subscription_status fora de bloqueado e cancelado (PRD D-08, aplicado no banco).
 --   - correção usa a MESMA policy de insert. A FK composta da ADR-05 garante que a correção aponta
---     para o mesmo atendimento e o mesmo cliente do original.
+--     para o mesmo atendimento e o mesmo cliente do original. Profissional só corrige original de
+--     autoria própria (trigger clinical_records_correction_author); admin corrige qualquer registro
+--     visível.
 --   - nenhuma policy de UPDATE ou DELETE: o registro é append-only (PRD D-01).
 --
 -- Sem security definer. As subqueries rodam sob a RLS do próprio chamador, inclusive a de
@@ -94,4 +96,46 @@ create policy clinical_records_insert on clinical_records for insert
       where t.id = current_tenant_id()
         and t.subscription_status not in ('bloqueado', 'cancelado')
     )
+    -- Correção pelo profissional só sobre registro de autoria própria (PRD §5, decisão do PO).
+    -- Admin não tem essa restrição. O original tem de ser visível ao profissional (a RLS de select
+    -- já confina) e ter created_by = auth.uid().
   );
+
+-- ============================================================================
+-- Correção pelo profissional só sobre registro de autoria própria (decisão do PO no review).
+-- Fica num trigger e não na policy: uma subquery sobre clinical_records dentro do WITH CHECK de
+-- insert reentra a RLS da própria tabela e o Postgres recusa (42P17, recursão). O trigger é
+-- security invoker, então lê o original sob a RLS do chamador, sem security definer.
+-- Se o original não é visível ao chamador, o trigger não decide nada e a ADR-05 responde 23503.
+-- ============================================================================
+create or replace function clinical_records_correction_author_check()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_author uuid;
+begin
+  if new.supersedes_id is null or current_role_name() is distinct from 'professional' then
+    return new;
+  end if;
+
+  select r.created_by into v_author
+    from clinical_records r
+   where r.tenant_id = new.tenant_id
+     and r.id = new.supersedes_id;
+
+  if found and v_author is distinct from auth.uid() then
+    raise exception 'professional can only correct a record authored by self'
+      using errcode = '42501', constraint = 'clinical_records_correction_author';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists clinical_records_correction_author on clinical_records;
+create trigger clinical_records_correction_author
+  before insert on clinical_records
+  for each row execute function clinical_records_correction_author_check();
