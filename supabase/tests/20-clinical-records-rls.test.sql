@@ -15,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(37);
+select plan(39);
 
 -- ----------------------------------------------------------------------------
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve SQLSTATE do erro
@@ -221,6 +221,20 @@ select is(
   'admin B não corrige registro do tenant A'
 );
 
+-- 34 (controle). Mesmo admin B, id que não existe: a resposta tem de ser a mesma de registro do tenant A.
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444403', gen_random_uuid(),
+              'Correção de id inexistente', '10000000-0000-4000-8000-000000000006')
+    $sql$
+  ),
+  '23503',
+  'controle: admin B recebe a mesma resposta para id inexistente e para registro do tenant A'
+);
+
 -- ============================================================================
 -- Profissional 1 (vinculado): vê e registra só no próprio atendimento.
 -- ============================================================================
@@ -287,6 +301,21 @@ select is(
   ),
   '23503',
   'profissional não corrige registro de outro profissional'
+);
+
+-- 8 (controle). Mesmo profissional, id que não existe em lugar nenhum: a resposta tem de ser a mesma
+-- de registro alheio, senão o 23503 vazaria a existência do id.
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444403', gen_random_uuid(),
+              'Correção de id inexistente', '10000000-0000-4000-8000-000000000002')
+    $sql$
+  ),
+  '23503',
+  'controle: profissional recebe a mesma resposta para id inexistente e para registro alheio'
 );
 
 -- 9 a 12. Atendimentos pendente, confirmado, cancelado e nao_compareceu recusam insert (404 a 407).
