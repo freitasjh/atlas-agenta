@@ -67,7 +67,8 @@ const TRANSITION_PATH = {
  *
  * Agendamento: `day` é a quantidade de dias a partir de hoje (fuso do tenant); `target` é o
  * estado final. O seed cria em 'pendente' e avança pelas transições válidas do banco. Se a data
- * cair em domingo (sem grade), o agendamento vai para a segunda seguinte.
+ * cair em domingo (sem grade), `day` negativo retrocede para o sábado e `day` positivo avança para
+ * a segunda (ver workdayFor). Assim um agendamento de passado nunca cai hoje nem no futuro.
  */
 const BARBEARIA_OPERATIONAL = {
   label: 'Barbearia',
@@ -364,11 +365,17 @@ function addDays(ymd, days) {
   return date.toISOString().slice(0, 10);
 }
 
-/** Dia de atendimento: se `ymd` cair fora de WEEK_DAYS (domingo), avança até o próximo dia de grade. */
-function nextWorkday(ymd) {
-  let current = ymd;
+/**
+ * Dia de atendimento para um deslocamento `offset` a partir de `today`. Se cair fora de WEEK_DAYS
+ * (domingo), anda no sentido do offset até o dia de grade: offset negativo retrocede (domingo vai
+ * para sábado), offset positivo avança (domingo vai para segunda). Como offsets negativos ficam
+ * sempre antes de hoje e positivos sempre depois, um dia de passado nunca vira hoje ou futuro.
+ */
+function workdayFor(today, offset) {
+  const step = offset < 0 ? -1 : 1;
+  let current = addDays(today, offset);
   while (!WEEK_DAYS.includes(new Date(`${current}T00:00:00Z`).getUTCDay())) {
-    current = addDays(current, 1);
+    current = addDays(current, step);
   }
   return current;
 }
@@ -500,7 +507,7 @@ async function seedAppointments(admin, tenantId, spec, refs) {
   let created = 0;
   for (const [index, appt] of spec.appointments.entries()) {
     const line = appt.combo ? refs.combos.get(appt.combo) : refs.services.get(appt.service);
-    const startsAt = instantAt(nextWorkday(addDays(today, appt.day)), appt.time);
+    const startsAt = instantAt(workdayFor(today, appt.day), appt.time);
     const endsAt = new Date(Date.parse(startsAt) + line.durationMinutes * 60_000).toISOString();
 
     const { data: inserted, error: insertError } = await admin
