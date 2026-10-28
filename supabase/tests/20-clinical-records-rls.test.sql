@@ -5,7 +5,8 @@
 -- rollback: nada persiste no banco de teste.
 --
 -- Prova (ADR-06, critérios 1 a 13):
---   admin lê o tenant inteiro; admin não lê outro tenant, nem com tenant_id forjado;
+--   admin lê o tenant inteiro; admin não lê outro tenant, nem com tenant_id forjado; admin do
+--   tenant B não lê, não registra e não corrige no tenant A (sentido inverso);
 --   profissional lê e registra só no próprio atendimento; não lê nem registra no de outro
 --   profissional do mesmo cliente; profissional sem profile_id não lê nem registra; recepção e
 --   super_admin não leem nem registram; anon não lê; status bloqueados recusam insert; created_by
@@ -14,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(30);
+select plan(34);
 
 -- ----------------------------------------------------------------------------
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve SQLSTATE do erro
@@ -166,6 +167,58 @@ select is(
   ),
   '42501',
   'tenant_id de outro tenant é recusado'
+);
+
+-- ============================================================================
+-- Admin do tenant B: isolamento no sentido inverso (AC-10, AC-C9). Não lê, não registra e não
+-- corrige nada do tenant A, mesmo com o tenant_id do próprio tenant na linha.
+-- ============================================================================
+reset role;
+select tests.authenticate_as('10000000-0000-4000-8000-000000000006', 'authenticated');
+
+-- 31. Admin B lê só o próprio registro (RB).
+select is(
+  (select count(*)::int from clinical_records),
+  1,
+  'admin B lê só registros do próprio tenant'
+);
+
+-- 32. Admin B não lê nenhum registro do tenant A (R1, R2, R3), nem por id.
+select is(
+  (select count(*)::int from clinical_records
+    where id in ('c5555555-5555-4555-8555-555555555501',
+                 'c5555555-5555-4555-8555-555555555502',
+                 'c5555555-5555-4555-8555-555555555503')),
+  0,
+  'admin B não lê registros do tenant A, nem por id'
+);
+
+-- 33. Admin B não registra em atendimento do tenant A (tenant e cliente próprios, atendimento alheio).
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+      values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'b3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444410', 'Atendimento de outro tenant', '10000000-0000-4000-8000-000000000006')
+    $sql$
+  ),
+  '42501',
+  'admin B não registra em atendimento do tenant A'
+);
+
+-- 34. Admin B não corrige registro do tenant A (R3). O trigger não enxerga R3 sob a RLS de B e
+-- responde 23503, a mesma resposta de id inexistente.
+select is(
+  pg_temp.rls_state(
+    $sql$
+      insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+              'a4444444-4444-4444-8444-444444444403', 'c5555555-5555-4555-8555-555555555503',
+              'Correção de outro tenant', '10000000-0000-4000-8000-000000000006')
+    $sql$
+  ),
+  '23503',
+  'admin B não corrige registro do tenant A'
 );
 
 -- ============================================================================
