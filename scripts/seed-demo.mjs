@@ -151,7 +151,7 @@ async function loadAdminProfile(admin, def, userId) {
   if (error) throw error;
   if (!profile) {
     throw new Error(
-      `usuário ${def.admin.email} existe sem perfil. No banco local, remova esse usuário em auth.users e, se a linha do tenant "${def.tradeName}" (${def.segment}) ainda existir sem outros usuários vinculados, remova também essa linha em tenants. Depois rode de novo.`,
+      `usuário ${def.admin.email} existe sem perfil. No banco local, remova esse usuário em auth.users e, se a linha do tenant "${def.tradeName}" (${def.segment}) ainda existir sem outros usuários vinculados, remova também essa linha em tenants. Atenção: apagar a linha de tenants remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant. Depois rode de novo.`,
     );
   }
   if (profile.role !== 'admin' || !profile.tenant_id) {
@@ -218,7 +218,7 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   }
   if (naturalKeyState === 'orphan') {
     throw new Error(
-      `tenant "${def.tradeName}" (${def.segment}) existe sem usuários vinculados. Remova a linha órfã em tenants no banco local e rode de novo.`,
+      `tenant "${def.tradeName}" (${def.segment}) existe sem usuários vinculados. Remova a linha órfã em tenants no banco local e rode de novo. Atenção: isso remove em cascata clientes, serviços, profissionais, grades de horário e demais dados operacionais desse tenant.`,
     );
   }
 
