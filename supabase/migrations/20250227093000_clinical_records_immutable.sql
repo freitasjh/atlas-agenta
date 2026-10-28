@@ -10,9 +10,14 @@
 --
 -- Resultado por papel:
 --   - authenticated e anon: falham no grant (42501, insufficient_privilege).
---   - owner: falha no trigger (23001, restrict_violation). Triggers valem para qualquer papel.
+--   - owner: falha no trigger (23001, restrict_violation). Os triggers barram DML (UPDATE, DELETE,
+--     TRUNCATE) de qualquer papel.
 --   - service_role: sem grant, falha antes com 42501. O trigger continua barrando (23001) se o
 --     grant voltar. O teste 30 prova essa camada re-concedendo o privilégio dentro da transação.
+--
+-- Limite conhecido: DDL do owner não é barrado pelos triggers. `alter table ... disable trigger` ou
+-- `drop trigger` desativam as camadas 2 e 3. Risco aceito na ADR-07 (Consequências), mitigado por
+-- migrations revisadas e log de DDL do Supabase.
 --
 -- Ordem de disparo: triggers BEFORE do mesmo evento disparam em ordem alfabética pelo nome.
 -- `clinical_records_block_update_delete` vem antes de `clinical_records_validate` (ADR-05), então um
