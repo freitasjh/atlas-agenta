@@ -30,6 +30,9 @@ const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
 const MIN_PASSWORD_LENGTH = 6;
 const TIMEZONE = 'America/Sao_Paulo';
 
+/** Estado de demonstração do tenant. Usado para avisar quando um tenant reaproveitado diverge dele. */
+const DEMO_TENANT_STATE = { plan: 'pro', subscription_status: 'ativo', trial_ends_at: null };
+
 const DEMO_TENANTS = [
   {
     segment: 'barbearia',
@@ -138,13 +141,35 @@ async function loadAdminProfile(admin, def, userId) {
 }
 
 /**
+ * Compara plan, subscription_status e trial_ends_at do tenant com o padrão de demonstração.
+ * Só lê: retorna a lista de campos que divergem (vazia se estiver tudo no padrão).
+ */
+async function findDemoDivergences(admin, tenantId) {
+  const { data, error } = await admin
+    .from('tenants')
+    .select('plan, subscription_status, trial_ends_at')
+    .eq('id', tenantId)
+    .single();
+  if (error) throw error;
+
+  const divergences = [];
+  if (data.plan !== DEMO_TENANT_STATE.plan) divergences.push(`plan=${data.plan}`);
+  if (data.subscription_status !== DEMO_TENANT_STATE.subscription_status) {
+    divergences.push(`subscription_status=${data.subscription_status}`);
+  }
+  if (data.trial_ends_at !== DEMO_TENANT_STATE.trial_ends_at) divergences.push('trial_ends_at preenchido');
+  return divergences;
+}
+
+/**
  * Garante o tenant e o admin de um ramo.
  *
  * - Usuário novo: createUser dispara o trigger handle_new_user, que cria tenant + profile admin
  *   e os templates do ramo. Em seguida o tenant recebe o padrão de demonstração.
- * - Usuário existente: não altera tenant nem senha, salvo com realignPassword ativo.
+ * - Usuário existente: não altera tenant nem senha, salvo com realignPassword ativo. Apenas lê o
+ *   estado do tenant e reporta divergências do padrão (ex.: falha parcial após createUser).
  *
- * Retorna { created, realigned }.
+ * Retorna { created, realigned, divergences }.
  */
 async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   const existing = await findUserByEmail(admin, def.admin.email);
@@ -156,8 +181,9 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
       if (error) throw error;
       realigned = true;
     }
-    await loadAdminProfile(admin, def, existing.id);
-    return { created: false, realigned };
+    const profile = await loadAdminProfile(admin, def, existing.id);
+    const divergences = await findDemoDivergences(admin, profile.tenant_id);
+    return { created: false, realigned, divergences };
   }
 
   // Tenant sem usuário administrador (órfão, após remoção do usuário): criar de novo duplicaria a empresa.
@@ -199,7 +225,7 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
     .eq('id', profile.tenant_id);
   if (tenantError) throw tenantError;
 
-  return { created: true, realigned: false };
+  return { created: true, realigned: false, divergences: [] };
 }
 
 async function main() {
@@ -210,10 +236,20 @@ async function main() {
   });
 
   for (const def of DEMO_TENANTS) {
-    const { created, realigned } = await ensureTenantAdmin(admin, def, { password, realignPassword });
+    const { created, realigned, divergences } = await ensureTenantAdmin(admin, def, {
+      password,
+      realignPassword,
+    });
     const status = created ? 'criado' : 'reaproveitado (estado preservado)';
     const suffix = realigned ? ', senha realinhada' : '';
     console.log(`${status}: ${def.segment} (${def.admin.email})${suffix}`);
+    if (divergences.length > 0) {
+      // Não corrige nada: pode ser estado de teste intencional ou falha parcial de uma execução anterior.
+      console.warn(
+        `ATENÇÃO: tenant ${def.segment} fora do padrão de demonstração (${divergences.join(', ')}). ` +
+          'Se não for estado de teste intencional, corrija no banco local ou remova o usuário e o tenant e rode de novo.',
+      );
+    }
   }
 }
 
