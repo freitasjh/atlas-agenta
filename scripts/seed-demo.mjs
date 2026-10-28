@@ -151,7 +151,7 @@ async function loadAdminProfile(admin, def, userId) {
   if (error) throw error;
   if (!profile) {
     throw new Error(
-      `usuário ${def.admin.email} existe sem perfil. Remova o usuário e o tenant "${def.tradeName}" (${def.segment}) no banco local e rode de novo.`,
+      `usuário ${def.admin.email} existe sem perfil. Remova somente esse usuário em auth.users no banco local e rode de novo. O seed decide sobre o tenant na próxima execução.`,
     );
   }
   if (profile.role !== 'admin' || !profile.tenant_id) {
