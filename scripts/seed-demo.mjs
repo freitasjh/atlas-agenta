@@ -6,6 +6,8 @@
  * administrador em cada um.
  * Parte 2 (ADR-09): para barbearia e salão, cria dados operacionais: profissionais, serviços,
  * grade de horário, clientes, comissão (barbearia), combos (salão) e agendamentos em vários estados.
+ * Parte 3 (ADR-10): para clínica, cria profissional com login, profissional sem vínculo, recepção,
+ * agendamentos em todos os estados e fichas (clinical_records) fictícias, com uma correção.
  *
  * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
  * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
@@ -124,6 +126,83 @@ const SALAO_OPERATIONAL = {
   ],
 };
 
+/*
+ * Clínica (ADR-10). Serviços seguem SEGMENT_SEED_SERVICES em src/lib/segment-presets.ts (mesma
+ * observação dos ramos acima). Equipe: `member` liga o profissional a um usuário de `members`; sem
+ * `member`, o profissional não tem login (profile_id nulo).
+ */
+const CLINICA_OPERATIONAL = {
+  label: 'Clínica',
+  phoneSegmentDigit: '3',
+  workday: { start: '08:00', end: '18:00', breakStart: '12:00', breakEnd: '13:00' },
+  members: [
+    {
+      key: 'professional',
+      email: 'profissional.clinica@demo.invalido',
+      fullName: 'Profissional Demo Clínica',
+      role: 'professional',
+    },
+    {
+      key: 'receptionist',
+      email: 'recepcao.clinica@demo.invalido',
+      fullName: 'Recepção Demo Clínica',
+      role: 'receptionist',
+    },
+  ],
+  professionals: [
+    { name: 'Profissional Demo 1', commissionPct: null, member: 'professional' },
+    { name: 'Profissional Demo 2', commissionPct: null, member: null },
+  ],
+  services: [
+    { name: 'Consulta', durationMinutes: 50, priceCents: 20000 },
+    { name: 'Retorno', durationMinutes: 30, priceCents: 10000 },
+    { name: 'Avaliação inicial', durationMinutes: 60, priceCents: 25000 },
+  ],
+  combos: [],
+  customerCount: 6,
+  // Fichas: todo atendimento em em_atendimento ou concluido ganha um registro original. O primeiro
+  // concluido com profissional de login recebe uma correção.
+  clinicalRecords: true,
+  appointments: [
+    { day: -1, time: '09:00', professional: 0, service: 'Avaliação inicial', target: 'concluido' },
+    { day: -1, time: '11:00', professional: 0, service: 'Retorno', target: 'concluido' },
+    { day: -1, time: '14:00', professional: 0, service: 'Consulta', target: 'em_atendimento' },
+    { day: -1, time: '09:00', professional: 1, service: 'Consulta', target: 'concluido' },
+    { day: -1, time: '15:00', professional: 1, service: 'Retorno', target: 'nao_compareceu' },
+    { day: 1, time: '09:00', professional: 0, service: 'Consulta', target: 'confirmado' },
+    { day: 1, time: '10:00', professional: 1, service: 'Avaliação inicial', target: 'pendente' },
+    { day: 1, time: '11:00', professional: 0, service: 'Retorno', target: 'cancelado' },
+  ],
+};
+
+/**
+ * Conteúdo clínico fictício das fichas de demonstração (ADR-10). Não é dado de paciente real.
+ * Cada ficha original usa uma entrada, em rodízio. A correção reaproveita a primeira.
+ */
+const CLINICAL_RECORD_CONTENT = [
+  {
+    allergies: 'Dipirona',
+    medications: 'Losartana 50 mg, uma vez ao dia',
+    clinicalNotes: 'Relata cefaleia leve há três dias. Orientado a hidratar-se. Retorno em 30 dias.',
+  },
+  {
+    allergies: null,
+    medications: null,
+    clinicalNotes: 'Avaliação inicial sem intercorrências. Plano de acompanhamento combinado.',
+  },
+  {
+    allergies: 'Penicilina',
+    medications: 'Vitamina D 2.000 UI, uma vez por semana',
+    clinicalNotes: 'Paciente em acompanhamento de rotina. Sem queixas no momento.',
+  },
+];
+
+const CLINICAL_RECORD_CORRECTION = {
+  allergies: 'Dipirona',
+  medications: 'Losartana 50 mg, uma vez ao dia',
+  clinicalNotes: 'Correção: retorno em 15 dias, e não em 30 como estava registrado.',
+};
+
 const DEMO_TENANTS = [
   {
     segment: 'barbearia',
@@ -144,6 +223,7 @@ const DEMO_TENANTS = [
     tradeName: 'Clínica Demo',
     phone: '(00) 00000-0003',
     admin: { email: 'admin.clinica@demo.invalido', fullName: 'Admin Demo Clínica' },
+    operational: CLINICA_OPERATIONAL,
   },
 ];
 
@@ -284,7 +364,7 @@ async function findDemoDivergences(admin, tenantId, def) {
  * - Usuário existente: não altera tenant nem senha, salvo com realignPassword ativo. Apenas lê o
  *   estado do tenant e reporta divergências do padrão (ex.: falha parcial após createUser).
  *
- * Retorna { tenantId, created, realigned, divergences }.
+ * Retorna { tenantId, userId, created, realigned, divergences }.
  */
 async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   const existing = await findUserByEmail(admin, def.admin.email);
@@ -299,7 +379,7 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
       realigned = true;
     }
     const divergences = await findDemoDivergences(admin, profile.tenant_id, def);
-    return { tenantId: profile.tenant_id, created: false, realigned, divergences };
+    return { tenantId: profile.tenant_id, userId: existing.id, created: false, realigned, divergences };
   }
 
   // Criar de novo duplicaria a empresa. Só órfão (sem admin) aceita limpeza manual; outro dono, não.
@@ -346,7 +426,92 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
     .eq('id', profile.tenant_id);
   if (tenantError) throw tenantError;
 
-  return { tenantId: profile.tenant_id, created: true, realigned: false, divergences: [] };
+  return { tenantId: profile.tenant_id, userId: data.user.id, created: true, realigned: false, divergences: [] };
+}
+
+/**
+ * Garante o perfil de um usuário de equipe (profissional ou recepção) no tenant do ramo.
+ *
+ * Todo usuário novo passa pelo trigger de cadastro, que cria um tenant próprio com perfil admin.
+ * Este código move o perfil para o tenant do ramo com o papel certo e remove o tenant que o trigger
+ * criou. A remoção só acontece se o tenant não tem nome fantasia nem ramo, é do próprio e-mail e
+ * tem um único perfil (o do usuário). Qualquer outro caso aborta.
+ */
+async function attachMemberProfile(admin, tenantId, member, userId) {
+  const { data: profile, error } = await admin
+    .from('profiles')
+    .select('tenant_id, role')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!profile) {
+    throw new Error(
+      `usuário ${member.email} existe sem perfil. No banco local, remova esse usuário em auth.users e rode de novo.`,
+    );
+  }
+  if (profile.tenant_id === tenantId) {
+    if (profile.role !== member.role) {
+      throw new Error(`perfil de ${member.email} com papel ${profile.role}, esperado ${member.role}.`);
+    }
+    return;
+  }
+
+  if (profile.role !== 'admin' || !profile.tenant_id) {
+    throw new Error(`perfil de ${member.email} fora do esperado (papel ou tenant ausente).`);
+  }
+  const { data: ownTenant, error: tenantError } = await admin
+    .from('tenants')
+    .select('id, trade_name, segment, owner_email')
+    .eq('id', profile.tenant_id)
+    .single();
+  if (tenantError) throw tenantError;
+  if (ownTenant.trade_name !== null || ownTenant.segment !== null || ownTenant.owner_email !== member.email) {
+    throw new Error(
+      `perfil de ${member.email} pertence a outro tenant. O seed não move esse perfil. Remova o usuário em auth.users e rode de novo.`,
+    );
+  }
+  const { count, error: countError } = await admin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', ownTenant.id);
+  if (countError) throw countError;
+  if (count !== 1) {
+    throw new Error(`tenant de ${member.email} tem outros perfis. O seed não remove esse tenant.`);
+  }
+
+  const { error: moveError } = await admin
+    .from('profiles')
+    .update({ tenant_id: tenantId, role: member.role })
+    .eq('id', userId);
+  if (moveError) throw moveError;
+  const { error: deleteError } = await admin.from('tenants').delete().eq('id', ownTenant.id);
+  if (deleteError) throw deleteError;
+}
+
+/**
+ * Garante um usuário de equipe do ramo. Usuário novo é criado e recebe o perfil do ramo. Usuário
+ * existente mantém a senha, salvo com realignPassword. Retorna o id do usuário (igual ao profiles.id).
+ */
+async function ensureTenantMember(admin, tenantId, member, { password, realignPassword }) {
+  const existing = await findUserByEmail(admin, member.email);
+  if (existing) {
+    await attachMemberProfile(admin, tenantId, member, existing.id);
+    if (realignPassword) {
+      const { error } = await admin.auth.admin.updateUserById(existing.id, { password });
+      if (error) throw error;
+    }
+    return existing.id;
+  }
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email: member.email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: member.fullName },
+  });
+  if (error) throw error;
+  await attachMemberProfile(admin, tenantId, member, data.user.id);
+  return data.user.id;
 }
 
 /** Dia de calendário de hoje no fuso informado, no formato AAAA-MM-DD (en-CA usa essa ordem). */
@@ -560,13 +725,115 @@ async function seedAppointments(admin, tenantId, spec, refs) {
 }
 
 /**
- * Semeia profissionais, grade, comissão, serviços, combos, clientes e agenda de um ramo.
- * Retorna a quantidade de agendamentos criados, ou null se a agenda já existia.
+ * Fichas de demonstração (ADR-10). Cada atendimento em em_atendimento ou concluido ganha um registro
+ * original. O primeiro concluido cujo profissional tem login recebe uma correção (registro novo que
+ * aponta para o original; nunca UPDATE, que a ADR-07 bloqueia).
+ *
+ * Service role ignora RLS e não tem JWT, então tenant_id e created_by são passados explicitamente.
+ * Autor: o profissional com login, no próprio atendimento; sem login, o admin do ramo.
+ * Idempotente: original por (tenant_id, appointment_id) sem supersedes_id; correção por supersedes_id.
+ * Retorna { originals, corrections } com a quantidade criada nesta execução.
  */
-async function seedOperational(admin, tenantId, spec) {
+async function seedClinicalRecords(admin, tenantId, { adminUserId }) {
+  const { data: professionals, error: profError } = await admin
+    .from('professionals')
+    .select('id, profile_id')
+    .eq('tenant_id', tenantId);
+  if (profError) throw profError;
+  const authorByProfessional = new Map(professionals.map((p) => [p.id, p.profile_id ?? adminUserId]));
+
+  const { data: appointments, error } = await admin
+    .from('appointments')
+    .select('id, customer_id, professional_id, status')
+    .eq('tenant_id', tenantId)
+    .in('status', ['em_atendimento', 'concluido'])
+    .order('starts_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) throw error;
+
+  let originals = 0;
+  let corrections = 0;
+  let correctionTarget = null;
+  for (const [index, appt] of appointments.entries()) {
+    const authorId = authorByProfessional.get(appt.professional_id) ?? adminUserId;
+    const { data: existing, error: findError } = await admin
+      .from('clinical_records')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('appointment_id', appt.id)
+      .is('supersedes_id', null)
+      .limit(1);
+    if (findError) throw findError;
+
+    let originalId = existing[0]?.id;
+    if (!originalId) {
+      const content = CLINICAL_RECORD_CONTENT[index % CLINICAL_RECORD_CONTENT.length];
+      const { data: inserted, error: insertError } = await admin
+        .from('clinical_records')
+        .insert({
+          tenant_id: tenantId,
+          customer_id: appt.customer_id,
+          appointment_id: appt.id,
+          allergies: content.allergies,
+          medications: content.medications,
+          clinical_notes: content.clinicalNotes,
+          created_by: authorId,
+        })
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
+      originalId = inserted.id;
+      originals += 1;
+    }
+
+    if (correctionTarget === null && appt.status === 'concluido' && authorId !== adminUserId) {
+      correctionTarget = { originalId, appt, authorId };
+    }
+  }
+
+  if (correctionTarget) {
+    const { data: corrected, error: corrError } = await admin
+      .from('clinical_records')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('supersedes_id', correctionTarget.originalId)
+      .limit(1);
+    if (corrError) throw corrError;
+    if (corrected.length === 0) {
+      const { error: insertError } = await admin.from('clinical_records').insert({
+        tenant_id: tenantId,
+        customer_id: correctionTarget.appt.customer_id,
+        appointment_id: correctionTarget.appt.id,
+        supersedes_id: correctionTarget.originalId,
+        allergies: CLINICAL_RECORD_CORRECTION.allergies,
+        medications: CLINICAL_RECORD_CORRECTION.medications,
+        clinical_notes: CLINICAL_RECORD_CORRECTION.clinicalNotes,
+        created_by: correctionTarget.authorId,
+      });
+      if (insertError) throw insertError;
+      corrections += 1;
+    }
+  }
+
+  return { originals, corrections };
+}
+
+/**
+ * Semeia profissionais, grade, comissão, serviços, combos, clientes, agenda e, se o ramo tiver,
+ * fichas. `memberIds` mapeia a chave de `spec.members` para o id do usuário de login.
+ * Retorna { appointmentsCreated, records }. appointmentsCreated é null se a agenda já existia; records
+ * é null se o ramo não tem fichas.
+ */
+async function seedOperational(admin, tenantId, spec, { memberIds, adminUserId }) {
   const professionals = [];
   for (const prof of spec.professionals) {
-    const professionalId = await findOrCreate(admin, 'professionals', { tenant_id: tenantId, name: prof.name });
+    const profileId = prof.member ? memberIds[prof.member] : null;
+    const professionalId = await findOrCreate(
+      admin,
+      'professionals',
+      { tenant_id: tenantId, name: prof.name },
+      { profile_id: profileId },
+    );
     professionals.push(professionalId);
 
     for (const weekday of WEEK_DAYS) {
@@ -642,7 +909,14 @@ async function seedOperational(admin, tenantId, spec) {
     customers.push(await findOrCreateCustomer(admin, tenantId, spec, i));
   }
 
-  return seedAppointments(admin, tenantId, spec, { professionals, services, combos, customers });
+  const appointmentsCreated = await seedAppointments(admin, tenantId, spec, {
+    professionals,
+    services,
+    combos,
+    customers,
+  });
+  const records = spec.clinicalRecords ? await seedClinicalRecords(admin, tenantId, { adminUserId }) : null;
+  return { appointmentsCreated, records };
 }
 
 /**
@@ -650,7 +924,7 @@ async function seedOperational(admin, tenantId, spec) {
  * ser semeado com segurança; quem chama decide o que fazer com os demais ramos.
  */
 async function seedTenant(admin, def, { password, realignPassword }) {
-  const { tenantId, created, realigned, divergences } = await ensureTenantAdmin(admin, def, {
+  const { tenantId, userId: adminUserId, created, realigned, divergences } = await ensureTenantAdmin(admin, def, {
     password,
     realignPassword,
   });
@@ -677,12 +951,24 @@ async function seedTenant(admin, def, { password, realignPassword }) {
     console.warn(`dados operacionais (${def.segment}): não semeados, tenant fora do padrão de demonstração.`);
     return;
   }
-  const appointmentsCreated = await seedOperational(admin, tenantId, def.operational);
+  const memberIds = {};
+  for (const member of def.operational.members ?? []) {
+    memberIds[member.key] = await ensureTenantMember(admin, tenantId, member, { password, realignPassword });
+  }
+  const { appointmentsCreated, records } = await seedOperational(admin, tenantId, def.operational, {
+    memberIds,
+    adminUserId,
+  });
   const detail =
     appointmentsCreated === null
       ? 'agenda já existente, etapa pulada'
       : `${appointmentsCreated} agendamentos criados`;
   console.log(`dados operacionais (${def.segment}): ${detail}`);
+  if (records) {
+    console.log(
+      `fichas (${def.segment}): ${records.originals} originais e ${records.corrections} correção(ões) criadas nesta execução`,
+    );
+  }
 }
 
 async function main() {
