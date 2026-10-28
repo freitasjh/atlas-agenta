@@ -96,6 +96,17 @@ async function findUserByEmail(admin, email) {
   }
 }
 
+/** Busca tenants pela chave natural (trade_name + segment). Service role ignora RLS, então a busca é global. */
+async function findTenantsByNaturalKey(admin, def) {
+  const { data, error } = await admin
+    .from('tenants')
+    .select('id')
+    .eq('trade_name', def.tradeName)
+    .eq('segment', def.segment);
+  if (error) throw error;
+  return data;
+}
+
 /**
  * Garante o tenant e o admin de um ramo.
  * A criação do usuário dispara o trigger handle_new_user, que cria tenant + profile admin
@@ -106,6 +117,13 @@ async function ensureTenantAdmin(admin, def, password) {
   const created = user === null;
 
   if (created) {
+    // Tenant sem usuário administrador (órfão, após remoção do usuário): criar de novo duplicaria a empresa.
+    const existingTenants = await findTenantsByNaturalKey(admin, def);
+    if (existingTenants.length > 0) {
+      throw new Error(
+        `tenant "${def.tradeName}" (${def.segment}) existe sem usuário administrador. Remova a linha órfã em tenants no banco local e rode de novo.`,
+      );
+    }
     const { data, error } = await admin.auth.admin.createUser({
       email: def.admin.email,
       password,
