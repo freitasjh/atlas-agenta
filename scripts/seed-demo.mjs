@@ -9,9 +9,11 @@
  *
  * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
  * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
- * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade da demonstração,
- * a etapa é pulada. Qualquer outra quantidade (ex.: execução anterior interrompida) para o script com
- * erro, sem alterar nada.
+ * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade e a distribuição
+ * de status da demonstração, a etapa é pulada. Qualquer outra situação (ex.: execução anterior
+ * interrompida) interrompe a etapa do ramo com erro, sem gravar nada na agenda.
+ * Um erro em um ramo não impede os demais; o processo termina com código 1 se algum ramo falhar.
+ * Tenant fora do padrão de demonstração não recebe dados operacionais; o aviso indica a correção.
  *
  * Uso (somente com `supabase start` local):
  *   ATLAS_DEMO_SEED=1 \
@@ -438,10 +440,38 @@ async function linkIgnoringDuplicates(admin, table, row, onConflict) {
   if (error) throw error;
 }
 
+/** Conta os agendamentos do tenant por status. Retorna Map(status -> quantidade). */
+async function countAppointmentsByStatus(admin, tenantId) {
+  const { data, error } = await admin.from('appointments').select('status').eq('tenant_id', tenantId);
+  if (error) throw error;
+  const counts = new Map();
+  for (const { status } of data) {
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Distribuição de status esperada pela demonstração: quantidade por estado final (target) da spec. */
+function expectedStatusCounts(spec) {
+  const counts = new Map();
+  for (const appt of spec.appointments) {
+    counts.set(appt.target, (counts.get(appt.target) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Compara dois Map(status -> quantidade) e diz se são iguais. Status ausente conta como zero. */
+function sameStatusCounts(actual, expected) {
+  const statuses = new Set([...actual.keys(), ...expected.keys()]);
+  return [...statuses].every((status) => (actual.get(status) ?? 0) === (expected.get(status) ?? 0));
+}
+
 /**
  * Cria a agenda de demonstração do tenant.
  * - Tenant sem agendamento: cria a agenda inteira.
- * - Tenant já com a quantidade da demonstração: pula a etapa (null).
+ * - Tenant com a quantidade e a distribuição de status da demonstração: pula a etapa (null).
+ * - Quantidade igual mas status diferentes: lança erro. Uma transição que falhou depois do insert deixa
+ *   o agendamento em 'pendente' com a contagem certa; sem essa conferência, a reexecução aceitaria.
  * - Qualquer outra quantidade: lança erro sem gravar nada. Isso acontece quando uma execução anterior
  *   parou no meio; o tenant precisa ser limpo antes de rodar de novo.
  * Cada agendamento nasce em 'pendente' e avança pelas transições válidas, para que o trigger de
@@ -449,16 +479,20 @@ async function linkIgnoringDuplicates(admin, table, row, onConflict) {
  * Retorna a quantidade criada, ou null se a etapa foi pulada.
  */
 async function seedAppointments(admin, tenantId, spec, refs) {
-  const { count, error } = await admin
-    .from('appointments')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId);
-  if (error) throw error;
+  const actual = await countAppointmentsByStatus(admin, tenantId);
+  const current = [...actual.values()].reduce((total, n) => total + n, 0);
   const expected = spec.appointments.length;
-  if (count === expected) return null;
-  if (count > 0) {
+  if (current === expected) {
+    if (!sameStatusCounts(actual, expectedStatusCounts(spec))) {
+      throw new Error(
+        `o tenant ${spec.label} já tem ${expected} agendamentos, mas os status não batem com a demonstração. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+      );
+    }
+    return null;
+  }
+  if (current > 0) {
     throw new Error(
-      `o tenant ${spec.label} tem ${count} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+      `o tenant ${spec.label} tem ${current} agendamentos, e a demonstração prevê ${expected}. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
     );
   }
 
@@ -487,9 +521,11 @@ async function seedAppointments(admin, tenantId, spec, refs) {
     if (insertError) throw insertError;
 
     for (const status of TRANSITION_PATH[appt.target]) {
+      // Confirmação feita pela recepção/UI grava a origem junto da transição para 'confirmado'.
+      const patch = status === 'confirmado' ? { status, confirmed_via: 'manual' } : { status };
       const { error: stepError } = await admin
         .from('appointments')
-        .update({ status })
+        .update(patch)
         .eq('id', inserted.id);
       if (stepError) throw stepError;
     }
@@ -584,6 +620,46 @@ async function seedOperational(admin, tenantId, spec) {
   return seedAppointments(admin, tenantId, spec, { professionals, services, combos, customers });
 }
 
+/**
+ * Semeia um ramo: tenant e admin, e, se houver, os dados operacionais. Lança erro se o ramo não puder
+ * ser semeado com segurança; quem chama decide o que fazer com os demais ramos.
+ */
+async function seedTenant(admin, def, { password, realignPassword }) {
+  const { tenantId, created, realigned, divergences } = await ensureTenantAdmin(admin, def, {
+    password,
+    realignPassword,
+  });
+  const status = created ? 'criado' : 'reaproveitado (estado preservado)';
+  let suffix = '';
+  if (realigned) {
+    suffix = ', senha realinhada';
+  } else if (!created) {
+    suffix =
+      ', senha atual mantida (ATLAS_DEMO_PASSWORD ignorada); para realinhar à ATLAS_DEMO_PASSWORD, rode com ATLAS_DEMO_REALIGN_PASSWORD=1';
+  }
+  console.log(`${status}: ${def.segment} (${def.admin.email})${suffix}`);
+  if (divergences.length > 0) {
+    // Não corrige nada: pode ser estado de teste intencional ou falha parcial de uma execução anterior.
+    console.warn(
+      `ATENÇÃO: tenant ${def.segment} fora do padrão de demonstração (${divergences.join(', ')}). ` +
+        'Se não for estado de teste intencional, corrija no banco local ou remova o usuário e o tenant e rode de novo.',
+    );
+  }
+
+  if (!def.operational) return;
+  if (divergences.length > 0) {
+    // Não grava dados operacionais em tenant fora do padrão: preserva o estado de teste escolhido.
+    console.warn(`dados operacionais (${def.segment}): não semeados, tenant fora do padrão de demonstração.`);
+    return;
+  }
+  const appointmentsCreated = await seedOperational(admin, tenantId, def.operational);
+  const detail =
+    appointmentsCreated === null
+      ? 'agenda já existente, etapa pulada'
+      : `${appointmentsCreated} agendamentos criados`;
+  console.log(`dados operacionais (${def.segment}): ${detail}`);
+}
+
 async function main() {
   const { supabaseUrl, password, serviceRoleKey, realignPassword } = readConfig(process.env);
 
@@ -591,36 +667,18 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Um ramo com erro não interrompe os demais. Os erros ficam visíveis e o código de saída indica a falha.
+  const failedSegments = [];
   for (const def of DEMO_TENANTS) {
-    const { tenantId, created, realigned, divergences } = await ensureTenantAdmin(admin, def, {
-      password,
-      realignPassword,
-    });
-    const status = created ? 'criado' : 'reaproveitado (estado preservado)';
-    let suffix = '';
-    if (realigned) {
-      suffix = ', senha realinhada';
-    } else if (!created) {
-      suffix =
-        ', senha atual mantida (ATLAS_DEMO_PASSWORD ignorada); para realinhar à ATLAS_DEMO_PASSWORD, rode com ATLAS_DEMO_REALIGN_PASSWORD=1';
+    try {
+      await seedTenant(admin, def, { password, realignPassword });
+    } catch (err) {
+      failedSegments.push(def.segment);
+      console.error(`Falha no ramo ${def.segment}: ${err.message ?? err}`);
     }
-    console.log(`${status}: ${def.segment} (${def.admin.email})${suffix}`);
-    if (divergences.length > 0) {
-      // Não corrige nada: pode ser estado de teste intencional ou falha parcial de uma execução anterior.
-      console.warn(
-        `ATENÇÃO: tenant ${def.segment} fora do padrão de demonstração (${divergences.join(', ')}). ` +
-          'Se não for estado de teste intencional, corrija no banco local ou remova o usuário e o tenant e rode de novo.',
-      );
-    }
-
-    if (def.operational) {
-      const appointmentsCreated = await seedOperational(admin, tenantId, def.operational);
-      const detail =
-        appointmentsCreated === null
-          ? 'agenda já existente, etapa pulada'
-          : `${appointmentsCreated} agendamentos criados`;
-      console.log(`dados operacionais (${def.segment}): ${detail}`);
-    }
+  }
+  if (failedSegments.length > 0) {
+    fail(`seed concluído com falha nos ramos: ${failedSegments.join(', ')}.`);
   }
 }
 
