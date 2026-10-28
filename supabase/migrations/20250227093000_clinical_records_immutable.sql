@@ -10,14 +10,18 @@
 --
 -- Resultado por papel:
 --   - authenticated e anon: falham no grant (42501, insufficient_privilege).
---   - owner: falha no trigger (23001, restrict_violation). Os triggers barram DML (UPDATE, DELETE,
---     TRUNCATE) de qualquer papel.
 --   - service_role: sem grant, falha antes com 42501. O trigger continua barrando (23001) se o
 --     grant voltar. O teste 30 prova essa camada re-concedendo o privilégio dentro da transação.
+--   - owner: falha no trigger (23001, restrict_violation), inclusive em modo replica
+--     (`session_replication_role = replica`), porque os triggers são ENABLE ALWAYS (ver abaixo).
+--
+-- Caminhos de bypass que sobram: só o owner, e só por DDL (`alter table ... disable trigger`,
+-- `drop trigger`). Modo replica deixa de ser bypass depois do `enable always`.
 --
 -- Limite conhecido: DDL do owner não é barrado pelos triggers. `alter table ... disable trigger` ou
 -- `drop trigger` desativam as camadas 2 e 3. Risco aceito na ADR-07 (Consequências), mitigado por
--- migrations revisadas e log de DDL do Supabase.
+-- migrations revisadas e log de DDL do Supabase. Verificação periódica: `tgenabled` = 'A' nos dois
+-- triggers em `pg_trigger`.
 --
 -- Ordem de disparo: triggers BEFORE do mesmo evento disparam em ordem alfabética pelo nome.
 -- `clinical_records_block_update_delete` vem antes de `clinical_records_validate` (ADR-05), então um
@@ -64,3 +68,8 @@ drop trigger if exists clinical_records_block_truncate on clinical_records;
 create trigger clinical_records_block_truncate
   before truncate on clinical_records
   for each statement execute function clinical_records_block_mutation();
+
+-- ENABLE ALWAYS: os triggers disparam também com session_replication_role = replica. Sem isso, o
+-- owner desligaria as camadas 2 e 3 na própria sessão. Idempotente: reexecutar mantém tgenabled = 'A'.
+alter table clinical_records enable always trigger clinical_records_block_update_delete;
+alter table clinical_records enable always trigger clinical_records_block_truncate;

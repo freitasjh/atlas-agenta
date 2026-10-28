@@ -1,5 +1,6 @@
 -- Teste de imutabilidade de clinical_records (ADR-07), pgTAP.
--- Prova: UPDATE, DELETE e TRUNCATE falham para owner, authenticated e service_role; o registro
+-- Prova: UPDATE, DELETE e TRUNCATE falham para owner (também em modo replica), authenticated e
+-- service_role; o registro
 -- original não muda; o insert de correção legítima por admin continua funcionando (regressão).
 --
 -- Papéis:
@@ -14,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(14);
+select plan(17);
 
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve o SQLSTATE do erro,
 -- ou 'ok' se passou. Não compara mensagem: a mensagem é fixa e não tem dado.
@@ -93,6 +94,30 @@ select is(
   '23001',
   'owner não consegue TRUNCATE: trigger de statement recusa com restrict_violation'
 );
+
+-- Owner em modo replica: triggers habilitados como ENABLE ALWAYS disparam mesmo com
+-- session_replication_role = replica (sem isso, o modo replica desligaria as camadas 2 e 3).
+set session_replication_role = replica;
+
+select is(
+  pg_temp.immutable_state($sql$ update clinical_records set clinical_notes = 'Alterado' where id = 'c5555555-5555-4555-8555-555555555501' $sql$),
+  '23001',
+  'owner em modo replica não consegue UPDATE: trigger always recusa com restrict_violation'
+);
+
+select is(
+  pg_temp.immutable_state($sql$ delete from clinical_records where id = 'c5555555-5555-4555-8555-555555555501' $sql$),
+  '23001',
+  'owner em modo replica não consegue DELETE: trigger always recusa com restrict_violation'
+);
+
+select is(
+  pg_temp.immutable_state($sql$ truncate clinical_records $sql$),
+  '23001',
+  'owner em modo replica não consegue TRUNCATE: trigger always recusa com restrict_violation'
+);
+
+set session_replication_role = origin;
 
 -- ----------------------------------------------------------------------------
 -- authenticated (admin do tenant, RLS real): falta de grant, 42501.
