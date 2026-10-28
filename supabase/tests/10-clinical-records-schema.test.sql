@@ -557,8 +557,9 @@ select throws_ok(
   'campo com U+00A0 nas pontas é recusado'
 );
 
--- 36. UPDATE: alergias com 501 caracteres é recusado pelo trigger (o trigger roda em before insert or
--- update, então o caminho de UPDATE também precisa de prova).
+-- 36 a 38. UPDATE: desde a ADR-07 o registro é append-only. O trigger de imutabilidade roda antes do
+-- de validação (ordem alfabética dos nomes), então qualquer UPDATE é recusado com 23001 antes de
+-- chegar à checagem de conteúdo. Estes testes provam a recusa e que o registro não muda.
 select is(
   pg_temp.clinical_probe(
     $sql$
@@ -567,23 +568,26 @@ select is(
     $sql$,
     'MARCADOR_INEXISTENTE_UPDATE_501'
   ),
-  '23514|clinical_records_allergies_check|false',
-  'UPDATE de alergias acima do limite é recusado pelo trigger'
+  '23001|clinical_records_append_only|false',
+  'UPDATE acima do limite é recusado pela imutabilidade, antes da validação de conteúdo'
 );
 
--- 37 e 38. UPDATE: observações como string vazia, com alergias preenchidas, grava null e não reprova.
-select lives_ok(
-  $sql$
-    update clinical_records set allergies = 'Penicilina', clinical_notes = ''
-    where id = 'c5555555-5555-4555-8555-555555555551'
-  $sql$,
-  'UPDATE com observações vazia e alergias preenchida é aceito'
+select is(
+  pg_temp.clinical_probe(
+    $sql$
+      update clinical_records set allergies = 'Penicilina', clinical_notes = ''
+      where id = 'c5555555-5555-4555-8555-555555555551'
+    $sql$,
+    'MARCADOR_INEXISTENTE_UPDATE_VALIDO'
+  ),
+  '23001|clinical_records_append_only|false',
+  'UPDATE com valor válido também é recusado pela imutabilidade'
 );
 
 select is(
   (select clinical_notes from clinical_records where id = 'c5555555-5555-4555-8555-555555555551'),
-  null::text,
-  'UPDATE grava observações vazia como null'
+  'Observação original',
+  'registro original não muda após UPDATE recusado'
 );
 
 select * from finish();
