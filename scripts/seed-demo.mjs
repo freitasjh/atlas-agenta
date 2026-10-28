@@ -124,8 +124,9 @@ async function findTenantsByNaturalKey(admin, def) {
 /**
  * Classifica os tenants com a chave natural (trade_name + segment) quando o usuário demo não existe:
  * - 'none': não há tenant com a chave.
- * - 'orphan': há tenant, mas nenhum tem perfil admin (sobrou de remoção do usuário).
- * - 'owned': algum tenant tem perfil admin. Pertence a outro cadastro, então nunca se sugere remoção.
+ * - 'orphan': há tenant, mas nenhum usuário vinculado a ele (sobrou de remoção do usuário).
+ * - 'owned': algum tenant tem usuário vinculado (qualquer papel). Pertence a outro cadastro, então
+ *   nunca se sugere remoção, porque apagar o tenant cascatearia para os perfis desses usuários.
  */
 async function classifyNaturalKeyTenants(admin, def) {
   const tenants = await findTenantsByNaturalKey(admin, def);
@@ -135,7 +136,6 @@ async function classifyNaturalKeyTenants(admin, def) {
     .from('profiles')
     .select('tenant_id')
     .in('tenant_id', tenants.map((tenant) => tenant.id))
-    .eq('role', 'admin')
     .limit(1);
   if (error) throw error;
   return data.length > 0 ? 'owned' : 'orphan';
@@ -151,7 +151,7 @@ async function loadAdminProfile(admin, def, userId) {
   if (error) throw error;
   if (!profile) {
     throw new Error(
-      `usuário ${def.admin.email} existe sem perfil. Remova somente esse usuário em auth.users no banco local e rode de novo. O seed decide sobre o tenant na próxima execução.`,
+      `usuário ${def.admin.email} existe sem perfil. No banco local, remova esse usuário em auth.users e, se a linha do tenant "${def.tradeName}" (${def.segment}) ainda existir sem outros usuários vinculados, remova também essa linha em tenants. Depois rode de novo.`,
     );
   }
   if (profile.role !== 'admin' || !profile.tenant_id) {
@@ -197,13 +197,14 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   const existing = await findUserByEmail(admin, def.admin.email);
 
   if (existing) {
+    // Valida o perfil antes de qualquer escrita: não trocar a senha de um usuário sem perfil válido.
+    const profile = await loadAdminProfile(admin, def, existing.id);
     let realigned = false;
     if (realignPassword) {
       const { error } = await admin.auth.admin.updateUserById(existing.id, { password });
       if (error) throw error;
       realigned = true;
     }
-    const profile = await loadAdminProfile(admin, def, existing.id);
     const divergences = await findDemoDivergences(admin, profile.tenant_id, def);
     return { created: false, realigned, divergences };
   }
@@ -212,12 +213,12 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
   const naturalKeyState = await classifyNaturalKeyTenants(admin, def);
   if (naturalKeyState === 'owned') {
     throw new Error(
-      `já existe tenant "${def.tradeName}" (${def.segment}) com administrador cadastrado, diferente de ${def.admin.email}. O seed não reaproveita nem altera esse tenant. Use outro nome fantasia nos dados de teste.`,
+      `já existe tenant "${def.tradeName}" (${def.segment}) com usuários vinculados, e o administrador não é ${def.admin.email}. O seed não reaproveita nem altera esse tenant. Use outro nome fantasia nos dados de teste.`,
     );
   }
   if (naturalKeyState === 'orphan') {
     throw new Error(
-      `tenant "${def.tradeName}" (${def.segment}) existe sem usuário administrador. Remova a linha órfã em tenants no banco local e rode de novo.`,
+      `tenant "${def.tradeName}" (${def.segment}) existe sem usuários vinculados. Remova a linha órfã em tenants no banco local e rode de novo.`,
     );
   }
 
