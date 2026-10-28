@@ -269,7 +269,13 @@ async function main() {
       realignPassword,
     });
     const status = created ? 'criado' : 'reaproveitado (estado preservado)';
-    const suffix = realigned ? ', senha realinhada' : '';
+    let suffix = '';
+    if (realigned) {
+      suffix = ', senha realinhada';
+    } else if (!created) {
+      suffix =
+        ', senha atual mantida (ATLAS_DEMO_PASSWORD ignorada); para realinhar à ATLAS_DEMO_PASSWORD, rode com ATLAS_DEMO_REALIGN_PASSWORD=1';
+    }
     console.log(`${status}: ${def.segment} (${def.admin.email})${suffix}`);
     if (divergences.length > 0) {
       // Não corrige nada: pode ser estado de teste intencional ou falha parcial de uma execução anterior.
