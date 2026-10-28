@@ -9,9 +9,10 @@
  *
  * Idempotente e não destrutivo: rodar de novo cria só o que falta. Tenant e senha de um usuário
  * já existente não são alterados, para preservar estados de teste (ex.: tenant bloqueado).
- * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade e a distribuição
- * de status da demonstração, a etapa é pulada. Qualquer outra situação (ex.: execução anterior
- * interrompida) interrompe a etapa do ramo com erro, sem gravar nada na agenda.
+ * A agenda é semeada só com tenant sem agendamento. Se o tenant já tiver a quantidade, a distribuição
+ * de status e o confirmed_via 'manual' dos confirmados da demonstração, a etapa é pulada. Qualquer outra
+ * situação (ex.: execução anterior interrompida, ou status alterado pela UI) interrompe a etapa do ramo
+ * com erro, sem gravar nada na agenda.
  * Um erro em um ramo não impede os demais; o processo termina com código 1 se algum ramo falhar.
  * Tenant fora do padrão de demonstração não recebe dados operacionais; o aviso indica a correção.
  *
@@ -447,15 +448,23 @@ async function linkIgnoringDuplicates(admin, table, row, onConflict) {
   if (error) throw error;
 }
 
-/** Conta os agendamentos do tenant por status. Retorna Map(status -> quantidade). */
-async function countAppointmentsByStatus(admin, tenantId) {
-  const { data, error } = await admin.from('appointments').select('status').eq('tenant_id', tenantId);
+/**
+ * Resume os agendamentos do tenant: quantidade por status (Map(status -> quantidade)) e quantos
+ * confirmados não têm confirmed_via = 'manual', que é a origem que o seed grava.
+ */
+async function summarizeAppointments(admin, tenantId) {
+  const { data, error } = await admin
+    .from('appointments')
+    .select('status, confirmed_via')
+    .eq('tenant_id', tenantId);
   if (error) throw error;
   const counts = new Map();
-  for (const { status } of data) {
+  let confirmedWithoutManual = 0;
+  for (const { status, confirmed_via } of data) {
     counts.set(status, (counts.get(status) ?? 0) + 1);
+    if (status === 'confirmado' && confirmed_via !== 'manual') confirmedWithoutManual += 1;
   }
-  return counts;
+  return { counts, confirmedWithoutManual };
 }
 
 /** Distribuição de status esperada pela demonstração: quantidade por estado final (target) da spec. */
@@ -476,9 +485,13 @@ function sameStatusCounts(actual, expected) {
 /**
  * Cria a agenda de demonstração do tenant.
  * - Tenant sem agendamento: cria a agenda inteira.
- * - Tenant com a quantidade e a distribuição de status da demonstração: pula a etapa (null).
+ * - Tenant com a quantidade, a distribuição de status e a origem da confirmação (confirmed_via 'manual'
+ *   em todo confirmado) da demonstração: pula a etapa (null).
  * - Quantidade igual mas status diferentes: lança erro. Uma transição que falhou depois do insert deixa
  *   o agendamento em 'pendente' com a contagem certa; sem essa conferência, a reexecução aceitaria.
+ *   Mudança de status feita pela UI também cai aqui, e a reexecução falha por desenho.
+ * - Quantidade igual, status certos, mas confirmado sem confirmed_via 'manual': lança erro. Base gravada
+ *   por versão anterior do seed.
  * - Qualquer outra quantidade: lança erro sem gravar nada. Isso acontece quando uma execução anterior
  *   parou no meio; o tenant precisa ser limpo antes de rodar de novo.
  * Cada agendamento nasce em 'pendente' e avança pelas transições válidas, para que o trigger de
@@ -486,13 +499,18 @@ function sameStatusCounts(actual, expected) {
  * Retorna a quantidade criada, ou null se a etapa foi pulada.
  */
 async function seedAppointments(admin, tenantId, spec, refs) {
-  const actual = await countAppointmentsByStatus(admin, tenantId);
+  const { counts: actual, confirmedWithoutManual } = await summarizeAppointments(admin, tenantId);
   const current = [...actual.values()].reduce((total, n) => total + n, 0);
   const expected = spec.appointments.length;
   if (current === expected) {
     if (!sameStatusCounts(actual, expectedStatusCounts(spec))) {
       throw new Error(
-        `o tenant ${spec.label} já tem ${expected} agendamentos, mas os status não batem com a demonstração. Uma execução anterior pode ter parado no meio. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+        `o tenant ${spec.label} já tem ${expected} agendamentos, mas os status não batem com a demonstração. Uma execução anterior pode ter parado no meio, ou um status foi alterado manualmente pela UI. Apague os agendamentos desse tenant no banco local e rode de novo.`,
+      );
+    }
+    if (confirmedWithoutManual > 0) {
+      throw new Error(
+        `o tenant ${spec.label} tem ${confirmedWithoutManual} agendamento(s) confirmado(s) sem confirmed_via = 'manual', gravados por uma versão anterior do seed. Apague os agendamentos desse tenant no banco local e rode de novo.`,
       );
     }
     return null;
