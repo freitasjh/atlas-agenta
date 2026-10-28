@@ -121,6 +121,26 @@ async function findTenantsByNaturalKey(admin, def) {
   return data;
 }
 
+/**
+ * Classifica os tenants com a chave natural (trade_name + segment) quando o usuário demo não existe:
+ * - 'none': não há tenant com a chave.
+ * - 'orphan': há tenant, mas nenhum tem perfil admin (sobrou de remoção do usuário).
+ * - 'owned': algum tenant tem perfil admin. Pertence a outro cadastro, então nunca se sugere remoção.
+ */
+async function classifyNaturalKeyTenants(admin, def) {
+  const tenants = await findTenantsByNaturalKey(admin, def);
+  if (tenants.length === 0) return 'none';
+
+  const { data, error } = await admin
+    .from('profiles')
+    .select('tenant_id')
+    .in('tenant_id', tenants.map((tenant) => tenant.id))
+    .eq('role', 'admin')
+    .limit(1);
+  if (error) throw error;
+  return data.length > 0 ? 'owned' : 'orphan';
+}
+
 /** Lê o perfil do admin e falha com instrução de limpeza se ele não existir ou estiver fora do esperado. */
 async function loadAdminProfile(admin, def, userId) {
   const { data: profile, error } = await admin
@@ -141,18 +161,20 @@ async function loadAdminProfile(admin, def, userId) {
 }
 
 /**
- * Compara plan, subscription_status e trial_ends_at do tenant com o padrão de demonstração.
- * Só lê: retorna a lista de campos que divergem (vazia se estiver tudo no padrão).
+ * Compara segment, trade_name, plan, subscription_status e trial_ends_at do tenant com o padrão de
+ * demonstração do ramo. Só lê: retorna a lista de campos que divergem (vazia se estiver tudo no padrão).
  */
-async function findDemoDivergences(admin, tenantId) {
+async function findDemoDivergences(admin, tenantId, def) {
   const { data, error } = await admin
     .from('tenants')
-    .select('plan, subscription_status, trial_ends_at')
+    .select('segment, trade_name, plan, subscription_status, trial_ends_at')
     .eq('id', tenantId)
     .single();
   if (error) throw error;
 
   const divergences = [];
+  if (data.segment !== def.segment) divergences.push(`segment=${data.segment}`);
+  if (data.trade_name !== def.tradeName) divergences.push(`trade_name=${data.trade_name}`);
   if (data.plan !== DEMO_TENANT_STATE.plan) divergences.push(`plan=${data.plan}`);
   if (data.subscription_status !== DEMO_TENANT_STATE.subscription_status) {
     divergences.push(`subscription_status=${data.subscription_status}`);
@@ -182,13 +204,18 @@ async function ensureTenantAdmin(admin, def, { password, realignPassword }) {
       realigned = true;
     }
     const profile = await loadAdminProfile(admin, def, existing.id);
-    const divergences = await findDemoDivergences(admin, profile.tenant_id);
+    const divergences = await findDemoDivergences(admin, profile.tenant_id, def);
     return { created: false, realigned, divergences };
   }
 
-  // Tenant sem usuário administrador (órfão, após remoção do usuário): criar de novo duplicaria a empresa.
-  const existingTenants = await findTenantsByNaturalKey(admin, def);
-  if (existingTenants.length > 0) {
+  // Criar de novo duplicaria a empresa. Só órfão (sem admin) aceita limpeza manual; outro dono, não.
+  const naturalKeyState = await classifyNaturalKeyTenants(admin, def);
+  if (naturalKeyState === 'owned') {
+    throw new Error(
+      `já existe tenant "${def.tradeName}" (${def.segment}) com administrador cadastrado, diferente de ${def.admin.email}. O seed não reaproveita nem altera esse tenant. Use outro nome fantasia nos dados de teste.`,
+    );
+  }
+  if (naturalKeyState === 'orphan') {
     throw new Error(
       `tenant "${def.tradeName}" (${def.segment}) existe sem usuário administrador. Remova a linha órfã em tenants no banco local e rode de novo.`,
     );
