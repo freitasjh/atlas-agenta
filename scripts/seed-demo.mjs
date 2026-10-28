@@ -160,8 +160,9 @@ const CLINICA_OPERATIONAL = {
   ],
   combos: [],
   customerCount: 6,
-  // Fichas: todo atendimento em em_atendimento ou concluido ganha um registro original. O primeiro
-  // concluido com profissional de login recebe uma correção.
+  // Fichas: todo atendimento em em_atendimento ou concluido ganha um registro original, com conteúdo
+  // escolhido por profissional e serviço (CLINICAL_RECORD_CONTENT). A correção vai para um atendimento
+  // fixo (CLINICAL_RECORD_CORRECTION.targetKey).
   clinicalRecords: true,
   appointments: [
     { day: -1, time: '09:00', professional: 0, service: 'Avaliação inicial', target: 'concluido' },
@@ -176,30 +177,47 @@ const CLINICA_OPERATIONAL = {
 };
 
 /**
- * Conteúdo clínico fictício das fichas de demonstração (ADR-10). Não é dado de paciente real.
- * Cada ficha original usa uma entrada, em rodízio. A correção reaproveita a primeira.
+ * Chave de uma ficha de demonstração: "<nome do profissional>|<nome do serviço>". Os pares usados pela
+ * demonstração são únicos, então a chave identifica o atendimento sem depender de ordem nem de uuid.
  */
-const CLINICAL_RECORD_CONTENT = [
-  {
+function recordKey(professionalName, serviceName) {
+  return `${professionalName}|${serviceName}`;
+}
+
+/**
+ * Conteúdo clínico fictício das fichas de demonstração (ADR-10), por chave de atendimento. Não é dado de
+ * paciente real. Só atendimentos em em_atendimento ou concluido têm ficha.
+ */
+const CLINICAL_RECORD_CONTENT = {
+  [recordKey('Profissional Demo 1', 'Avaliação inicial')]: {
     allergies: 'Dipirona',
     medications: 'Losartana 50 mg, uma vez ao dia',
     clinicalNotes: 'Relata cefaleia leve há três dias. Orientado a hidratar-se. Retorno em 30 dias.',
   },
-  {
+  [recordKey('Profissional Demo 1', 'Retorno')]: {
     allergies: null,
-    medications: null,
-    clinicalNotes: 'Avaliação inicial sem intercorrências. Plano de acompanhamento combinado.',
+    medications: 'Losartana 50 mg, uma vez ao dia',
+    clinicalNotes: 'Retorno de rotina. Pressão arterial estável. Manter medicação atual.',
   },
-  {
+  [recordKey('Profissional Demo 1', 'Consulta')]: {
     allergies: 'Penicilina',
     medications: 'Vitamina D 2.000 UI, uma vez por semana',
     clinicalNotes: 'Paciente em acompanhamento de rotina. Sem queixas no momento.',
   },
-];
+  [recordKey('Profissional Demo 2', 'Consulta')]: {
+    allergies: null,
+    medications: null,
+    clinicalNotes: 'Consulta de rotina sem intercorrências. Plano de acompanhamento combinado.',
+  },
+};
 
+/**
+ * Correção de ficha (ADR-10): registro novo que aponta para o original do atendimento `targetKey`. Alergias
+ * e medicações são copiadas do próprio original; só as observações mudam. O texto cita o prazo de 30 dias
+ * que está no original de `targetKey`.
+ */
 const CLINICAL_RECORD_CORRECTION = {
-  allergies: 'Dipirona',
-  medications: 'Losartana 50 mg, uma vez ao dia',
+  targetKey: recordKey('Profissional Demo 1', 'Avaliação inicial'),
   clinicalNotes: 'Correção: retorno em 15 dias, e não em 30 como estava registrado.',
 };
 
@@ -453,6 +471,8 @@ async function attachMemberProfile(admin, tenantId, member, userId) {
     if (profile.role !== member.role) {
       throw new Error(`perfil de ${member.email} com papel ${profile.role}, esperado ${member.role}.`);
     }
+    // Falha parcial de execução anterior: o perfil já foi movido e o tenant do cadastro pode ter sobrado.
+    await removeLeftoverSignupTenants(admin, tenantId, member);
     return;
   }
 
@@ -486,6 +506,35 @@ async function attachMemberProfile(admin, tenantId, member, userId) {
   if (moveError) throw moveError;
   const { error: deleteError } = await admin.from('tenants').delete().eq('id', ownTenant.id);
   if (deleteError) throw deleteError;
+}
+
+/**
+ * Remove tenants do cadastro do próprio membro que sobraram de uma execução interrompida entre mover o
+ * perfil e apagar o tenant. Só apaga tenant do e-mail do membro, sem nome fantasia, sem ramo e sem perfil
+ * (o perfil já foi movido). Qualquer outro caso aborta.
+ */
+async function removeLeftoverSignupTenants(admin, tenantId, member) {
+  const { data: candidates, error } = await admin
+    .from('tenants')
+    .select('id')
+    .eq('owner_email', member.email)
+    .is('trade_name', null)
+    .is('segment', null)
+    .neq('id', tenantId);
+  if (error) throw error;
+
+  for (const candidate of candidates) {
+    const { count, error: countError } = await admin
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', candidate.id);
+    if (countError) throw countError;
+    if (count !== 0) {
+      throw new Error(`tenant de ${member.email} tem perfis. O seed não remove esse tenant.`);
+    }
+    const { error: deleteError } = await admin.from('tenants').delete().eq('id', candidate.id);
+    if (deleteError) throw deleteError;
+  }
 }
 
 /**
@@ -726,8 +775,8 @@ async function seedAppointments(admin, tenantId, spec, refs) {
 
 /**
  * Fichas de demonstração (ADR-10). Cada atendimento em em_atendimento ou concluido ganha um registro
- * original. O primeiro concluido cujo profissional tem login recebe uma correção (registro novo que
- * aponta para o original; nunca UPDATE, que a ADR-07 bloqueia).
+ * original, com conteúdo pela chave profissional|serviço. O atendimento CLINICAL_RECORD_CORRECTION.targetKey
+ * recebe uma correção (registro novo que aponta para o original; nunca UPDATE, que a ADR-07 bloqueia).
  *
  * Service role ignora RLS e não tem JWT, então tenant_id e created_by são passados explicitamente.
  * Autor: o profissional com login, no próprio atendimento; sem login, o admin do ramo.
@@ -737,14 +786,21 @@ async function seedAppointments(admin, tenantId, spec, refs) {
 async function seedClinicalRecords(admin, tenantId, { adminUserId }) {
   const { data: professionals, error: profError } = await admin
     .from('professionals')
-    .select('id, profile_id')
+    .select('id, name, profile_id')
     .eq('tenant_id', tenantId);
   if (profError) throw profError;
-  const authorByProfessional = new Map(professionals.map((p) => [p.id, p.profile_id ?? adminUserId]));
+  const professionalById = new Map(professionals.map((p) => [p.id, p]));
+
+  const { data: services, error: servicesError } = await admin
+    .from('services')
+    .select('id, name')
+    .eq('tenant_id', tenantId);
+  if (servicesError) throw servicesError;
+  const serviceNameById = new Map(services.map((s) => [s.id, s.name]));
 
   const { data: appointments, error } = await admin
     .from('appointments')
-    .select('id, customer_id, professional_id, status')
+    .select('id, customer_id, professional_id, service_id, status')
     .eq('tenant_id', tenantId)
     .in('status', ['em_atendimento', 'concluido'])
     .order('starts_at', { ascending: true })
@@ -754,20 +810,30 @@ async function seedClinicalRecords(admin, tenantId, { adminUserId }) {
   let originals = 0;
   let corrections = 0;
   let correctionTarget = null;
-  for (const [index, appt] of appointments.entries()) {
-    const authorId = authorByProfessional.get(appt.professional_id) ?? adminUserId;
+  for (const appt of appointments) {
+    const professional = professionalById.get(appt.professional_id);
+    const serviceName = serviceNameById.get(appt.service_id);
+    if (!professional || !serviceName) {
+      throw new Error(`atendimento ${appt.id} sem profissional ou serviço para a ficha de demonstração.`);
+    }
+    const key = recordKey(professional.name, serviceName);
+    const authorId = professional.profile_id ?? adminUserId;
+
     const { data: existing, error: findError } = await admin
       .from('clinical_records')
-      .select('id')
+      .select('id, allergies, medications')
       .eq('tenant_id', tenantId)
       .eq('appointment_id', appt.id)
       .is('supersedes_id', null)
       .limit(1);
     if (findError) throw findError;
 
-    let originalId = existing[0]?.id;
-    if (!originalId) {
-      const content = CLINICAL_RECORD_CONTENT[index % CLINICAL_RECORD_CONTENT.length];
+    let original = existing[0];
+    if (!original) {
+      const content = CLINICAL_RECORD_CONTENT[key];
+      if (!content) {
+        throw new Error(`sem conteúdo de ficha de demonstração para "${key}".`);
+      }
       const { data: inserted, error: insertError } = await admin
         .from('clinical_records')
         .insert({
@@ -779,43 +845,86 @@ async function seedClinicalRecords(admin, tenantId, { adminUserId }) {
           clinical_notes: content.clinicalNotes,
           created_by: authorId,
         })
-        .select('id')
+        .select('id, allergies, medications')
         .single();
       if (insertError) throw insertError;
-      originalId = inserted.id;
+      original = inserted;
       originals += 1;
     }
 
-    if (correctionTarget === null && appt.status === 'concluido' && authorId !== adminUserId) {
-      correctionTarget = { originalId, appt, authorId };
+    if (key === CLINICAL_RECORD_CORRECTION.targetKey) {
+      if (appt.status !== 'concluido') {
+        throw new Error(`atendimento alvo da correção "${key}" não está concluído.`);
+      }
+      correctionTarget = { original, appt, authorId };
     }
   }
 
-  if (correctionTarget) {
-    const { data: corrected, error: corrError } = await admin
-      .from('clinical_records')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('supersedes_id', correctionTarget.originalId)
-      .limit(1);
-    if (corrError) throw corrError;
-    if (corrected.length === 0) {
-      const { error: insertError } = await admin.from('clinical_records').insert({
-        tenant_id: tenantId,
-        customer_id: correctionTarget.appt.customer_id,
-        appointment_id: correctionTarget.appt.id,
-        supersedes_id: correctionTarget.originalId,
-        allergies: CLINICAL_RECORD_CORRECTION.allergies,
-        medications: CLINICAL_RECORD_CORRECTION.medications,
-        clinical_notes: CLINICAL_RECORD_CORRECTION.clinicalNotes,
-        created_by: correctionTarget.authorId,
-      });
-      if (insertError) throw insertError;
-      corrections += 1;
-    }
+  if (!correctionTarget) {
+    throw new Error(`atendimento alvo da correção "${CLINICAL_RECORD_CORRECTION.targetKey}" não encontrado.`);
+  }
+
+  const { original, appt, authorId } = correctionTarget;
+  const { data: corrected, error: corrError } = await admin
+    .from('clinical_records')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('supersedes_id', original.id)
+    .limit(1);
+  if (corrError) throw corrError;
+  if (corrected.length === 0) {
+    const { error: insertError } = await admin.from('clinical_records').insert({
+      tenant_id: tenantId,
+      customer_id: appt.customer_id,
+      appointment_id: appt.id,
+      supersedes_id: original.id,
+      allergies: original.allergies,
+      medications: original.medications,
+      clinical_notes: CLINICAL_RECORD_CORRECTION.clinicalNotes,
+      created_by: authorId,
+    });
+    if (insertError) throw insertError;
+    corrections += 1;
   }
 
   return { originals, corrections };
+}
+
+/**
+ * Profissional demo pela chave natural (tenant_id, name), com o vínculo de login (profile_id) conferido.
+ * Linha nova recebe o vínculo no insert. Linha existente sem vínculo recebe o vínculo esperado. Vínculo
+ * diferente do esperado (inclusive vínculo onde o seed não espera nenhum) lança erro: senão o seed
+ * terminaria com sucesso sem o login funcionar. Retorna o id do profissional.
+ */
+async function ensureProfessional(admin, tenantId, name, profileId) {
+  const { data, error } = await admin
+    .from('professionals')
+    .select('id, profile_id')
+    .eq('tenant_id', tenantId)
+    .eq('name', name)
+    .limit(1);
+  if (error) throw error;
+
+  if (data.length === 0) {
+    const { data: inserted, error: insertError } = await admin
+      .from('professionals')
+      .insert({ tenant_id: tenantId, name, profile_id: profileId })
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+    return inserted.id;
+  }
+
+  const row = data[0];
+  if (row.profile_id === profileId) return row.id;
+  if (row.profile_id !== null) {
+    throw new Error(
+      `profissional "${name}" já está vinculado a outro usuário. O seed não troca esse vínculo. Ajuste o profissional no banco local e rode de novo.`,
+    );
+  }
+  const { error: updateError } = await admin.from('professionals').update({ profile_id: profileId }).eq('id', row.id);
+  if (updateError) throw updateError;
+  return row.id;
 }
 
 /**
@@ -828,12 +937,7 @@ async function seedOperational(admin, tenantId, spec, { memberIds, adminUserId }
   const professionals = [];
   for (const prof of spec.professionals) {
     const profileId = prof.member ? memberIds[prof.member] : null;
-    const professionalId = await findOrCreate(
-      admin,
-      'professionals',
-      { tenant_id: tenantId, name: prof.name },
-      { profile_id: profileId },
-    );
+    const professionalId = await ensureProfessional(admin, tenantId, prof.name, profileId);
     professionals.push(professionalId);
 
     for (const weekday of WEEK_DAYS) {
