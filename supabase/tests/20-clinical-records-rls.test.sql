@@ -15,7 +15,7 @@
 
 create extension if not exists pgtap with schema extensions;
 begin;
-select plan(39);
+select plan(40);
 
 -- ----------------------------------------------------------------------------
 -- Helper local (pg_temp, some com a transação). Executa o statement e devolve SQLSTATE do erro
@@ -273,6 +273,26 @@ select lives_ok(
             'a4444444-4444-4444-8444-444444444408', 'Losartana', '10000000-0000-4000-8000-000000000002')
   $sql$,
   'profissional registra em atendimento próprio concluido'
+);
+
+-- 6b. Profissional corrige um original do próprio atendimento (409, sem original até aqui). O
+-- original é criado pelo owner com created_by = profissional 1, então a correção também é de
+-- autoria própria e passa em qualquer leitura de "próprio registro" (ver ADR-06, pendência com PO).
+reset role;
+insert into clinical_records (id, tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+values ('c5555555-5555-4555-8555-555555555504', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'a3333333-3333-4333-8333-333333333332', 'a4444444-4444-4444-8444-444444444409',
+        'Original do profissional 1 para correção', '10000000-0000-4000-8000-000000000002');
+select tests.authenticate_as('10000000-0000-4000-8000-000000000002', 'authenticated');
+
+select lives_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, supersedes_id, clinical_notes, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333332',
+            'a4444444-4444-4444-8444-444444444409', 'c5555555-5555-4555-8555-555555555504',
+            'Correção pelo profissional 1', '10000000-0000-4000-8000-000000000002')
+  $sql$,
+  'profissional corrige registro original do próprio atendimento'
 );
 
 -- 7. Profissional não registra em atendimento de outro profissional (410, do profissional 2).
