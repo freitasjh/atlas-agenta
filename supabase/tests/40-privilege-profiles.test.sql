@@ -2,7 +2,8 @@
 -- (achado sec-profiles-role-escalation, severidade crítica).
 --
 -- Duas camadas, cada uma provada separadamente (PRD S-01, sem trigger):
---   1. grant de coluna (CA-01 a CA-05, CA-09, CA-14): com o grant fechado, 42501 de permissão;
+--   1. grant de coluna e de tabela (CA-01 a CA-05, CA-09, CA-14, CA-15 a CA-17): com o grant
+--      fechado, 42501 de permissão. INSERT e DELETE de tabela também ficam fechados;
 --   2. policy profiles_update_self_or_admin (CA-10 a CA-12): isolamento de tenant e de linha.
 --
 -- Os critérios CA-xx são da ADR-02. A coluna "PRD" de cada um aponta o AC/RF correspondente
@@ -16,7 +17,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(28);
+select plan(33);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
@@ -268,6 +269,48 @@ select ok(
   and not has_column_privilege('authenticated', 'public.profiles', 'tenant_id', 'UPDATE')
   and not has_column_privilege('authenticated', 'public.profiles', 'id', 'UPDATE'),
   'CA-14: authenticated grava só full_name em profiles (role, tenant_id e id sem UPDATE)'
+);
+
+-- CA-15 (PRD AC-04, RF-01): super admin S tenta apagar a linha do profissional P, para depois
+-- reinseri-la com outro papel ou tenant. Sem o DELETE de tabela, a policy profiles_super_admin
+-- (FOR ALL) não é suficiente: 42501 de permissão, e a linha de P continua.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select throws_ok(
+  $$delete from profiles where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'permission denied for table profiles',
+  'CA-15: super_admin não apaga profile pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'CA-15: linha de P continua existindo com papel professional após a tentativa negada'
+);
+
+-- CA-16 (PRD AC-04, RF-01): super admin S tenta inserir um profile com papel admin no tenant A.
+-- Sem o INSERT de tabela, 42501 de permissão, e nenhuma linha nova aparece.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select throws_ok(
+  $$insert into profiles (id, tenant_id, role) values ('56565656-5656-4565-8565-565656565656', 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'admin')$$,
+  '42501', 'permission denied for table profiles',
+  'CA-16: super_admin não insere profile pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from profiles where id = '56565656-5656-4565-8565-565656565656'),
+  0,
+  'CA-16: nenhuma linha inserida após a tentativa negada'
+);
+
+-- CA-17 (catálogo, guarda do grant de tabela): authenticated não tem INSERT, DELETE nem UPDATE
+-- de tabela em profiles. Se alguém reabrir qualquer um deles, este teste cai.
+select ok(
+  not has_table_privilege('authenticated', 'public.profiles', 'INSERT')
+  and not has_table_privilege('authenticated', 'public.profiles', 'DELETE')
+  and not has_table_privilege('authenticated', 'public.profiles', 'UPDATE'),
+  'CA-17: authenticated sem INSERT, DELETE nem UPDATE de tabela em profiles'
 );
 
 select * from finish();
