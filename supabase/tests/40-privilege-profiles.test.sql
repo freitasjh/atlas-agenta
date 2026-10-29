@@ -526,7 +526,7 @@ select is(
 -- CA-20 (achado do review da ADR-02, RNF03): seed_message_templates é SECURITY DEFINER. Sem REVOKE,
 -- anon e authenticated a executavam e inseriam templates no tenant de outro usuário. Depois do
 -- revoke: 42501 de permissão para os dois papéis, e nenhuma linha inserida no tenant A.
-select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'anon');
+select tests.authenticate_as(null, 'anon');
 select throws_ok(
   $$select seed_message_templates('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid, 'clinica')$$,
   '42501', 'permission denied for function seed_message_templates',
