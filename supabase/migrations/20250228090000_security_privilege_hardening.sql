@@ -66,3 +66,11 @@ create policy profiles_super_admin on public.profiles for select
 -- foi retirado (PRD S-01). A limpeza é idempotente e não afeta banco que nunca o teve.
 drop trigger if exists profiles_guard_role_tenant on public.profiles;
 drop function if exists profiles_guard_role_tenant();
+
+-- 2. Função seed_message_templates(uuid, text) (migração 20250225091000, já aplicada).
+-- É SECURITY DEFINER e não tinha REVOKE: PUBLIC, e por herança anon e authenticated, mantinham
+-- EXECUTE. Chamada por anon, ela inseria 5 linhas em message_templates de um tenant qualquer,
+-- quebra de isolamento (RNF03, review da ADR-02). Quem a chama de verdade é handle_new_user e o
+-- backfill, ambos rodando como owner (postgres), que continua com EXECUTE. Nada do src/ chama
+-- esta função, então o revoke não muda comportamento do app.
+revoke all on function public.seed_message_templates(uuid, text) from public, anon, authenticated;

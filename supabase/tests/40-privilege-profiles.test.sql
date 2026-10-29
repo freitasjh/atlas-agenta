@@ -17,7 +17,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(36);
+select plan(41);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
@@ -345,6 +345,58 @@ select is(
 );
 reset role;
 select tests.clear_authentication();
+
+-- CA-20 (achado do review da ADR-02, RNF03): seed_message_templates é SECURITY DEFINER. Sem REVOKE,
+-- anon e authenticated a executavam e inseriam templates no tenant de outro usuário. Depois do
+-- revoke: 42501 de permissão para os dois papéis, e nenhuma linha inserida no tenant A.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'anon');
+select throws_ok(
+  $$select seed_message_templates('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid, 'clinica')$$,
+  '42501', 'permission denied for function seed_message_templates',
+  'CA-20: anon não executa seed_message_templates'
+);
+reset role;
+select tests.clear_authentication();
+
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$select seed_message_templates('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid, 'clinica')$$,
+  '42501', 'permission denied for function seed_message_templates',
+  'CA-20: authenticated não executa seed_message_templates'
+);
+reset role;
+select tests.clear_authentication();
+
+select ok(
+  not has_function_privilege('anon', 'public.seed_message_templates(uuid, text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.seed_message_templates(uuid, text)', 'EXECUTE'),
+  'CA-20 (catálogo): anon e authenticated sem EXECUTE em seed_message_templates'
+);
+select is(
+  (select count(*)::int from message_templates where tenant_id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid),
+  0,
+  'CA-20: nenhum template inserido no tenant A pelas tentativas negadas'
+);
+
+-- CA-21 (signup, handle_new_user): o revoke não pode quebrar o signup. handle_new_user roda como
+-- owner e continua chamando seed_message_templates. Um cadastro novo (com ramo clinica) nasce com
+-- exatamente 5 linhas em message_templates. Insert direto em auth.users, como o harness faz.
+insert into auth.users (id, aud, role, email, raw_user_meta_data)
+values (
+  '57575757-5757-4575-8575-575757575757',
+  'authenticated',
+  'authenticated',
+  'signup-seed@teste.invalido',
+  '{"segment": "clinica", "trade_name": "Clinica Signup Teste"}'::jsonb
+);
+select is(
+  (select count(*)::int
+     from message_templates mt
+     join profiles p on p.tenant_id = mt.tenant_id
+    where p.id = '57575757-5757-4575-8575-575757575757'),
+  5,
+  'CA-21: signup depois do revoke cria o tenant com as 5 linhas de message_templates'
+);
 
 select * from finish();
 
