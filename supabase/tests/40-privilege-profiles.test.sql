@@ -315,8 +315,8 @@ select ok(
 
 -- CA-18 (decisão humana, PRD §4.1 e S-06): super admin S (tenant C) tenta gravar full_name do admin
 -- A (tenant A) pelo cliente. A policy profiles_super_admin é só SELECT, e a policy de UPDATE filtra
--- a linha: 0 linhas afetadas, sem erro. A CTE com RETURNING conta as linhas gravadas. Owner
--- confirma o valor.
+-- a linha: 0 linhas afetadas, sem erro. O teste usa lives_ok (o UPDATE não dá erro) e, em seguida,
+-- confirma como owner que o valor de A não mudou.
 select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Invadido pelo Super Admin' where id = '51515151-5151-4515-8515-515151515151'$$,
