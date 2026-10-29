@@ -126,6 +126,10 @@ begin
   return new;
 end;
 $$;
+-- Só o trigger chama esta função. EXECUTE sai de PUBLIC, anon e authenticated, no mesmo padrão de
+-- seed_message_templates (review da ADR-03). O disparo do trigger não checa EXECUTE de quem faz o
+-- UPDATE, então a validação continua valendo.
+revoke all on function public.validate_tenant_timezone() from public, anon, authenticated;
 
 drop trigger if exists tenants_validate_timezone on public.tenants;
 create trigger tenants_validate_timezone

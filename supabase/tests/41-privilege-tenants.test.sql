@@ -18,7 +18,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(41);
+select plan(42);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e recepção R
@@ -386,6 +386,15 @@ select ok(
   and not has_table_privilege('anon', 'public.tenants', 'TRIGGER')
   and not has_table_privilege('anon', 'public.tenants', 'REFERENCES'),
   'guarda de catálogo: authenticated e anon sem INSERT, DELETE, TRIGGER nem REFERENCES em tenants'
+);
+
+-- Guarda de catálogo (review da ADR-03): validate_tenant_timezone() sem EXECUTE para anon nem
+-- authenticated. Como ambos herdam de PUBLIC, has_function_privilege já cobre o grant de PUBLIC.
+-- O trigger continua recusando o fuso (asserções acima), porque o disparo não checa EXECUTE.
+select ok(
+  not has_function_privilege('anon', 'public.validate_tenant_timezone()', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'public.validate_tenant_timezone()', 'EXECUTE'),
+  'guarda de catálogo: validate_tenant_timezone sem EXECUTE para anon e authenticated'
 );
 
 select * from finish();
