@@ -8,28 +8,21 @@
 -- colunas, e authenticated tinha UPDATE na tabela inteira. Um usuário alterava o próprio `role`
 -- para admin ou super_admin, e um admin promovia um colega a super_admin.
 --
--- Estratégia em três camadas:
+-- Estratégia (PRD S-01): duas camadas.
 --   1. Grant de coluna (fronteira principal). Authenticated perde o UPDATE de tabela e recebe
 --      UPDATE só em `full_name`. Qualquer outra coluna (role, tenant_id, id) é recusada pelo
---      motor com SQLSTATE 42501, sem código extra.
---   2. Trigger profiles_guard_role_tenant (BEFORE UPDATE). Se o grant de role ou tenant_id
---      voltar por regressão, o trigger recusa a alteração de role ou tenant_id feita por cliente
---      (anon/authenticated), inclusive por super_admin. Compara OLD e NEW, que a policy não
---      enxerga. É security invoker e não lê dado de outro tenant. A mensagem é fixa e não
---      ecoa o valor enviado. É a barreira de promoção e de rebaixamento de papel.
---   3. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING e com o
+--      motor com SQLSTATE 42501, sem código extra. Vale para todos os papéis do cliente,
+--      inclusive super_admin: a troca de papel fica para Edge Function com service role ou RPC
+--      security definer auditada (backlog, PRD S-06).
+--   2. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING e com o
 --      WITH CHECK da master (tenant do usuário, ou super_admin). Barra escrita em outro tenant.
---      Não cuida de papel: o WITH CHECK não enxerga OLD.role, por isso a barreira de papel é o
---      trigger (camada 2).
+--      A policy não enxerga OLD.role, então ela não é barreira de papel.
 --
--- Escrita de anon: a RLS é a barreira. Anon mantém UPDATE de tabela (sem revoke), e sem policy
--- permissiva ele afeta 0 linhas, sem erro. O smoke 00-smoke-anon (ADR-01) exige esse
--- comportamento sem alteração (decisão 2b, PRD S-07 e AC-17). Risco residual: uma policy
--- permissiva para anon no futuro abriria escrita sem barreira de coluna em anon.
---
--- Trocar papel ou tenant de um usuário passa a ser caminho futuro por Edge Function com service
--- role ou RPC security definer auditada (backlog). Writes de owner e de service_role não passam
--- pelo trigger: o harness de teste (tests.create_user, ADR-01) grava role e tenant_id como owner.
+-- Escrita de anon: anon mantém UPDATE de tabela (sem revoke). A RLS é a única barreira: sem
+-- policy permissiva para anon, o UPDATE afeta 0 linhas, sem erro. O smoke 00-smoke-anon (ADR-01)
+-- exige esse comportamento sem alteração (decisão 2b, PRD S-07 e AC-17). Residual: anon não tem
+-- barreira de coluna. Se uma policy permissiva para anon surgir, role e tenant_id ficam
+-- graváveis por anon. A correção é backlog junto com o revoke de anon.
 --
 -- Convenções: nenhum dinheiro aqui (sem *_cents); nenhum tempo aqui.
 
@@ -48,27 +41,7 @@ create policy profiles_update_self_or_admin on public.profiles for update
     or current_role_name() = 'super_admin'
   );
 
--- Camada 2: trigger que barra alteração de role e tenant_id por cliente, mesmo se o grant
--- voltar. Vale para todos os papéis do cliente, inclusive super_admin (decisão 3b, PRD §4.3).
--- Escrita de owner e de service_role não passa por aqui (ver comentário do cabeçalho).
-create or replace function profiles_guard_role_tenant()
-returns trigger
-language plpgsql
-security invoker
-set search_path = public
-as $$
-begin
-  if current_user in ('anon', 'authenticated')
-     and (new.role is distinct from old.role or new.tenant_id is distinct from old.tenant_id)
-  then
-    raise exception 'alteração de papel ou de empresa não permitida para este usuário'
-      using errcode = '42501';
-  end if;
-  return new;
-end;
-$$;
-
+-- Limpeza de versão anterior desta mesma migration, que criava um trigger de papel. Esse trigger
+-- foi retirado (PRD S-01). A limpeza é idempotente e não afeta banco que nunca o teve.
 drop trigger if exists profiles_guard_role_tenant on public.profiles;
-create trigger profiles_guard_role_tenant
-  before update on public.profiles
-  for each row execute function profiles_guard_role_tenant();
+drop function if exists profiles_guard_role_tenant();
