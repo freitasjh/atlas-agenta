@@ -17,7 +17,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(41);
+select plan(43);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
@@ -97,6 +97,22 @@ select is(
   (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
   'professional',
   'CA-03: papel de P continua professional após a tentativa negada'
+);
+
+-- CA-03b (review da ADR-02, PRD RF-02): admin A tenta promover o profissional P a super_admin.
+-- A barreira é o grant de coluna: a policy não enxerga o papel antigo (OLD.role), então não barra.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'permission denied for table profiles',
+  'CA-03b: admin não promove colega a super_admin'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'CA-03b: papel de P continua professional após a tentativa de promoção'
 );
 
 -- CA-04 (PRD AC-04): super admin S tenta alterar o próprio role.
@@ -261,14 +277,19 @@ select ok(
   'CA-13: policy profiles_update_self_or_admin existe para UPDATE'
 );
 
--- CA-14 (catálogo, guarda do grant): o grant de coluna é a única barreira de role, tenant_id e
--- id. authenticated só pode gravar full_name. Se alguém reabrir o grant, este teste cai.
+-- CA-14 (catálogo, guarda do grant de coluna, review da ADR-02, PRD S-02): o conjunto de colunas de
+-- profiles com UPDATE para authenticated tem de ser exatamente {full_name}. Lista fechada: se alguém
+-- der UPDATE em qualquer outra coluna, inclusive uma criada no futuro, este teste cai.
+-- has_column_privilege por attnum também enxerga um grant de tabela inteira.
 select ok(
-  has_column_privilege('authenticated', 'public.profiles', 'full_name', 'UPDATE')
-  and not has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
-  and not has_column_privilege('authenticated', 'public.profiles', 'tenant_id', 'UPDATE')
-  and not has_column_privilege('authenticated', 'public.profiles', 'id', 'UPDATE'),
-  'CA-14: authenticated grava só full_name em profiles (role, tenant_id e id sem UPDATE)'
+  (select array_agg(a.attname::text order by a.attname)
+     from pg_attribute a
+    where a.attrelid = 'public.profiles'::regclass
+      and a.attnum > 0
+      and not a.attisdropped
+      and has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE'))
+  = array['full_name']::text[],
+  'CA-14: authenticated grava só full_name em profiles (conjunto de colunas com UPDATE é exatamente full_name)'
 );
 
 -- CA-15 (PRD AC-04, RF-01): super admin S tenta apagar a linha do profissional P, para depois
