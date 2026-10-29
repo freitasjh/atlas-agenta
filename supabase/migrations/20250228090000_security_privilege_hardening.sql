@@ -135,3 +135,13 @@ drop trigger if exists tenants_validate_timezone on public.tenants;
 create trigger tenants_validate_timezone
   before insert or update of timezone on public.tenants
   for each row execute function public.validate_tenant_timezone();
+-- 4. TRUNCATE (ADR-04, defesa em profundidade, PRD RF-08 a RF-10).
+-- A default ACL do schema public concede arwdDxt a anon, authenticated e service_role em toda
+-- tabela criada pelo postgres. O PostgREST não expõe TRUNCATE, mas SQL ou RPC executada com esses
+-- roles poderia truncar uma tabela de domínio. service_role entra na revogação (PRD S-05): nenhum
+-- código da master usa TRUNCATE. O owner (postgres) mantém o privilégio, porque revoke não tira
+-- privilégio do próprio owner.
+revoke truncate on all tables in schema public from anon, authenticated, service_role;
+-- Tabelas futuras criadas pelo postgres também nascem sem TRUNCATE para esses roles. Quem precisar
+-- de TRUNCATE concede em migration própria.
+alter default privileges in schema public revoke truncate on tables from anon, authenticated, service_role;
