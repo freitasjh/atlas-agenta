@@ -29,12 +29,12 @@
 -- tenant pelo cliente.
 --
 -- Escrita de anon: anon perde INSERT e DELETE de tabela em profiles (revokes abaixo; INSERT pelo
--- review da ADR-02, DELETE pela aprovação do usuário). Mantém UPDATE e TRUNCATE de tabela, sem
+-- review da ADR-02, DELETE pela aprovação do usuário). Mantém UPDATE de tabela, sem
 -- revoke. Para UPDATE, a RLS é a única barreira: sem policy permissiva para anon, ele não altera
 -- linha alguma. O smoke 00-smoke-anon (ADR-01) aceita 42501 só no DELETE de profiles. Residual:
 -- anon não tem barreira de coluna além da RLS para UPDATE. Se uma policy permissiva para anon
--- surgir, role e tenant_id ficam graváveis por anon. A correção é backlog (PRD S-07). TRUNCATE
--- de authenticated e de anon é tratado na ADR-04.
+-- surgir, role e tenant_id ficam graváveis por anon. A correção é backlog (PRD S-07). O TRUNCATE
+-- de anon, authenticated e service_role sai na seção 4 desta migration (ADR-04).
 --
 -- Convenções: nenhum dinheiro aqui (sem *_cents); nenhum tempo aqui.
 
