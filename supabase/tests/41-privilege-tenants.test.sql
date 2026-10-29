@@ -18,7 +18,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(37);
+select plan(39);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e recepção R
@@ -109,6 +109,11 @@ select throws_ok(
   '42501', 'permission denied for table tenants',
   'AC-07: admin não grava owner_email'
 );
+select throws_ok(
+  $$update tenants set id = id where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
+  '42501', 'permission denied for table tenants',
+  'RF-04: admin não grava id da empresa'
+);
 reset role;
 select tests.clear_authentication();
 select is(
@@ -173,6 +178,11 @@ select is(
 
 -- AC-10 (PRD RF-03): admin A grava as cinco colunas cadastrais da própria empresa.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update tenants set timezone = 'Mars/Olimpo' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
+  '22023', null,
+  'timezone: admin não grava fuso fora de pg_timezone_names (trigger validate_tenant_timezone)'
+);
 select lives_ok(
   $$update tenants
        set legal_name = 'Razao Social A',
@@ -349,8 +359,10 @@ select is(
 -- tenants. Se alguém reabrir um dos dois, este teste cai.
 select ok(
   not has_table_privilege('authenticated', 'public.tenants', 'INSERT')
-  and not has_table_privilege('authenticated', 'public.tenants', 'DELETE'),
-  'guarda de catálogo: authenticated sem INSERT nem DELETE de tabela em tenants'
+  and not has_table_privilege('authenticated', 'public.tenants', 'DELETE')
+  and not has_table_privilege('anon', 'public.tenants', 'INSERT')
+  and not has_table_privilege('anon', 'public.tenants', 'DELETE'),
+  'guarda de catálogo: authenticated e anon sem INSERT nem DELETE de tabela em tenants'
 );
 
 select * from finish();

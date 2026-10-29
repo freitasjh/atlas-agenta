@@ -104,3 +104,27 @@ revoke all on function public.seed_message_templates(uuid, text) from public, an
 revoke update on table public.tenants from authenticated;
 revoke insert, delete on table public.tenants from authenticated;
 grant update (trade_name, legal_name, phone, document, timezone) on table public.tenants to authenticated;
+-- anon também perde INSERT e DELETE de tabela em tenants (review da ADR-03, mesmo critério de
+-- profiles na ADR-02). A RLS já negava as duas, então nenhum fluxo muda. O UPDATE de anon segue
+-- no backlog S-07.
+revoke insert, delete on table public.tenants from anon;
+-- timezone passa a ser validado no banco (review da ADR-03). Um valor fora de pg_timezone_names,
+-- como 'Mars/Olimpo', faz Intl lançar RangeError nas telas de agenda, dashboard e comissões da
+-- empresa. Valores válidos passam sem mudança; o default America/Sao_Paulo é válido.
+create or replace function public.validate_tenant_timezone()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from pg_timezone_names where name = new.timezone) then
+    raise exception 'Fuso horário inválido: %', new.timezone using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tenants_validate_timezone on public.tenants;
+create trigger tenants_validate_timezone
+  before insert or update of timezone on public.tenants
+  for each row execute function public.validate_tenant_timezone();

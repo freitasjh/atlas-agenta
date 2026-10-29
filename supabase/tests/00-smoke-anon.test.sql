@@ -176,14 +176,15 @@ begin
     get diagnostics n = row_count;
     if n > 0 then afetadas := afetadas || alvo.tabela || ' (update) '; end if;
 
-    -- profiles: anon não tem DELETE de tabela (ADR-02, aprovação do usuário). O comando recebe
-    -- 42501 antes da RLS, e a linha continua. Nas demais tabelas, DELETE sem erro e 0 linhas.
+    -- profiles: anon não tem DELETE de tabela (ADR-02, aprovação do usuário). tenants: anon não
+    -- tem DELETE de tabela (ADR-03, review). O comando recebe 42501 antes da RLS, e a linha
+    -- continua. Nas demais tabelas, DELETE sem erro e 0 linhas.
     begin
       execute format('delete from %I', alvo.tabela);
       get diagnostics n = row_count;
       if n > 0 then afetadas := afetadas || alvo.tabela || ' (delete) '; end if;
     exception when insufficient_privilege then
-      if alvo.tabela <> 'profiles' then raise; end if;
+      if alvo.tabela not in ('profiles', 'tenants') then raise; end if;
     end;
   end loop;
 
