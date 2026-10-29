@@ -143,13 +143,13 @@ select is(
   'CA-03c: papel de A continua admin após a promoção barrada pela policy'
 );
 
--- CA-03d (ADR-02, WITH CHECK, PRD §2.1): mesmo grant reaberto. Admin A tenta promover P a
--- super_admin. A policy barra com 42501 de linha, e a linha de P não muda.
+-- CA-03d (ADR-02, USING restrito à própria linha, decisão B): mesmo grant reaberto. Admin A tenta
+-- promover P a super_admin. A linha de P não casa o USING (id = auth.uid()), então o update afeta
+-- 0 linhas, sem erro, e a linha de P não muda. A barreira de WITH CHECK para promoção fica no CA-03c.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
-select throws_ok(
+select lives_ok(
   $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  '42501', 'new row violates row-level security policy for table "profiles"',
-  'CA-03d: WITH CHECK barra admin que promove colega a super_admin (grant de role reaberto)'
+  'CA-03d: admin não alcança a linha de colega para promovê-lo (0 linhas, sem erro)'
 );
 reset role;
 select tests.clear_authentication();
@@ -234,30 +234,29 @@ select is(
   'CA-07: full_name de P gravado'
 );
 
--- CA-08 (PRD §2.1, desvio 1c removido): admin edita full_name de colega comum do próprio tenant
--- (permitido). Admin edita full_name de super_admin colega do próprio tenant: a linha nova continua
--- com role super_admin e quem grava não é super_admin, então o WITH CHECK barra com 42501 de linha.
+-- CA-08 (PRD §5, decisão B aprovada, prd-approval.json item 7): admin altera só o próprio full_name.
+-- O USING da policy é id = auth.uid(), então o update do full_name de um colega do próprio tenant
+-- (P) e de um super_admin colega (Q) não casa nenhuma linha: 0 linhas afetadas, sem erro.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Paulo Editado pelo Admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  'CA-08: admin atualiza full_name de colega do próprio tenant'
+  'CA-08: admin tenta alterar full_name de colega do próprio tenant (0 linhas, sem erro)'
 );
-select throws_ok(
+select lives_ok(
   $$update profiles set full_name = 'Quentin Editado pelo Admin' where id = '55555555-5555-4555-8555-555555555555'$$,
-  '42501', 'new row violates row-level security policy for table "profiles"',
-  'CA-08: admin não atualiza full_name de super_admin colega (WITH CHECK, PRD §2.1)'
+  'CA-08: admin tenta alterar full_name de super_admin colega (0 linhas, sem erro)'
 );
 reset role;
 select tests.clear_authentication();
 select is(
   (select full_name from profiles where id = '52525252-5252-4525-8525-525252525252'),
-  'Paulo Editado pelo Admin',
-  'CA-08: full_name do colega gravado pelo admin'
+  'Paulo Atualizado',
+  'CA-08: full_name do colega não muda após a tentativa do admin'
 );
 select is(
   (select full_name from profiles where id = '55555555-5555-4555-8555-555555555555'),
   'Quentin Super Tenant A',
-  'CA-08: full_name de Q não muda após a tentativa barrada'
+  'CA-08: full_name de Q não muda após a tentativa do admin'
 );
 
 -- CA-09 (decisão 3b): super admin S tenta alterar o role de P pelo cliente. O grant fechado
@@ -509,7 +508,7 @@ select is(
 );
 
 -- CA-22b (RBAC, RF-02): recepção R tenta alterar full_name do profissional P, do mesmo tenant. A
--- policy não dá à recepção linha alheia: 0 linhas, sem erro. O valor de P vem do CA-08.
+-- policy não dá à recepção linha alheia: 0 linhas, sem erro. O valor de P vem do CA-07.
 select tests.authenticate_as('58585858-5858-4585-8585-585858585858', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Rita Tentando Editar Colega' where id = '52525252-5252-4525-8525-525252525252'$$,
@@ -519,7 +518,7 @@ reset role;
 select tests.clear_authentication();
 select is(
   (select full_name from profiles where id = '52525252-5252-4525-8525-525252525252'),
-  'Paulo Editado pelo Admin',
+  'Paulo Atualizado',
   'CA-22b: full_name de P continua o mesmo após a tentativa da recepção'
 );
 
