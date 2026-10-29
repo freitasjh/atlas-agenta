@@ -9,7 +9,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(15);
+select plan(21);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A e profissional P
@@ -143,8 +143,60 @@ select is(
   'full_name do colega gravado pelo admin'
 );
 
--- AC-06: a barreira do WITH CHECK aparece no catálogo. É a única prova de estrutura desta ADR:
--- o grant de coluna barra antes da policy, então o efeito negativo não depende dela.
+-- ADR-02 AC-06 (comportamento): a barreira do WITH CHECK só age se o grant de coluna estiver
+-- reaberto, porque sem ele o motor barra antes da policy. Por isso o teste reabre
+-- grant update (role, tenant_id) para authenticated dentro desta transação e fecha de novo no fim.
+grant update (role, tenant_id) on table public.profiles to authenticated;
+
+-- Admin A tenta promover a si mesmo a super_admin: 42501 vem da policy (WITH CHECK).
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'super_admin' where id = '51515151-5151-4515-8515-515151515151'$$,
+  '42501', null,
+  'ADR-02 AC-06: WITH CHECK barra admin que grava super_admin na própria linha'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '51515151-5151-4515-8515-515151515151'),
+  'admin',
+  'ADR-02 AC-06: papel de A continua admin com o grant reaberto'
+);
+
+-- Admin A tenta trocar o próprio tenant_id para o tenant B: 42501 vem da policy.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set tenant_id = 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1' where id = '51515151-5151-4515-8515-515151515151'$$,
+  '42501', null,
+  'ADR-02 AC-06: WITH CHECK barra admin que troca o próprio tenant_id'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select tenant_id from profiles where id = '51515151-5151-4515-8515-515151515151'),
+  'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'::uuid,
+  'ADR-02 AC-06: tenant_id de A continua o tenant A com o grant reaberto'
+);
+
+-- RF-02 com colega: admin A tenta gravar super_admin na linha do profissional P do próprio tenant.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', null,
+  'ADR-02 AC-06: WITH CHECK barra admin que promove colega a super_admin'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'ADR-02 AC-06: papel de P continua professional com o grant reaberto'
+);
+
+revoke update (role, tenant_id) on table public.profiles from authenticated;
+
+-- ADR-02 AC-06 (catálogo, complemento): a barreira do WITH CHECK aparece em pg_policies.
+-- Não prova a regra sozinho: um with_check que só cite super_admin também passaria.
 select ok(
   exists (
     select 1
@@ -154,7 +206,7 @@ select ok(
        and policyname = 'profiles_update_self_or_admin'
        and with_check like '%super_admin%'
   ),
-  'AC-06: with_check de profiles_update_self_or_admin cita super_admin'
+  'ADR-02 AC-06: with_check de profiles_update_self_or_admin cita super_admin'
 );
 
 select * from finish();
