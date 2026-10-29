@@ -54,6 +54,10 @@ revoke insert on table public.profiles from anon;
 revoke delete on table public.profiles from anon;
 grant update (full_name) on table public.profiles to authenticated;
 
+-- O nome profiles_update_self_or_admin é histórico. Desde a decisão B (prd-approval.json, item 7)
+-- a policy libera só a própria linha (USING id = auth.uid()) e não dá poder de admin sobre
+-- colegas. O nome fica para não mudar o catálogo de uma migration que a ADR-05 ainda não
+-- confirmou como não aplicada no hospedado.
 drop policy if exists profiles_update_self_or_admin on public.profiles;
 create policy profiles_update_self_or_admin on public.profiles for update
   using (id = auth.uid())
