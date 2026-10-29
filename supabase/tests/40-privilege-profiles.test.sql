@@ -19,10 +19,10 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(49);
+select plan(61);
 
 -- Fixture (domínio .invalido, conforme o harness):
---   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
+--   tenant A: admin A, profissional P, recepção R e super admin Q (role super_admin dentro do tenant A)
 --   tenant B: admin B
 --   tenant C: super admin S
 select tests.create_user(
@@ -54,6 +54,12 @@ select tests.create_user(
   'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1',
   'super_admin',
   'Quentin Super Tenant A'
+);
+select tests.create_user(
+  '58585858-5858-4585-8585-585858585858',
+  'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1',
+  'receptionist',
+  'Rita Recepcao'
 );
 
 -- CA-01 (PRD AC-01): admin A tenta promover a si mesmo a super_admin.
@@ -382,6 +388,67 @@ select is(
   'CA-16: nenhuma linha inserida após a tentativa negada'
 );
 
+-- CA-15b (grant de tabela, todos os papéis): admin A tenta apagar a linha do profissional P.
+-- 42501 de permissão antes da policy, e a linha de P continua.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$delete from profiles where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'permission denied for table profiles',
+  'CA-15b: admin não apaga profile de colega pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'CA-15b: linha de P continua existindo após a tentativa do admin'
+);
+
+-- CA-15c (grant de tabela, todos os papéis): profissional P tenta apagar a própria linha.
+select tests.authenticate_as('52525252-5252-4525-8525-525252525252', 'authenticated');
+select throws_ok(
+  $$delete from profiles where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'permission denied for table profiles',
+  'CA-15c: profissional não apaga o próprio profile pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'CA-15c: linha de P continua existindo após a tentativa do próprio profissional'
+);
+
+-- CA-16b (grant de tabela, todos os papéis): admin A tenta inserir um profile no tenant A.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$insert into profiles (id, tenant_id, role) values ('59595959-5959-4595-8595-595959595959', 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'professional')$$,
+  '42501', 'permission denied for table profiles',
+  'CA-16b: admin não insere profile pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from profiles where id = '59595959-5959-4595-8595-595959595959'),
+  0,
+  'CA-16b: nenhuma linha inserida pela tentativa do admin'
+);
+
+-- CA-16c (grant de tabela, todos os papéis): profissional P tenta inserir um profile no tenant A.
+select tests.authenticate_as('52525252-5252-4525-8525-525252525252', 'authenticated');
+select throws_ok(
+  $$insert into profiles (id, tenant_id, role) values ('5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a', 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'professional')$$,
+  '42501', 'permission denied for table profiles',
+  'CA-16c: profissional não insere profile pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select count(*)::int from profiles where id = '5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a'),
+  0,
+  'CA-16c: nenhuma linha inserida pela tentativa do profissional'
+);
+
 -- CA-17 (catálogo, guarda do grant de tabela): authenticated não tem INSERT, DELETE, UPDATE, TRIGGER
 -- nem REFERENCES de tabela em profiles, e anon não tem INSERT, TRIGGER nem REFERENCES. Se alguém
 -- reabrir qualquer um deles, este teste cai. TRIGGER permitiria anexar um trigger que quebra todo
@@ -425,6 +492,35 @@ select is(
 );
 reset role;
 select tests.clear_authentication();
+
+-- CA-22 (RBAC, PRD §5): recepção R atualiza o próprio full_name (coluna permitida, linha própria).
+select tests.authenticate_as('58585858-5858-4585-8585-585858585858', 'authenticated');
+select lives_ok(
+  $$update profiles set full_name = 'Rita Atualizada' where id = '58585858-5858-4585-8585-585858585858'$$,
+  'CA-22: recepção atualiza o próprio full_name'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select full_name from profiles where id = '58585858-5858-4585-8585-585858585858'),
+  'Rita Atualizada',
+  'CA-22: full_name de R gravado'
+);
+
+-- CA-22b (RBAC, RF-02): recepção R tenta alterar full_name do profissional P, do mesmo tenant. A
+-- policy não dá à recepção linha alheia: 0 linhas, sem erro. O valor de P vem do CA-08.
+select tests.authenticate_as('58585858-5858-4585-8585-585858585858', 'authenticated');
+select lives_ok(
+  $$update profiles set full_name = 'Rita Tentando Editar Colega' where id = '52525252-5252-4525-8525-525252525252'$$,
+  'CA-22b: recepção não grava full_name de colega (sem erro, 0 linhas)'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select full_name from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'Paulo Editado pelo Admin',
+  'CA-22b: full_name de P continua o mesmo após a tentativa da recepção'
+);
 
 -- CA-20 (achado do review da ADR-02, RNF03): seed_message_templates é SECURITY DEFINER. Sem REVOKE,
 -- anon e authenticated a executavam e inseriam templates no tenant de outro usuário. Depois do

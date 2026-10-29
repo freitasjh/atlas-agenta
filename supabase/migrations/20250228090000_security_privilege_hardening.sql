@@ -75,11 +75,6 @@ drop policy if exists profiles_super_admin on public.profiles;
 create policy profiles_super_admin on public.profiles for select
   using (current_role_name() = 'super_admin');
 
--- Limpeza de versão anterior desta mesma migration, que criava um trigger de papel. Esse trigger
--- foi retirado (PRD S-01). A limpeza é idempotente e não afeta banco que nunca o teve.
-drop trigger if exists profiles_guard_role_tenant on public.profiles;
-drop function if exists profiles_guard_role_tenant();
-
 -- 2. Função seed_message_templates(uuid, text) (migração 20250225091000, já aplicada).
 -- É SECURITY DEFINER e não tinha REVOKE: PUBLIC, e por herança anon e authenticated, mantinham
 -- EXECUTE. Chamada por anon, ela inseria 5 linhas em message_templates de um tenant qualquer,
