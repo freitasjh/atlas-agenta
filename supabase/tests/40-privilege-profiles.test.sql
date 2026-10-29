@@ -460,9 +460,10 @@ select ok(
   and not has_table_privilege('authenticated', 'public.profiles', 'TRIGGER')
   and not has_table_privilege('authenticated', 'public.profiles', 'REFERENCES')
   and not has_table_privilege('anon', 'public.profiles', 'INSERT')
+  and not has_table_privilege('anon', 'public.profiles', 'DELETE')
   and not has_table_privilege('anon', 'public.profiles', 'TRIGGER')
   and not has_table_privilege('anon', 'public.profiles', 'REFERENCES'),
-  'CA-17: authenticated sem INSERT, DELETE, UPDATE, TRIGGER e REFERENCES; anon sem INSERT, TRIGGER e REFERENCES em profiles'
+  'CA-17: authenticated sem INSERT, DELETE, UPDATE, TRIGGER e REFERENCES; anon sem INSERT, DELETE, TRIGGER e REFERENCES em profiles'
 );
 
 -- CA-18 (decisão humana, PRD §4.1 e S-06): super admin S (tenant C) tenta gravar full_name do admin

@@ -1,7 +1,8 @@
 -- Escopo de RLS anônima (ADR-04, critério 5; origem ADR-02).
 -- Com o papel `anon` e sem JWT, as 17 tabelas de `public` que têm grant a `anon` devem:
 --   1. devolver zero linhas em SELECT;
---   2. não alterar nem apagar nenhuma linha em UPDATE e DELETE (0 linhas afetadas);
+--   2. não alterar nem apagar nenhuma linha em UPDATE e DELETE (0 linhas afetadas; em profiles,
+--      DELETE recebe 42501 de permissão, ver ADR-02);
 --   3. recusar INSERT com erro de privilégio/RLS (SQLSTATE 42501).
 -- Os hooks dessas tabelas não têm gate de sessão próprio, então estas provas são a barreira.
 --
@@ -175,9 +176,15 @@ begin
     get diagnostics n = row_count;
     if n > 0 then afetadas := afetadas || alvo.tabela || ' (update) '; end if;
 
-    execute format('delete from %I', alvo.tabela);
-    get diagnostics n = row_count;
-    if n > 0 then afetadas := afetadas || alvo.tabela || ' (delete) '; end if;
+    -- profiles: anon não tem DELETE de tabela (ADR-02, aprovação do usuário). O comando recebe
+    -- 42501 antes da RLS, e a linha continua. Nas demais tabelas, DELETE sem erro e 0 linhas.
+    begin
+      execute format('delete from %I', alvo.tabela);
+      get diagnostics n = row_count;
+      if n > 0 then afetadas := afetadas || alvo.tabela || ' (delete) '; end if;
+    exception when insufficient_privilege then
+      if alvo.tabela <> 'profiles' then raise; end if;
+    end;
   end loop;
 
   perform set_config('tests.anon_linhas_afetadas', afetadas, true);
