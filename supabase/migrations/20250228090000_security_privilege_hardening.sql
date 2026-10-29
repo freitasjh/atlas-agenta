@@ -96,5 +96,11 @@ revoke all on function public.seed_message_templates(uuid, text) from public, an
 -- owner_email espelha auth.users.email. Super admin continua com tenants_super_admin, mas perde a
 -- troca de status e plano pelo cliente (PRD S-06). Anon mantém UPDATE de tabela, e a RLS barra
 -- (backlog S-07).
+-- INSERT e DELETE de tabela também saem de authenticated (review da ADR-03). A policy
+-- tenants_super_admin é FOR ALL, então o super admin apagava a empresa e a recriava com
+-- subscription_status = 'ativo' e plan = 'pro', contornando o UPDATE protegido. O DELETE também
+-- apagava em cascata os dados do tenant. O signup não depende desse grant: insere em tenants pelo
+-- trigger handle_new_user (security definer), e o app só lê tenants (src/hooks/useTenant.ts).
 revoke update on table public.tenants from authenticated;
+revoke insert, delete on table public.tenants from authenticated;
 grant update (trade_name, legal_name, phone, document, timezone) on table public.tenants to authenticated;

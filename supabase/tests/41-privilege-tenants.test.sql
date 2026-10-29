@@ -3,19 +3,22 @@
 --
 -- Fronteira por coluna (PRD S-02): authenticated grava trade_name, legal_name, phone, document e
 -- timezone. Qualquer outra coluna (subscription_status, plan, trial_ends_at, segment, owner_email,
--- id) recebe 42501 de permissão antes de a policy ser avaliada. As policies de tenants não mudam.
+-- id) recebe 42501 de permissão antes de a policy ser avaliada. INSERT e DELETE de tabela também
+-- saem de authenticated (review da ADR-03): o super admin não apaga e recria a empresa pelo cliente.
+-- As policies de tenants não mudam.
 --
 -- Os negativos rodam com o papel real `authenticated`, porque é ele que o PostgREST usa. A checagem
 -- do estado final é feita como owner, depois de `reset role` e `clear_authentication`. Tudo fica
 -- numa transação com rollback: nada persiste no banco de teste.
 --
 -- Como a PK é `id`, cada UPDATE que grava valor afeta exatamente 1 linha. Nos casos de 0 linha
--- (recepção, profissional, admin de outro tenant), a prova é `lives_ok` mais valor inalterado.
+-- (recepção e profissional), o bloco `do` roda o UPDATE, lê `row_count` com `get diagnostics` e
+-- levanta erro se não for 0. Admin de outro tenant (RNF03) continua provado por valor inalterado.
 create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(30);
+select plan(37);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e recepção R
@@ -122,8 +125,19 @@ select is(
 -- AC-08 (PRD RF-05): recepção e profissional não recebem erro, mas não alteram a empresa.
 select tests.authenticate_as('58585858-5858-4585-8585-585858585858', 'authenticated');
 select lives_ok(
-  $$update tenants set trade_name = 'Tentativa da recepcao' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
-  'AC-08: recepção não recebe erro ao tentar gravar tenants'
+  $$do $body$
+  declare
+    n integer;
+  begin
+    update tenants set trade_name = 'Tentativa da recepcao' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1';
+    get diagnostics n = row_count;
+    if n <> 0 then
+      raise exception 'UPDATE afetou % linha(s), esperado 0', n;
+    end if;
+  end
+  $body$
+  $$,
+  'AC-08: recepção não recebe erro e nenhuma linha é afetada ao gravar tenants'
 );
 reset role;
 select tests.clear_authentication();
@@ -135,8 +149,19 @@ select is(
 
 select tests.authenticate_as('52525252-5252-4525-8525-525252525252', 'authenticated');
 select lives_ok(
-  $$update tenants set trade_name = 'Tentativa do profissional' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
-  'AC-08: profissional não recebe erro ao tentar gravar tenants'
+  $$do $body$
+  declare
+    n integer;
+  begin
+    update tenants set trade_name = 'Tentativa do profissional' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1';
+    get diagnostics n = row_count;
+    if n <> 0 then
+      raise exception 'UPDATE afetou % linha(s), esperado 0', n;
+    end if;
+  end
+  $body$
+  $$,
+  'AC-08: profissional não recebe erro e nenhuma linha é afetada ao gravar tenants'
 );
 reset role;
 select tests.clear_authentication();
@@ -225,6 +250,49 @@ select is(
   'AC-11: trade_name do tenant A gravado pelo super admin'
 );
 
+-- Bypass por DELETE e INSERT (review da ADR-03): sem o revoke de INSERT e DELETE, o super admin
+-- apagava a empresa e a recriava com status ativo e plano pro. Com o revoke, os quatro casos dão
+-- 42501 de permissão antes da policy, e a empresa A continua como estava.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select throws_ok(
+  $$insert into tenants (id, legal_name, owner_email, subscription_status, plan)
+    values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'Empresa injetada', 'injetada@teste.invalido', 'ativo', 'pro')$$,
+  '42501', 'permission denied for table tenants',
+  'INSERT: super admin não cria empresa pelo cliente'
+);
+select throws_ok(
+  $$delete from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
+  '42501', 'permission denied for table tenants',
+  'DELETE: super admin não apaga empresa pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$insert into tenants (id, legal_name, owner_email) values ('d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2', 'Empresa do admin', 'admin-injetado@teste.invalido')$$,
+  '42501', 'permission denied for table tenants',
+  'INSERT: admin não cria empresa pelo cliente'
+);
+select throws_ok(
+  $$delete from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
+  '42501', 'permission denied for table tenants',
+  'DELETE: admin não apaga a própria empresa pelo cliente'
+);
+reset role;
+select tests.clear_authentication();
+
+select is(
+  (select count(*)::int from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'),
+  1,
+  'DELETE: empresa A continua existindo após as tentativas negadas'
+);
+select is(
+  (select count(*)::int from tenants where id in ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'd2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2')),
+  0,
+  'INSERT: nenhuma empresa nova criada pelas tentativas negadas'
+);
+
 -- AC-12 (PRD RF-11): signup pelo trigger handle_new_user, como owner. O trigger roda como
 -- security definer e não depende do grant de authenticated. Cria empresa em trial e profile admin.
 insert into auth.users (id, aud, role, email, raw_user_meta_data)
@@ -275,6 +343,14 @@ select is(
       and has_column_privilege('authenticated', attrelid, attnum, 'UPDATE')),
   'document,legal_name,phone,timezone,trade_name',
   'guarda de catálogo: authenticated tem UPDATE só nas colunas cadastrais de tenants'
+);
+
+-- Guarda de catálogo (review da ADR-03): authenticated não tem INSERT nem DELETE de tabela em
+-- tenants. Se alguém reabrir um dos dois, este teste cai.
+select ok(
+  not has_table_privilege('authenticated', 'public.tenants', 'INSERT')
+  and not has_table_privilege('authenticated', 'public.tenants', 'DELETE'),
+  'guarda de catálogo: authenticated sem INSERT nem DELETE de tabela em tenants'
 );
 
 select * from finish();
