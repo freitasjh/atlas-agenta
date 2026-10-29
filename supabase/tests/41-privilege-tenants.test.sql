@@ -181,7 +181,7 @@ select is(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update tenants set timezone = 'Mars/Olimpo' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
-  '22023', null,
+  '22023', 'Fuso horário inválido',
   'timezone: admin não grava fuso fora de pg_timezone_names (trigger validate_tenant_timezone)'
 );
 reset role;
@@ -196,7 +196,7 @@ select is(
 select throws_ok(
   $$insert into tenants (id, legal_name, owner_email, timezone)
     values ('d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3', 'Empresa fuso invalido', 'fuso-invalido@teste.invalido', 'Mars/Olimpo')$$,
-  '22023', null,
+  '22023', 'Fuso horário inválido',
   'timezone: INSERT com fuso inválido é recusado pelo trigger validate_tenant_timezone'
 );
 -- AC-10 (PRD RF-03): admin A grava as cinco colunas cadastrais da própria empresa.
