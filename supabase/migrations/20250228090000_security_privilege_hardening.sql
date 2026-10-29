@@ -37,6 +37,9 @@
 -- 1. Seção profiles.
 revoke update on table public.profiles from authenticated;
 revoke insert, delete on table public.profiles from authenticated;
+-- TRIGGER e REFERENCES também saem de authenticated e anon. Com TRIGGER, um usuário anexava um
+-- trigger em profiles que fazia todo UPDATE da tabela falhar, para todos os tenants (review ADR-02).
+revoke trigger, references on table public.profiles from authenticated, anon;
 grant update (full_name) on table public.profiles to authenticated;
 
 drop policy if exists profiles_update_self_or_admin on public.profiles;

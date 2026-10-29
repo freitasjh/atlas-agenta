@@ -304,13 +304,18 @@ select is(
   'CA-16: nenhuma linha inserida após a tentativa negada'
 );
 
--- CA-17 (catálogo, guarda do grant de tabela): authenticated não tem INSERT, DELETE nem UPDATE
--- de tabela em profiles. Se alguém reabrir qualquer um deles, este teste cai.
+-- CA-17 (catálogo, guarda do grant de tabela): authenticated não tem INSERT, DELETE, UPDATE, TRIGGER
+-- nem REFERENCES de tabela em profiles, e anon não tem TRIGGER nem REFERENCES. Se alguém reabrir
+-- qualquer um deles, este teste cai. TRIGGER permitiria anexar um trigger que quebra todo UPDATE.
 select ok(
   not has_table_privilege('authenticated', 'public.profiles', 'INSERT')
   and not has_table_privilege('authenticated', 'public.profiles', 'DELETE')
-  and not has_table_privilege('authenticated', 'public.profiles', 'UPDATE'),
-  'CA-17: authenticated sem INSERT, DELETE nem UPDATE de tabela em profiles'
+  and not has_table_privilege('authenticated', 'public.profiles', 'UPDATE')
+  and not has_table_privilege('authenticated', 'public.profiles', 'TRIGGER')
+  and not has_table_privilege('authenticated', 'public.profiles', 'REFERENCES')
+  and not has_table_privilege('anon', 'public.profiles', 'TRIGGER')
+  and not has_table_privilege('anon', 'public.profiles', 'REFERENCES'),
+  'CA-17: authenticated sem INSERT, DELETE, UPDATE, TRIGGER e REFERENCES; anon sem TRIGGER e REFERENCES em profiles'
 );
 
 -- CA-18 (decisão humana, PRD §4.1 e S-06): super admin S (tenant C) tenta gravar full_name do admin
