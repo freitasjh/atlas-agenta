@@ -44,7 +44,7 @@ select tests.create_user(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'super_admin' where id = '51515151-5151-4515-8515-515151515151'$$,
-  '42501', null,
+  '42501', 'permission denied for table profiles',
   'AC-01: admin não altera o próprio role para super_admin'
 );
 reset role;
@@ -59,7 +59,7 @@ select is(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set tenant_id = 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1' where id = '51515151-5151-4515-8515-515151515151'$$,
-  '42501', null,
+  '42501', 'permission denied for table profiles',
   'AC-02: admin não altera o próprio tenant_id'
 );
 reset role;
@@ -74,7 +74,7 @@ select is(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  '42501', null,
+  '42501', 'permission denied for table profiles',
   'AC-03: admin não altera o role de um colega'
 );
 reset role;
@@ -89,7 +89,7 @@ select is(
 select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'admin' where id = '54545454-5454-4545-8545-545454545454'$$,
-  '42501', null,
+  '42501', 'permission denied for table profiles',
   'AC-04: super admin não altera o próprio role pelo cliente'
 );
 reset role;
@@ -152,7 +152,7 @@ grant update (role, tenant_id) on table public.profiles to authenticated;
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'super_admin' where id = '51515151-5151-4515-8515-515151515151'$$,
-  '42501', null,
+  '42501', 'new row violates row-level security policy for table "profiles"',
   'ADR-02 AC-06: WITH CHECK barra admin que grava super_admin na própria linha'
 );
 reset role;
@@ -167,7 +167,7 @@ select is(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set tenant_id = 'b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1' where id = '51515151-5151-4515-8515-515151515151'$$,
-  '42501', null,
+  '42501', 'new row violates row-level security policy for table "profiles"',
   'ADR-02 AC-06: WITH CHECK barra admin que troca o próprio tenant_id'
 );
 reset role;
@@ -182,7 +182,7 @@ select is(
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  '42501', null,
+  '42501', 'new row violates row-level security policy for table "profiles"',
   'ADR-02 AC-06: WITH CHECK barra admin que promove colega a super_admin'
 );
 reset role;
