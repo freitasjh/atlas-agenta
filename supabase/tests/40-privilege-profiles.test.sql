@@ -6,8 +6,8 @@
 --      fechado, 42501 de permissão. INSERT e DELETE de tabela também ficam fechados;
 --   2. policy profiles_update_self_or_admin (CA-03c a CA-03e, CA-08, CA-10 a CA-12): isolamento
 --      de tenant e de linha. A barreira de promoção a super_admin no WITH CHECK é provada só pelo
---      CA-03c (PRD §2.1). O CA-03d prova só que o USING não alcança a linha de colega: 0 linhas,
---      sem erro. Os casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a
+--      CA-03c (PRD §2.1). O CA-03d prova só que o USING não alcança a linha de colega: sem erro e
+--      valor inalterado. Os casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a
 --      policy sozinha.
 --
 -- Os critérios CA-xx são da ADR-02. A coluna "PRD" de cada um aponta o AC/RF correspondente
@@ -147,11 +147,11 @@ select is(
 
 -- CA-03d (ADR-02, USING restrito à própria linha, decisão B): mesmo grant reaberto. Admin A tenta
 -- promover P a super_admin. A linha de P não casa o USING (id = auth.uid()), então o update afeta
--- 0 linhas, sem erro, e a linha de P não muda. A barreira de WITH CHECK para promoção fica no CA-03c.
+-- sem erro, e a linha de P não muda. A barreira de WITH CHECK para promoção fica no CA-03c.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  'CA-03d: admin não alcança a linha de colega para promovê-lo (0 linhas, sem erro)'
+  'CA-03d: admin não alcança a linha de colega para promovê-lo (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();
@@ -238,15 +238,15 @@ select is(
 
 -- CA-08 (PRD §5, decisão B aprovada, prd-approval.json item 7): admin altera só o próprio full_name.
 -- O USING da policy é id = auth.uid(), então o update do full_name de um colega do próprio tenant
--- (P) e de um super_admin colega (Q) não casa nenhuma linha: 0 linhas afetadas, sem erro.
+-- (P) e de um super_admin colega (Q) não casa nenhuma linha: sem erro, e o valor não muda.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Paulo Editado pelo Admin' where id = '52525252-5252-4525-8525-525252525252'$$,
-  'CA-08: admin tenta alterar full_name de colega do próprio tenant (0 linhas, sem erro)'
+  'CA-08: admin tenta alterar full_name de colega do próprio tenant (sem erro, valor inalterado)'
 );
 select lives_ok(
   $$update profiles set full_name = 'Quentin Editado pelo Admin' where id = '55555555-5555-4555-8555-555555555555'$$,
-  'CA-08: admin tenta alterar full_name de super_admin colega (0 linhas, sem erro)'
+  'CA-08: admin tenta alterar full_name de super_admin colega (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();
@@ -278,11 +278,11 @@ select is(
 );
 
 -- CA-10 (isolamento entre tenants, RNF03): admin B (tenant B) tenta alterar full_name do admin
--- A (tenant A). A policy filtra a linha: 0 linhas afetadas, sem erro. Owner confirma o valor.
+-- A (tenant A). A policy filtra a linha: sem erro, e o valor não muda. Owner confirma o valor.
 select tests.authenticate_as('53535353-5353-4535-8535-535353535353', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Invadido pelo Tenant B' where id = '51515151-5151-4515-8515-515151515151'$$,
-  'CA-10: admin de outro tenant não grava full_name de A (sem erro, 0 linhas)'
+  'CA-10: admin de outro tenant não grava full_name de A (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();
@@ -293,11 +293,11 @@ select is(
 );
 
 -- CA-11 (RBAC, RF-02): profissional P tenta alterar full_name do admin A, do mesmo tenant. A
--- policy não dá ao profissional linha alheia: 0 linhas, sem erro. Owner confirma o valor.
+-- policy não dá ao profissional linha alheia: sem erro, e o valor não muda. Owner confirma o valor.
 select tests.authenticate_as('52525252-5252-4525-8525-525252525252', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Paulo Tentando Editar Admin' where id = '51515151-5151-4515-8515-515151515151'$$,
-  'CA-11: profissional não grava full_name de outro usuário (sem erro, 0 linhas)'
+  'CA-11: profissional não grava full_name de outro usuário (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();
@@ -510,11 +510,11 @@ select is(
 );
 
 -- CA-22b (RBAC, RF-02): recepção R tenta alterar full_name do profissional P, do mesmo tenant. A
--- policy não dá à recepção linha alheia: 0 linhas, sem erro. O valor de P vem do CA-07.
+-- policy não dá à recepção linha alheia: sem erro, e o valor não muda. O valor de P vem do CA-07.
 select tests.authenticate_as('58585858-5858-4585-8585-585858585858', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Rita Tentando Editar Colega' where id = '52525252-5252-4525-8525-525252525252'$$,
-  'CA-22b: recepção não grava full_name de colega (sem erro, 0 linhas)'
+  'CA-22b: recepção não grava full_name de colega (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();

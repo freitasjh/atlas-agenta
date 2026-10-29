@@ -23,8 +23,9 @@
 --      B aprovada pelo usuário, prd-approval.json, item 7). Antes, o USING da master deixava o
 --      admin alterar o full_name de qualquer colega do tenant. O WITH CHECK exige (a) tenant do
 --      usuário, ou super_admin, e (b) que a linha nova não fique com role super_admin, a menos
---      que quem grava seja super_admin (PRD §2.1, aprovado pelo usuário; remove o desvio 1c). A policy enxerga só a linha nova, não OLD.role: ela barra
---      a promoção a super_admin, mas não o rebaixamento. O rebaixamento fica barrado pelo grant
+--      que quem grava seja super_admin (PRD §2.1, aprovado pelo usuário; remove o desvio 1c).
+--      A policy enxerga só a linha nova, não OLD.role: ela barra a promoção a super_admin, mas
+--      não o rebaixamento. O rebaixamento fica barrado pelo grant
 --      (item 1).
 --
 -- Super admin: a policy profiles_super_admin passa a ser só SELECT (ver seção profiles). Sem essa
