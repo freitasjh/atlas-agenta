@@ -176,7 +176,8 @@ select is(
   'AC-08: profissional não altera trade_name'
 );
 
--- AC-10 (PRD RF-03): admin A grava as cinco colunas cadastrais da própria empresa.
+-- Validação de fuso (trigger validate_tenant_timezone, ADR-03 decisão 3): valor fora de
+-- pg_timezone_names é recusado no UPDATE (como admin A) e no INSERT (como owner). O valor não muda.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update tenants set timezone = 'Mars/Olimpo' where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
@@ -198,6 +199,7 @@ select throws_ok(
   '22023', null,
   'timezone: INSERT com fuso inválido é recusado pelo trigger validate_tenant_timezone'
 );
+-- AC-10 (PRD RF-03): admin A grava as cinco colunas cadastrais da própria empresa.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update tenants
