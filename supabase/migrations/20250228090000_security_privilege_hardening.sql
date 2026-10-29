@@ -104,6 +104,9 @@ revoke all on function public.seed_message_templates(uuid, text) from public, an
 revoke update on table public.tenants from authenticated;
 revoke insert, delete on table public.tenants from authenticated;
 grant update (trade_name, legal_name, phone, document, timezone) on table public.tenants to authenticated;
+-- TRIGGER e REFERENCES saem de authenticated e anon (review da ADR-03, mesmo critério de profiles).
+-- Com TRIGGER, um usuário anexava um trigger em tenants que fazia todo UPDATE da tabela falhar.
+revoke trigger, references on table public.tenants from authenticated, anon;
 -- anon também perde INSERT e DELETE de tabela em tenants (review da ADR-03, mesmo critério de
 -- profiles na ADR-02). A RLS já negava as duas, então nenhum fluxo muda. O UPDATE de anon segue
 -- no backlog S-07.

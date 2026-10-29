@@ -18,7 +18,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(39);
+select plan(41);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e recepção R
@@ -183,6 +183,22 @@ select throws_ok(
   '22023', null,
   'timezone: admin não grava fuso fora de pg_timezone_names (trigger validate_tenant_timezone)'
 );
+reset role;
+select tests.clear_authentication();
+select is(
+  (select timezone from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'),
+  'America/Sao_Paulo',
+  'timezone: fuso inválido não muda o valor da empresa A após a tentativa negada'
+);
+-- INSERT com fuso inválido: roda como owner, porque authenticated já não tem INSERT em tenants.
+-- O trigger BEFORE INSERT também precisa recusar o valor (review da ADR-03).
+select throws_ok(
+  $$insert into tenants (id, legal_name, owner_email, timezone)
+    values ('d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3', 'Empresa fuso invalido', 'fuso-invalido@teste.invalido', 'Mars/Olimpo')$$,
+  '22023', null,
+  'timezone: INSERT com fuso inválido é recusado pelo trigger validate_tenant_timezone'
+);
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update tenants
        set legal_name = 'Razao Social A',
@@ -298,7 +314,7 @@ select is(
   'DELETE: empresa A continua existindo após as tentativas negadas'
 );
 select is(
-  (select count(*)::int from tenants where id in ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'd2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2')),
+  (select count(*)::int from tenants where id in ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'd2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2', 'd3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3')),
   0,
   'INSERT: nenhuma empresa nova criada pelas tentativas negadas'
 );
@@ -355,14 +371,19 @@ select is(
   'guarda de catálogo: authenticated tem UPDATE só nas colunas cadastrais de tenants'
 );
 
--- Guarda de catálogo (review da ADR-03): authenticated não tem INSERT nem DELETE de tabela em
--- tenants. Se alguém reabrir um dos dois, este teste cai.
+-- Guarda de catálogo (review da ADR-03): authenticated e anon não têm INSERT, DELETE, TRIGGER nem
+-- REFERENCES de tabela em tenants. Se alguém reabrir um desses, este teste cai. TRIGGER permitia
+-- anexar um trigger que faz todo UPDATE da tabela falhar.
 select ok(
   not has_table_privilege('authenticated', 'public.tenants', 'INSERT')
   and not has_table_privilege('authenticated', 'public.tenants', 'DELETE')
+  and not has_table_privilege('authenticated', 'public.tenants', 'TRIGGER')
+  and not has_table_privilege('authenticated', 'public.tenants', 'REFERENCES')
   and not has_table_privilege('anon', 'public.tenants', 'INSERT')
-  and not has_table_privilege('anon', 'public.tenants', 'DELETE'),
-  'guarda de catálogo: authenticated e anon sem INSERT nem DELETE de tabela em tenants'
+  and not has_table_privilege('anon', 'public.tenants', 'DELETE')
+  and not has_table_privilege('anon', 'public.tenants', 'TRIGGER')
+  and not has_table_privilege('anon', 'public.tenants', 'REFERENCES'),
+  'guarda de catálogo: authenticated e anon sem INSERT, DELETE, TRIGGER nem REFERENCES em tenants'
 );
 
 select * from finish();
