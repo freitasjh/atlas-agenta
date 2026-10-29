@@ -21,6 +21,10 @@
 --      WITH CHECK da master (tenant do usuário, ou super_admin). Barra escrita em outro tenant.
 --      A policy não enxerga OLD.role, então ela não é barreira de papel.
 --
+-- Super admin: a policy profiles_super_admin passa a ser só SELECT (ver seção profiles). Sem essa
+-- redução, a escrita FOR ALL somava por OR à policy de UPDATE e permitia gravar full_name de outro
+-- tenant pelo cliente.
+--
 -- Escrita de anon: anon mantém INSERT, DELETE, UPDATE e TRUNCATE de tabela (sem revoke). A RLS
 -- é a única barreira: sem policy permissiva para anon, esses comandos não alteram linha alguma.
 -- O smoke 00-smoke-anon (ADR-01) exige esse comportamento sem alteração (decisão 2b, PRD S-07 e
@@ -45,6 +49,15 @@ create policy profiles_update_self_or_admin on public.profiles for update
     tenant_id = current_tenant_id()
     or current_role_name() = 'super_admin'
   );
+
+-- Super admin: a policy profiles_super_admin (FOR ALL, migration 20250216091000, já aplicada)
+-- somava escrita por OR com a policy de UPDATE acima e deixava o super_admin gravar full_name de
+-- profile de outro tenant pelo cliente, sem trilha. Ela é reduzida a SELECT (não removida): o
+-- super_admin continua lendo todos os tenants. Escrita cross-tenant fica para caminho explícito e
+-- auditado (PRD §4.1 e S-06, backlog). Desvio de PRD §4.2 registrado na ADR-02, decisão humana.
+drop policy if exists profiles_super_admin on public.profiles;
+create policy profiles_super_admin on public.profiles for select
+  using (current_role_name() = 'super_admin');
 
 -- Limpeza de versão anterior desta mesma migration, que criava um trigger de papel. Esse trigger
 -- foi retirado (PRD S-01). A limpeza é idempotente e não afeta banco que nunca o teve.

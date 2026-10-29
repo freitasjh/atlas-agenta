@@ -17,7 +17,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(33);
+select plan(36);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
@@ -312,6 +312,34 @@ select ok(
   and not has_table_privilege('authenticated', 'public.profiles', 'UPDATE'),
   'CA-17: authenticated sem INSERT, DELETE nem UPDATE de tabela em profiles'
 );
+
+-- CA-18 (decisão humana, PRD §4.1 e S-06): super admin S (tenant C) tenta gravar full_name do admin
+-- A (tenant A) pelo cliente. A policy profiles_super_admin é só SELECT, e a policy de UPDATE filtra
+-- a linha: 0 linhas afetadas, sem erro. A CTE com RETURNING conta as linhas gravadas. Owner
+-- confirma o valor.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select lives_ok(
+  $$update profiles set full_name = 'Invadido pelo Super Admin' where id = '51515151-5151-4515-8515-515151515151'$$,
+  'CA-18: super_admin de outro tenant não grava full_name de A (sem erro, 0 linhas)'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select full_name from profiles where id = '51515151-5151-4515-8515-515151515151'),
+  'Ana Administradora',
+  'CA-18: full_name de A continua o mesmo após a tentativa do super_admin'
+);
+
+-- CA-19 (leitura cross-tenant mantida): a policy profiles_super_admin (SELECT) continua dando ao
+-- super admin S a leitura do profile do admin A, de outro tenant.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select is(
+  (select full_name from profiles where id = '51515151-5151-4515-8515-515151515151'),
+  'Ana Administradora',
+  'CA-19: super_admin lê o profile de outro tenant (leitura cross-tenant mantida)'
+);
+reset role;
+select tests.clear_authentication();
 
 select * from finish();
 
