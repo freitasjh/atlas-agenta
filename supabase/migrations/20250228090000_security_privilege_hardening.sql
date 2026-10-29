@@ -25,12 +25,13 @@
 -- redução, a escrita FOR ALL somava por OR à policy de UPDATE e permitia gravar full_name de outro
 -- tenant pelo cliente.
 --
--- Escrita de anon: anon mantém INSERT, DELETE, UPDATE e TRUNCATE de tabela (sem revoke). A RLS
--- é a única barreira: sem policy permissiva para anon, esses comandos não alteram linha alguma.
--- O smoke 00-smoke-anon (ADR-01) exige esse comportamento sem alteração (decisão 2b, PRD S-07 e
--- AC-17). Residual: anon não tem barreira de coluna nem de linha além da RLS. Se uma policy
--- permissiva para anon surgir, role e tenant_id ficam graváveis por anon. A correção é backlog
--- junto com o revoke de anon. TRUNCATE de authenticated e de anon é tratado na ADR-04.
+-- Escrita de anon: anon perde INSERT de tabela em profiles (revoke abaixo, review ADR-02). Mantém
+-- DELETE, UPDATE e TRUNCATE de tabela, sem revoke. Para esses três, a RLS é a única barreira:
+-- sem policy permissiva para anon, eles não alteram linha alguma. O smoke 00-smoke-anon (ADR-01)
+-- exige esse comportamento sem alteração (decisão 2b, PRD S-07 e AC-17). Residual: anon não tem
+-- barreira de coluna nem de linha além da RLS para DELETE e UPDATE. Se uma policy permissiva para
+-- anon surgir, role e tenant_id ficam graváveis por anon. A correção é backlog (PRD S-07). TRUNCATE
+-- de authenticated e de anon é tratado na ADR-04.
 --
 -- Convenções: nenhum dinheiro aqui (sem *_cents); nenhum tempo aqui.
 
@@ -40,6 +41,9 @@ revoke insert, delete on table public.profiles from authenticated;
 -- TRIGGER e REFERENCES também saem de authenticated e anon. Com TRIGGER, um usuário anexava um
 -- trigger em profiles que fazia todo UPDATE da tabela falhar, para todos os tenants (review ADR-02).
 revoke trigger, references on table public.profiles from authenticated, anon;
+-- anon não tem motivo para inserir profile: a linha nasce no trigger handle_new_user (security
+-- definer). Sem o revoke, anon mantinha INSERT de tabela e dependia só da RLS (review ADR-02).
+revoke insert on table public.profiles from anon;
 grant update (full_name) on table public.profiles to authenticated;
 
 drop policy if exists profiles_update_self_or_admin on public.profiles;
