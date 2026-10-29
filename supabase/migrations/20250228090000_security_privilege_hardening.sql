@@ -85,3 +85,16 @@ create policy profiles_super_admin on public.profiles for select
 -- backfill, ambos rodando como owner (postgres), que continua com EXECUTE. Nada do src/ chama
 -- esta função, então o revoke não muda comportamento do app.
 revoke all on function public.seed_message_templates(uuid, text) from public, anon, authenticated;
+
+-- 3. Seção tenants (ADR-03, achado de bypass de assinatura).
+-- A policy tenants_update_own_admin (migration 20250216091000, já aplicada) já limita a linha ao
+-- tenant do admin. Mas authenticated tinha UPDATE na tabela inteira: um admin trocava
+-- subscription_status (trial para ativo, sem pagamento), plan e trial_ends_at, e os controles por
+-- status deixavam de valer. A fronteira é a coluna: só os dados cadastrais ficam graváveis.
+-- As policies de tenants não mudam (o escopo de linha está certo, PRD §4.1).
+-- segment e owner_email ficam de fora (PRD S-03 e S-04). segment muda a cobrança por função, e
+-- owner_email espelha auth.users.email. Super admin continua com tenants_super_admin, mas perde a
+-- troca de status e plano pelo cliente (PRD S-06). Anon mantém UPDATE de tabela, e a RLS barra
+-- (backlog S-07).
+revoke update on table public.tenants from authenticated;
+grant update (trade_name, legal_name, phone, document, timezone) on table public.tenants to authenticated;
