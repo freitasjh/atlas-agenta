@@ -5,8 +5,10 @@
 --   1. grant de coluna e de tabela (CA-01 a CA-05, CA-09, CA-14, CA-15 a CA-17): com o grant
 --      fechado, 42501 de permissão. INSERT e DELETE de tabela também ficam fechados;
 --   2. policy profiles_update_self_or_admin (CA-03c a CA-03e, CA-08, CA-10 a CA-12): isolamento
---      de tenant e de linha, e barreira de promoção a super_admin no WITH CHECK (PRD §2.1). Os
---      casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a policy sozinha.
+--      de tenant e de linha. A barreira de promoção a super_admin no WITH CHECK é provada só pelo
+--      CA-03c (PRD §2.1). O CA-03d prova só que o USING não alcança a linha de colega: 0 linhas,
+--      sem erro. Os casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a
+--      policy sozinha.
 --
 -- Os critérios CA-xx são da ADR-02. A coluna "PRD" de cada um aponta o AC/RF correspondente
 -- quando existe.

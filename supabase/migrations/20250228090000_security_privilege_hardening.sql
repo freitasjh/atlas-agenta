@@ -1,7 +1,8 @@
 -- Migration: hardening de privilégios de profiles e tenants (ADR-02, ADR-03, ADR-04)
--- Fecha as brechas de privilégio do PRD de segurança. Esta migration é nova e não foi
--- aplicada em ambiente compartilhado: as seções de tenants (ADR-03) e de TRUNCATE (ADR-04)
--- são acrescentadas aqui. Depois do merge, qualquer correção vira migration nova.
+-- Fecha as brechas de privilégio do PRD de segurança. Esta migration é nova. Ela não foi
+-- confirmada no hospedado: a ADR-05 (passo 14) checa esse ponto antes da PR. As seções de
+-- tenants (ADR-03) e de TRUNCATE (ADR-04) são acrescentadas aqui. Depois do merge, qualquer
+-- correção vira migration nova.
 --
 -- Seção profiles (ADR-02, achado sec-profiles-role-escalation, crítico):
 -- a policy profiles_update_self_or_admin (migration 20250216091000, já aplicada) não restringe
@@ -20,9 +21,9 @@
 --   2. Policy profiles_update_self_or_admin, recriada com USING restrito à própria linha
 --      (`id = auth.uid()`): um admin altera só o próprio full_name, como a PRD §5 prevê (decisão
 --      B aprovada pelo usuário, prd-approval.json, item 7). Antes, o USING da master deixava o
---      admin alterar o full_name de qualquer colega do tenant. O WITH CHECK exige (a) tenant do usuário, ou super_admin, e (b) que a linha nova não fique
---      com role super_admin, a menos que quem grava seja super_admin (PRD §2.1, aprovado pelo
---      usuário; remove o desvio 1c). A policy enxerga só a linha nova, não OLD.role: ela barra
+--      admin alterar o full_name de qualquer colega do tenant. O WITH CHECK exige (a) tenant do
+--      usuário, ou super_admin, e (b) que a linha nova não fique com role super_admin, a menos
+--      que quem grava seja super_admin (PRD §2.1, aprovado pelo usuário; remove o desvio 1c). A policy enxerga só a linha nova, não OLD.role: ela barra
 --      a promoção a super_admin, mas não o rebaixamento. O rebaixamento fica barrado pelo grant
 --      (item 1).
 --
@@ -54,10 +55,11 @@ revoke insert on table public.profiles from anon;
 revoke delete on table public.profiles from anon;
 grant update (full_name) on table public.profiles to authenticated;
 
--- O nome profiles_update_self_or_admin é histórico. Desde a decisão B (prd-approval.json, item 7)
--- a policy libera só a própria linha (USING id = auth.uid()) e não dá poder de admin sobre
--- colegas. O nome fica para não mudar o catálogo de uma migration que a ADR-05 ainda não
--- confirmou como não aplicada no hospedado.
+-- O nome profiles_update_self_or_admin é histórico: vem da master e não descreve mais o
+-- comportamento. Desde a decisão B (prd-approval.json, item 7), a policy libera só a própria
+-- linha (USING id = auth.uid()) e não dá poder de admin sobre colegas. O nome é mantido de
+-- propósito: o drop policy if exists abaixo troca a definição no mesmo nome, em qualquer banco
+-- que já tenha a policy da master. Renomear criaria uma policy órfã nesses bancos.
 drop policy if exists profiles_update_self_or_admin on public.profiles;
 create policy profiles_update_self_or_admin on public.profiles for update
   using (id = auth.uid())
