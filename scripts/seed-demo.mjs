@@ -28,8 +28,8 @@
  *   [ATLAS_DEMO_REALIGN_PASSWORD=1] \
  *   node scripts/seed-demo.mjs
  *
- * ATLAS_DEMO_REALIGN_PASSWORD=1 realinha a senha dos admins já existentes à ATLAS_DEMO_PASSWORD.
- * É opção explícita: sem ela, a senha atual de um usuário existente é mantida.
+ * ATLAS_DEMO_REALIGN_PASSWORD=1 realinha a senha dos usuários demo já existentes (admins e equipe) à
+ * ATLAS_DEMO_PASSWORD. É opção explícita: sem ela, a senha atual de um usuário existente é mantida.
  *
  * Segurança:
  * - Service role e senha vêm só do ambiente. Nunca são impressas nem gravadas em arquivo.
@@ -335,15 +335,16 @@ async function classifyNaturalKeyTenants(admin, def) {
 }
 
 /**
- * Orientação de recuperação para o operador. Ramo com fichas (ADR-10) não pode ter agendamento nem tenant
- * apagado: clinical_records tem FK on delete restrict e a ADR-07 impede apagar as fichas. Para esse ramo a
- * única saída é recriar o banco local. Os demais ramos recebem a instrução de apagar, em `deleteInstruction`.
+ * Orientação de recuperação para o operador. Sempre começa pela instrução de apagar, em `deleteInstruction`.
+ * Ramo clínica (ADR-10) pode ter fichas, que clinical_records impede de apagar (FK restrict e ADR-07). Só
+ * nesse caso a saída é recriar o banco local, então o texto diz isso como condição, sem afirmar que as
+ * fichas existem. Ramos sem fichas recebem só a instrução de apagar.
  */
 function recoveryHint(hasClinicalRecords, deleteInstruction) {
-  if (hasClinicalRecords) {
-    return 'Este ramo tem fichas clínicas, que o banco não permite apagar (ADR-07). Recrie o banco local com `supabase db reset` e rode de novo.';
+  if (!hasClinicalRecords) {
+    return deleteInstruction;
   }
-  return deleteInstruction;
+  return `${deleteInstruction} Se este ramo já tiver fichas clínicas, o banco não permite apagá-las (ADR-07). Nesse caso, recrie o banco local com \`supabase db reset\` e rode de novo.`;
 }
 
 /** Lê o perfil do admin e falha com instrução de limpeza se ele não existir ou estiver fora do esperado. */
@@ -920,12 +921,14 @@ async function seedClinicalRecords(admin, tenantId, { adminUserId }) {
 }
 
 /**
- * Profissional demo pela chave natural (tenant_id, name), com o vínculo de login (profile_id) conferido.
- * Linha nova recebe o vínculo no insert. Linha existente sem vínculo recebe o vínculo esperado. Vínculo
- * diferente do esperado (inclusive vínculo onde o seed não espera nenhum) lança erro: senão o seed
- * terminaria com sucesso sem o login funcionar. Retorna o id do profissional.
+ * Profissional demo pela chave natural (tenant_id, name). Linha nova recebe `profileId` no insert.
+ * Com `checkProfile` (ramo com equipe, ADR-10), o vínculo de login é conferido: linha existente sem vínculo
+ * recebe o vínculo esperado; vínculo diferente do esperado (inclusive vínculo onde o seed não espera nenhum)
+ * lança erro, senão o seed terminaria com sucesso sem o login funcionar. Sem `checkProfile` (barbearia e
+ * salão, ADR-08 e ADR-09), linha existente é reaproveitada como antes, qualquer que seja o vínculo.
+ * Retorna o id do profissional.
  */
-async function ensureProfessional(admin, tenantId, name, profileId) {
+async function ensureProfessional(admin, tenantId, name, profileId, { checkProfile }) {
   const { data, error } = await admin
     .from('professionals')
     .select('id, profile_id')
@@ -945,7 +948,7 @@ async function ensureProfessional(admin, tenantId, name, profileId) {
   }
 
   const row = data[0];
-  if (row.profile_id === profileId) return row.id;
+  if (!checkProfile || row.profile_id === profileId) return row.id;
   if (row.profile_id !== null) {
     throw new Error(
       `profissional "${name}" já está vinculado a outro usuário. O seed não troca esse vínculo. Ajuste o profissional no banco local e rode de novo.`,
@@ -966,7 +969,9 @@ async function seedOperational(admin, tenantId, spec, { memberIds, adminUserId }
   const professionals = [];
   for (const prof of spec.professionals) {
     const profileId = prof.member ? memberIds[prof.member] : null;
-    const professionalId = await ensureProfessional(admin, tenantId, prof.name, profileId);
+    const professionalId = await ensureProfessional(admin, tenantId, prof.name, profileId, {
+      checkProfile: spec.members !== undefined,
+    });
     professionals.push(professionalId);
 
     for (const weekday of WEEK_DAYS) {
