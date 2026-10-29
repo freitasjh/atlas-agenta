@@ -14,11 +14,18 @@
 --      motor com SQLSTATE 42501, sem código extra.
 --   2. Trigger profiles_guard_role_tenant (BEFORE UPDATE). Se o grant de role ou tenant_id
 --      voltar por regressão, o trigger recusa a alteração de role ou tenant_id feita por cliente
---      (anon/authenticated) que não seja super_admin. Compara OLD e NEW. É security invoker e não
---      lê dado de outro tenant: só consulta o papel do próprio usuário. A mensagem é fixa e não
---      ecoa o valor enviado.
---   3. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING e com um
---      WITH CHECK que barra promoção a super_admin por quem não é super_admin.
+--      (anon/authenticated), inclusive por super_admin. Compara OLD e NEW, que a policy não
+--      enxerga. É security invoker e não lê dado de outro tenant. A mensagem é fixa e não
+--      ecoa o valor enviado. É a barreira de promoção e de rebaixamento de papel.
+--   3. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING e com o
+--      WITH CHECK da master (tenant do usuário, ou super_admin). Barra escrita em outro tenant.
+--      Não cuida de papel: o WITH CHECK não enxerga OLD.role, por isso a barreira de papel é o
+--      trigger (camada 2).
+--
+-- Escrita de anon: a RLS é a barreira. Anon mantém UPDATE de tabela (sem revoke), e sem policy
+-- permissiva ele afeta 0 linhas, sem erro. O smoke 00-smoke-anon (ADR-01) exige esse
+-- comportamento sem alteração (decisão 2b, PRD S-07 e AC-17). Risco residual: uma policy
+-- permissiva para anon no futuro abriria escrita sem barreira de coluna em anon.
 --
 -- Trocar papel ou tenant de um usuário passa a ser caminho futuro por Edge Function com service
 -- role ou RPC security definer auditada (backlog). Writes de owner e de service_role não passam
@@ -37,12 +44,13 @@ create policy profiles_update_self_or_admin on public.profiles for update
     or (current_role_name() = 'admin' and tenant_id = current_tenant_id())
   )
   with check (
-    (tenant_id = current_tenant_id()
-      and (role is distinct from 'super_admin' or current_role_name() = 'super_admin'))
+    tenant_id = current_tenant_id()
     or current_role_name() = 'super_admin'
   );
 
--- Camada 2: trigger que segura role e tenant_id mesmo se o grant voltar.
+-- Camada 2: trigger que barra alteração de role e tenant_id por cliente, mesmo se o grant
+-- voltar. Vale para todos os papéis do cliente, inclusive super_admin (decisão 3b, PRD §4.3).
+-- Escrita de owner e de service_role não passa por aqui (ver comentário do cabeçalho).
 create or replace function profiles_guard_role_tenant()
 returns trigger
 language plpgsql
@@ -51,7 +59,6 @@ set search_path = public
 as $$
 begin
   if current_user in ('anon', 'authenticated')
-     and current_role_name() is distinct from 'super_admin'
      and (new.role is distinct from old.role or new.tenant_id is distinct from old.tenant_id)
   then
     raise exception 'alteração de papel ou de empresa não permitida para este usuário'
