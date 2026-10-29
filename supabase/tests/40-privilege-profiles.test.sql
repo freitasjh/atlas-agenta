@@ -4,7 +4,9 @@
 -- Duas camadas, cada uma provada separadamente (PRD S-01, sem trigger):
 --   1. grant de coluna e de tabela (CA-01 a CA-05, CA-09, CA-14, CA-15 a CA-17): com o grant
 --      fechado, 42501 de permissão. INSERT e DELETE de tabela também ficam fechados;
---   2. policy profiles_update_self_or_admin (CA-10 a CA-12): isolamento de tenant e de linha.
+--   2. policy profiles_update_self_or_admin (CA-03c a CA-03e, CA-08, CA-10 a CA-12): isolamento
+--      de tenant e de linha, e barreira de promoção a super_admin no WITH CHECK (PRD §2.1). Os
+--      casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a policy sozinha.
 --
 -- Os critérios CA-xx são da ADR-02. A coluna "PRD" de cada um aponta o AC/RF correspondente
 -- quando existe.
@@ -17,7 +19,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(43);
+select plan(49);
 
 -- Fixture (domínio .invalido, conforme o harness):
 --   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
@@ -100,7 +102,8 @@ select is(
 );
 
 -- CA-03b (review da ADR-02, PRD RF-02): admin A tenta promover o profissional P a super_admin.
--- A barreira é o grant de coluna: a policy não enxerga o papel antigo (OLD.role), então não barra.
+-- Com o grant fechado, a barreira é o grant de coluna, que recusa antes da policy (CA-03c e CA-03d
+-- provam a policy com o grant reaberto).
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
@@ -113,6 +116,58 @@ select is(
   (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
   'professional',
   'CA-03b: papel de P continua professional após a tentativa de promoção'
+);
+
+-- CA-03c (ADR-02, WITH CHECK, PRD §2.1): grant de role reaberto de propósito, para provar a policy
+-- sozinha. Admin A tenta promover a si mesmo a super_admin: a linha nova teria role super_admin e
+-- quem grava não é super_admin, então a policy barra com 42501 de linha.
+grant update (role) on table public.profiles to authenticated;
+
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'super_admin' where id = '51515151-5151-4515-8515-515151515151'$$,
+  '42501', 'new row violates row-level security policy for table "profiles"',
+  'CA-03c: WITH CHECK barra admin que se promove a super_admin (grant de role reaberto)'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '51515151-5151-4515-8515-515151515151'),
+  'admin',
+  'CA-03c: papel de A continua admin após a promoção barrada pela policy'
+);
+
+-- CA-03d (ADR-02, WITH CHECK, PRD §2.1): mesmo grant reaberto. Admin A tenta promover P a
+-- super_admin. A policy barra com 42501 de linha, e a linha de P não muda.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'new row violates row-level security policy for table "profiles"',
+  'CA-03d: WITH CHECK barra admin que promove colega a super_admin (grant de role reaberto)'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'CA-03d: papel de P continua professional após a promoção barrada pela policy'
+);
+
+revoke update (role) on table public.profiles from authenticated;
+
+-- CA-03e (PRD §2.1): a checagem de papel não barra quem já é super_admin. Super admin S atualiza
+-- o próprio full_name (grant de coluna normal).
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select lives_ok(
+  $$update profiles set full_name = 'Sofia Super Atualizada' where id = '54545454-5454-4545-8545-545454545454'$$,
+  'CA-03e: super_admin atualiza o próprio full_name'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select full_name from profiles where id = '54545454-5454-4545-8545-545454545454'),
+  'Sofia Super Atualizada',
+  'CA-03e: full_name de S gravado'
 );
 
 -- CA-04 (PRD AC-04): super admin S tenta alterar o próprio role.
@@ -173,16 +228,18 @@ select is(
   'CA-07: full_name de P gravado'
 );
 
--- CA-08 (decisão 1c): admin edita full_name de colega do próprio tenant, inclusive de super_admin
--- colega (a master permitia; o WITH CHECK não enxerga papel, então a policy não bloqueia).
+-- CA-08 (PRD §2.1, desvio 1c removido): admin edita full_name de colega comum do próprio tenant
+-- (permitido). Admin edita full_name de super_admin colega do próprio tenant: a linha nova continua
+-- com role super_admin e quem grava não é super_admin, então o WITH CHECK barra com 42501 de linha.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Paulo Editado pelo Admin' where id = '52525252-5252-4525-8525-525252525252'$$,
   'CA-08: admin atualiza full_name de colega do próprio tenant'
 );
-select lives_ok(
+select throws_ok(
   $$update profiles set full_name = 'Quentin Editado pelo Admin' where id = '55555555-5555-4555-8555-555555555555'$$,
-  'CA-08: admin atualiza full_name de super_admin colega do próprio tenant'
+  '42501', 'new row violates row-level security policy for table "profiles"',
+  'CA-08: admin não atualiza full_name de super_admin colega (WITH CHECK, PRD §2.1)'
 );
 reset role;
 select tests.clear_authentication();
@@ -193,8 +250,8 @@ select is(
 );
 select is(
   (select full_name from profiles where id = '55555555-5555-4555-8555-555555555555'),
-  'Quentin Editado pelo Admin',
-  'CA-08: full_name de Q gravado pelo admin'
+  'Quentin Super Tenant A',
+  'CA-08: full_name de Q não muda após a tentativa barrada'
 );
 
 -- CA-09 (decisão 3b): super admin S tenta alterar o role de P pelo cliente. O grant fechado

@@ -17,9 +17,12 @@
 --      app que insira ou apague profile: a linha nasce no trigger handle_new_user (security
 --      definer). Vale para todos os papéis do cliente, inclusive super_admin: a troca de papel
 --      fica para Edge Function com service role ou RPC security definer auditada (backlog, S-06).
---   2. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING e com o
---      WITH CHECK da master (tenant do usuário, ou super_admin). Barra escrita em outro tenant.
---      A policy não enxerga OLD.role, então ela não é barreira de papel.
+--   2. Policy profiles_update_self_or_admin, recriada com a mesma cláusula USING da master. O
+--      WITH CHECK exige (a) tenant do usuário, ou super_admin, e (b) que a linha nova não fique
+--      com role super_admin, a menos que quem grava seja super_admin (PRD §2.1, aprovado pelo
+--      usuário; remove o desvio 1c). A policy enxerga só a linha nova, não OLD.role: ela barra
+--      a promoção a super_admin, mas não o rebaixamento. O rebaixamento fica barrado pelo grant
+--      (item 1).
 --
 -- Super admin: a policy profiles_super_admin passa a ser só SELECT (ver seção profiles). Sem essa
 -- redução, a escrita FOR ALL somava por OR à policy de UPDATE e permitia gravar full_name de outro
@@ -53,8 +56,14 @@ create policy profiles_update_self_or_admin on public.profiles for update
     or (current_role_name() = 'admin' and tenant_id = current_tenant_id())
   )
   with check (
-    tenant_id = current_tenant_id()
-    or current_role_name() = 'super_admin'
+    (
+      tenant_id = current_tenant_id()
+      or current_role_name() = 'super_admin'
+    )
+    and (
+      role <> 'super_admin'
+      or current_role_name() = 'super_admin'
+    )
   );
 
 -- Super admin: a policy profiles_super_admin (FOR ALL, migration 20250216091000, já aplicada)
