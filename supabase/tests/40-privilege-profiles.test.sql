@@ -1,5 +1,12 @@
--- Prova da ADR-02: profiles aceita UPDATE só em full_name e tem barreira contra promoção
--- a super_admin (achado sec-profiles-role-escalation, severidade crítica).
+-- Prova da ADR-02: profiles aceita UPDATE só em full_name e tem barreiras contra escalada de
+-- papel e de tenant (achado sec-profiles-role-escalation, severidade crítica).
+--
+-- Três camadas, cada uma provada separadamente:
+--   1. grant de coluna (testes AC-01 a AC-04 e AC-03b, com o grant fechado): 42501 de permissão;
+--   2. trigger profiles_guard_role_tenant (seção de regressão, com o grant reaberto): 42501 da
+--      função com mensagem fixa;
+--   3. policy profiles_update_self_or_admin (blocos AC-06, com o grant reaberto e o trigger
+--      desligado de propósito): 42501 da policy.
 --
 -- Roda com o papel real `authenticated` nos testes negativos, porque é ele que o PostgREST usa.
 -- A checagem do estado final é feita como owner, depois de `reset role` e `clear_authentication`.
@@ -9,10 +16,10 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(21);
+select plan(30);
 
 -- Fixture (domínio .invalido, conforme o harness):
---   tenant A: admin A e profissional P
+--   tenant A: admin A, profissional P e super admin Q (role super_admin dentro do tenant A)
 --   tenant B: admin B
 --   tenant C: super admin S
 select tests.create_user(
@@ -38,6 +45,12 @@ select tests.create_user(
   'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1',
   'super_admin',
   'Sofia Super'
+);
+select tests.create_user(
+  '55555555-5555-4555-8555-555555555555',
+  'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1',
+  'super_admin',
+  'Quentin Super Tenant A'
 );
 
 -- AC-01: admin A tenta promover a si mesmo a super_admin.
@@ -83,6 +96,21 @@ select is(
   (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
   'professional',
   'AC-03: papel de P continua professional após a tentativa negada'
+);
+
+-- AC-03b: admin A tenta rebaixar Q, super_admin do próprio tenant, para admin.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'admin' where id = '55555555-5555-4555-8555-555555555555'$$,
+  '42501', 'permission denied for table profiles',
+  'AC-03b: admin não rebaixa super_admin do próprio tenant'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '55555555-5555-4555-8555-555555555555'),
+  'super_admin',
+  'AC-03b: papel de Q continua super_admin após a tentativa negada'
 );
 
 -- AC-04: super admin S tenta alterar o próprio role.
@@ -143,10 +171,10 @@ select is(
   'full_name do colega gravado pelo admin'
 );
 
--- ADR-02 AC-06 (comportamento): a barreira do WITH CHECK só age se o grant de coluna estiver
--- reaberto, porque sem ele o motor barra antes da policy. Por isso o teste reabre
--- grant update (role, tenant_id) para authenticated dentro desta transação e fecha de novo no fim.
+-- ADR-02 AC-06 (policy, isolada): reabre grant update (role, tenant_id) e desliga o trigger
+-- profiles_guard_role_tenant, para que só a policy de WITH CHECK barre a escrita.
 grant update (role, tenant_id) on table public.profiles to authenticated;
+alter table public.profiles disable trigger profiles_guard_role_tenant;
 
 -- Admin A tenta promover a si mesmo a super_admin: 42501 vem da policy (WITH CHECK).
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
@@ -178,7 +206,7 @@ select is(
   'ADR-02 AC-06: tenant_id de A continua o tenant A com o grant reaberto'
 );
 
--- RF-02 com colega: admin A tenta gravar super_admin na linha do profissional P do próprio tenant.
+-- Admin A tenta promover o colega P do próprio tenant a super_admin: 42501 vem da policy.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
   $$update profiles set role = 'super_admin' where id = '52525252-5252-4525-8525-525252525252'$$,
@@ -191,6 +219,54 @@ select is(
   (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
   'professional',
   'ADR-02 AC-06: papel de P continua professional com o grant reaberto'
+);
+
+alter table public.profiles enable trigger profiles_guard_role_tenant;
+
+-- Regressão (trigger, grant de role reaberto e trigger ativo): a camada 2 precisa barrar
+-- admin que promove colega ou rebaixa super_admin do próprio tenant, mesmo sem o grant.
+-- A policy sozinha não barra o rebaixamento, porque o WITH CHECK não enxerga OLD.role.
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'admin' where id = '52525252-5252-4525-8525-525252525252'$$,
+  '42501', 'alteração de papel ou de empresa não permitida para este usuário',
+  'REG-trigger: admin não promove colega a admin com o grant reaberto'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'professional',
+  'REG-trigger: papel de P continua professional após a barreira do trigger'
+);
+
+select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
+select throws_ok(
+  $$update profiles set role = 'admin' where id = '55555555-5555-4555-8555-555555555555'$$,
+  '42501', 'alteração de papel ou de empresa não permitida para este usuário',
+  'REG-trigger: admin não rebaixa super_admin do próprio tenant com o grant reaberto'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '55555555-5555-4555-8555-555555555555'),
+  'super_admin',
+  'REG-trigger: papel de Q continua super_admin após a barreira do trigger'
+);
+
+-- Super admin S continua alterando papel de outro tenant pelo caminho auditado (policy
+-- profiles_super_admin) com o grant reaberto e o trigger ativo.
+select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
+select lives_ok(
+  $$update profiles set role = 'admin' where id = '52525252-5252-4525-8525-525252525252'$$,
+  'REG-trigger: super_admin altera o role de colega com o grant reaberto'
+);
+reset role;
+select tests.clear_authentication();
+select is(
+  (select role from profiles where id = '52525252-5252-4525-8525-525252525252'),
+  'admin',
+  'REG-trigger: super_admin gravou o role de P'
 );
 
 revoke update (role, tenant_id) on table public.profiles from authenticated;
@@ -207,6 +283,19 @@ select ok(
        and with_check like '%super_admin%'
   ),
   'ADR-02 AC-06: with_check de profiles_update_self_or_admin cita super_admin'
+);
+
+-- Catálogo do trigger: existe, ativo e não interno.
+select ok(
+  exists (
+    select 1
+      from pg_trigger
+     where tgrelid = 'public.profiles'::regclass
+       and tgname = 'profiles_guard_role_tenant'
+       and tgenabled = 'O'
+       and not tgisinternal
+  ),
+  'ADR-02: trigger profiles_guard_role_tenant ativo em profiles'
 );
 
 select * from finish();
