@@ -82,6 +82,17 @@ export function getAppointmentStatusLabel(status: AppointmentStatus): string {
   return APPOINTMENT_MAP[status].label;
 }
 
+/**
+ * Rótulo pt-BR de um status de assinatura — fonte única reusada pela máquina de
+ * transições da UI (`src/lib/subscription-status.ts`) no select do dialog
+ * "Mudar status" e nos filtros, sem duplicar os textos do `SUBSCRIPTION_MAP`.
+ */
+export function getSubscriptionStatusLabel(
+  status: SubscriptionStatus,
+): string {
+  return SUBSCRIPTION_MAP[status].label;
+}
+
 interface AppointmentBadgeProps {
   status: AppointmentStatus;
   className?: string;

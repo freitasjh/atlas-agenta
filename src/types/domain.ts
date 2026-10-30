@@ -3,6 +3,8 @@
  * Centralizados aqui para evitar strings mágicas em badges e guards.
  */
 
+import type { PlanSlug } from "@/lib/plans";
+
 /** Estados da máquina de estados do agendamento. */
 export const APPOINTMENT_STATUSES = [
   "pendente",
@@ -25,6 +27,30 @@ export const SUBSCRIPTION_STATUSES = [
 ] as const;
 
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+/**
+ * Projeção de uma linha de `tenants` lida cross-tenant pelo super_admin na
+ * lista do painel admin (ADR-04 / Painel do Super Admin, Fatia 1). Shape do
+ * SELECT role-gated por RLS (`tenants_super_admin`) — o cliente nunca envia
+ * `tenant_id`; o banco devolve as linhas que a policy autoriza. Dado não
+ * confiável: validado por zod (`adminTenantRowSchema`) antes do uso.
+ *
+ * `plan` reusa `PlanSlug` de `src/lib/plans.ts` (mesmos valores do enum
+ * persistido `tenants.plan`: `individual|clinica|pro`) — fonte única de slugs
+ * e rótulos de plano, sem duplicar o enum aqui.
+ */
+export interface TenantListItem {
+  id: string;
+  trade_name: string | null;
+  legal_name: string;
+  document: string | null;
+  owner_email: string;
+  plan: PlanSlug;
+  subscription_status: SubscriptionStatus;
+  trial_ends_at: string | null;
+  timezone: string;
+  created_at: string;
+}
 
 /** Papéis de acesso (RBAC). */
 export const ROLES = [
