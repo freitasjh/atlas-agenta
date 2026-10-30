@@ -1,421 +1,182 @@
-# Análise de Dados e Segurança — Fatia 2 do WhatsApp (Fase 2)
+# Análise de Dados e Segurança — Marketing/Auth maduro (landing, preços, login)
 
-Confirmação interativa D-1: lembrete numérico automático (cron) + webhook de entrada da Evolution
-+ marcar agendamento `confirmado` + fila de retentativa.
+> Papel: ANALISADOR DE DADOS E SEGURANÇA do dev-pipeline.
+> Artefato: requisitos verificáveis, critérios de aceite testáveis, modelo de
+> dados/migrations e enquadramento no roadmap, **sob a ótica de dados/segurança**.
+> Não escreve código de aplicação.
 
-> Papel deste documento: requisitos verificáveis, critérios de aceite testáveis, **modelo de
-> dados + migrations + RLS**, e enquadramento no roadmap. Não contém código de aplicação. As
-> decisões de arquitetura de runtime (desenho do webhook, backoff, cron) são refinadas pelo
-> passo de design; aqui fixo o que o schema e as invariantes de segurança **exigem**.
+## Veredito de dados/segurança: demanda SEM superfície de dados
 
----
+**Esta demanda NÃO toca banco de dados, Supabase, RLS, Auth, Edge Functions,
+migrations nem schema.** É melhoria de UI 100% pública/estática no frontend
+(landing, `/precos`, header de marketing e painel esquerdo do `AuthLayout`).
 
-## 1. Resumo
+Confirmado por inspeção dos arquivos-alvo:
 
-Hoje o projeto só dispara WhatsApp **sob demanda** (Edge Function `whatsapp`, operação `send`,
-Fatia 1). Esta fatia introduz, pela **primeira vez no projeto**, dois mecanismos novos:
+- `src/lib/plans.ts` — catálogo apresentacional em memória. O próprio arquivo
+  documenta (ADR-13) que **plano é conceito de marketing nesta fase**: não é
+  persistido, não alimenta query nem escrita, o tenant nasce em `trial`, e
+  billing/checkout + uso efetivo de `tenants.plan` são **Fase 3**.
+- `src/marketing/pages.tsx`, `src/marketing/MarketingLayout.tsx`,
+  `src/auth/AuthLayout.tsx` — componentes de apresentação. Não importam o cliente
+  Supabase, não usam TanStack Query, não leem/escrevem dados de domínio.
 
-1. **Disparo automático agendado** (pg_cron) do lembrete D-1 (`lembrete_d1`), varrendo
-   agendamentos com `starts_at` ~24h à frente, ainda não lembrados, com opt-in.
-2. **Webhook de ENTRADA** da Evolution (nova Edge Function) que recebe a resposta do cliente,
-   valida (zod), verifica autenticidade, é idempotente, casa a resposta ao agendamento certo do
-   tenant certo e aplica a transição de estado: `1` → `confirmado` + `confirmed_at`; `2` →
-   mensagem automática de retorno, **sem** alterar o agendamento (decisão "c" do usuário).
-3. **Fila de retentativa** para `messages.status = 'fila'`: reenvio com backoff e limite N,
-   marcando `falha` só após o limite e **nunca** reenviando após a janela útil do lembrete
-   (depois de `starts_at`).
+### Consequências para este documento
 
-O texto do `lembrete_d1` já traz "Responda 1 para confirmar ou 2 para reagendar" (baseline da
-Fatia 1, migration `20250222091000`). A régua de templates server-side, opt-in, idempotência de
-**envio** (`dedupe_key` + índice único parcial), checagem de instância conectada, normalização
-E.164 e o adapter Evolution (mock/real) já existem e **devem ser reusados, não recriados**.
+- **Modelo de dados: N/A.** Nenhuma tabela nova, nenhuma coluna nova, nenhum tipo
+  de domínio novo. `price_cents` adicionado a `src/lib/plans.ts` é uma **constante
+  TypeScript de marketing**, não uma coluna de banco — segue a convenção de nome
+  `*_cents` (inteiro) por consistência conceitual, mas vive em código, não em
+  Postgres.
+- **Migrations: NENHUMA.** Não criar, não editar, não tocar `supabase/migrations`.
+  Reescrever a análise só para "ter uma migration" seria defeito. Qualquer ADR do
+  planejador que proponha migration para esta demanda está errada.
+- **RLS / RBAC / políticas: N/A.** Não há tabela de domínio envolvida, logo nada a
+  habilitar ou escrever. As fronteiras invioláveis de RLS/RBAC continuam válidas no
+  projeto, mas **nenhuma delas é exercida por esta tarefa** — não há leitura de
+  `charges`, nem de `appointments`, nem derivação de `tenant_id`.
 
-### Fronteiras invioláveis aplicadas a esta fatia
+As fronteiras invioláveis listadas no prompt (RLS em toda tabela de domínio;
+`tenant_id` do JWT/profiles e nunca do cliente; cross-tenant só por Edge Function
+service role / policy `super_admin` auditada; RBAC admin/professional/receptionist
+com recepção sem `charges`; `no_overlap` por `tstzrange`; webhooks idempotentes e
+autenticados; segredos só em Edge Functions/env) **permanecem verdadeiras e não são
+violadas nem relaxadas** por esta demanda, simplesmente porque ela não cruza a
+camada de dados. Registrado para rastreabilidade, não porque haja algo a mudar.
 
-- RLS habilitado em **toda** tabela de domínio nova; nenhuma tabela de tenant sem política.
-- `tenant_id` **nunca** vem do payload do webhook. Na superfície de webhook (pré-autenticação,
-  sem JWT de usuário) o tenant é resolvido **pela instância** (`whatsapp_instances`
-  `.evolution_instance_name` → `tenant_id`), no servidor, com service role.
-- Operações privilegiadas (webhook, cron, transição de status, escrita em `messages`) rodam em
-  Edge Function / função SQL `security definer` com service role. Segredos (token Evolution,
-  service role, segredo de webhook) **só** no servidor/env, nunca no bundle do cliente.
-- Idempotência obrigatória: processar o mesmo evento de entrada duas vezes **não** confirma em
-  duplicidade nem gera efeito repetido. Chave de dedupe = id da mensagem/evento da Evolution.
-- Autenticidade do webhook verificada **antes** de qualquer efeito.
-- Disparo só com `whatsapp_opt_in = true` (LGPD). Sem telefone/texto em claro em log.
+## A ÚNICA superfície de segurança desta tarefa: entrada não confiável `?plano`
 
----
+Embora não haja dados, há **uma** preocupação de segurança frontend legítima, e ela
+é inegociável:
 
-## 2. Requisitos funcionais
+- `?plano=<slug>` na URL de `/cadastro` é entrada **controlada pelo usuário / não
+  confiável**. `parsePlanSlug` (em `src/lib/plans.ts`) é o **ponto único de
+  validação** contra o enum `PLAN_SLUGS` conhecido.
+- O valor **cru** de `?plano` **nunca** pode ser interpolado no DOM. A UI só exibe o
+  rótulo pt-BR obtido por `getPlan(slugValidado).nome`. Isso previne injeção de
+  conteúdo via query string.
+- `parsePlanSlug`, `getPlan`, `PlanSlug` e `PLAN_SLUGS` devem permanecer **intactos
+  em contrato** (assinatura e comportamento). Adicionar `price_cents` + helper BRL
+  é **aditivo** — não altera o fluxo de validação.
 
-**RF-S2-01 — Lembrete D-1 automático (cron).** Um job agendado (pg_cron) executa periodicamente
-e dispara o template `lembrete_d1` para todo agendamento elegível: `status in ('pendente',
-'confirmado')`, `starts_at` dentro da janela ~24h à frente (faixa configurável, p.ex. 23h–25h),
-cliente com `whatsapp_opt_in = true`, instância do tenant `conectado`, e que ainda **não** teve
-lembrete D-1 enfileirado/enviado. O job **não** reenvia após `starts_at` (janela útil vencida).
+## Requisitos verificáveis
 
-**RF-S2-02 — Marcação idempotente de "lembrado".** Cada agendamento recebe no máximo um lembrete
-D-1 por ciclo. A elegibilidade deriva da existência (ou não) de uma `messages` com
-`template = 'lembrete_d1'` viva para aquele `appointment_id` — reusando a `dedupe_key` existente
-(`lembrete_d1:a:<appointmentId>`). Rodar o cron duas vezes seguidas não gera dois lembretes.
+### RF — Fonte única de planos (`src/lib/plans.ts`)
+- **RF01** Cada `Plan` expõe `price_cents: number` inteiro: Individual `5900`,
+  Clínica `14900`, Pro `25900`. Valor em **centavos inteiros** (convenção `*_cents`),
+  nunca float, nunca string.
+- **RF02** Existe um helper de formatação BRL exportado (ex.: `formatBRL` /
+  `formatPlanPrice`) que converte `price_cents` → string pt-BR: `5900 → "R$ 59"`,
+  `14900 → "R$ 149"`, `25900 → "R$ 259"`.
+- **RF03** `PlanSlug`, `PLAN_SLUGS`, `parsePlanSlug`, `getPlan` e `Plan` (campos
+  atuais) permanecem com contrato intacto; a mudança é puramente aditiva.
+- **RF04** `clinica` permanece o único `recomendado: true` (ancoragem de pricing).
 
-**RF-S2-03 — Webhook de entrada (nova Edge Function).** Uma Edge Function pública recebe o POST
-de mensagem recebida da Evolution. Ela: (a) verifica autenticidade; (b) valida o payload com zod
-(dado não confiável); (c) deduplica pelo id do evento/mensagem; (d) resolve o tenant pela
-instância; (e) casa a resposta ao agendamento; (f) aplica o efeito. Payload inválido ou não
-autêntico é **rejeitado sem efeito**.
+### RF — Página de preços (`/precos`)
+- **RF05** `/precos` renderiza os três planos **consumindo `PLANS`** — sem lista
+  duplicada e sem valor colado fora de `src/lib/plans.ts`.
+- **RF06** Cada card mostra: valor mensal em BRL (via helper RF02), público-alvo,
+  benefícios ampliados (pt-BR), selo "Recomendado" **apenas** na Clínica, e CTA
+  "Começar com o {nome}" apontando para `/cadastro?plano={slug}`.
+- **RF07** Remover a copy "valores chegam em breve"/"valores e contratação chegam em
+  breve". Incluir nota discreta em pt-BR de que a contratação acontece ao criar a
+  conta — **sem checkout, sem billing**.
 
-**RF-S2-04 — Casamento resposta → agendamento (determinístico).** A partir do telefone do
-remetente normalizado em E.164 + o tenant resolvido pela instância, encontrar o **agendamento
-alvo**: o agendamento do cliente (via `customers.phone` no tenant) com `status in ('pendente',
-'confirmado')`, que teve `lembrete_d1` enviado, cujo `starts_at` está no futuro (janela útil
-ainda aberta), escolhendo o de **`starts_at` mais próximo**. Se não casar nenhum, o evento é
-**logado e ignorado** (sem erro ao provedor, sem efeito).
+### RF — Landing (`src/marketing/pages.tsx`)
+- **RF08** Hero com CTA reforçada (continua levando a `/cadastro` e `/precos`).
+- **RF09** Seção de benefícios / "para quem é".
+- **RF10** Seção de prévia de planos com valores em BRL (consumindo `PLANS`, mesma
+  fonte da `/precos`) + link "Ver planos" para `/precos`.
+- **RF11** (Opcional) FAQ curto em pt-BR.
+- **RF12** Ilustração decorativa via CSS/SVG/componente (sem assets externos),
+  marcada `aria-hidden="true"`.
 
-**RF-S2-05 — Resposta "1" confirma.** Com um agendamento casado e resposta interpretada como
-`1` (confirmar), a Edge Function transiciona `appointments.status → 'confirmado'` via UPDATE
-(respeitando o trigger `appointments_transition_guard`, que carimba `confirmed_at`). Transição
-inválida (ex.: agendamento já `cancelado`) é tratada sem erro fatal e logada.
+### RF — Header de marketing (`MarketingLayout.tsx`)
+- **RF13** Adicionar link/botão "Entrar" apontando para `/login`, acessível por
+  teclado e com foco visível (padrão de `focus-visible:ring` já usado no header).
 
-**RF-S2-06 — Resposta "2" retorna mensagem automática (decisão c).** Resposta interpretada como
-`2` (reagendar): a função **não** altera o agendamento. Enfileira uma mensagem automática de
-retorno ("entramos em contato para reagendar") — via `messages` + adapter. Nenhum reagendamento
-automático, nenhuma mudança de horário.
+### RF — Painel de autenticação (`AuthLayout.tsx`)
+- **RF14** Enriquecer o `aside` (painel esquerdo, `≥1024px`) com ilustração
+  CSS/SVG decorativa (`aria-hidden="true"`) + lista de 3–4 funcionalidades em pt-BR:
+  agenda sem conflito, confirmação D-1, cobrança PIX, baixa automática.
+- **RF15** O `aside` continua `hidden lg:flex` (só em telas largas); as rotas
+  cadastro/recuperar-senha que reusam o layout continuam funcionando.
 
-**RF-S2-07 — Resposta não reconhecida.** Texto que não casa `1`/`2` (após normalização: trim,
-primeiro token, tolerância a "1 confirmar") é logado e ignorado — sem efeito e sem resposta
-automática obrigatória (o design decide se há uma resposta "não entendi"; mínimo: ignorar).
+### RNF (herdados do projeto, aplicáveis aqui)
+- **RNF01** TypeScript estrito; sem `any`. `price_cents` tipado como `number`.
+- **RNF02** shadcn/ui reaproveitado de `src/components` (Button, StatusBadge,
+  PlaceholderPanel já existentes) — não recriar componentes.
+- **RNF03** Mobile-first + dark mode (tokens de tema existentes: `bg-card`,
+  `text-muted-foreground`, `border-border`, `text-primary` etc.).
+- **RNF04** Acessibilidade: contraste adequado, foco visível, navegação por teclado,
+  ilustrações decorativas com `aria-hidden`, landmarks/headings semânticos.
+- **RNF05** Todo texto de usuário em **pt-BR**.
 
-**RF-S2-08 — Fila de retentativa.** Um worker agendado (pg_cron) varre `messages.status = 'fila'`
-cujo disparo via adapter não concluiu, e reenvia com **backoff** respeitando um **limite N** de
-tentativas. Atingido N, marca `status = 'falha'` com `failure_reason`. **Nunca** reenvia um
-lembrete D-1 após o `starts_at` do agendamento associado (janela útil vencida → marca `falha`
-com motivo de janela, não tenta mais).
+## Critérios de aceite testáveis
 
-**RF-S2-09 — Confirmação enviada registrada.** Toda mensagem de resposta automática (RF-S2-06) é
-registrada em `messages` com opt-in, idempotência e PII mínima, igual ao fluxo `send` da Fatia 1.
+- **CA01** Em `src/lib/plans.ts`, `getPlan("individual").price_cents === 5900`,
+  `getPlan("clinica").price_cents === 14900`, `getPlan("pro").price_cents === 25900`.
+- **CA02** O helper BRL retorna exatamente `"R$ 59"`, `"R$ 149"`, `"R$ 259"` para
+  os respectivos `price_cents`.
+- **CA03** `parsePlanSlug` mantém o comportamento atual: `null` para entrada inválida
+  (`parsePlanSlug("hacker") === null`, `parsePlanSlug(null) === null`), slug válido
+  normalizado para entrada com caixa/espaço (`parsePlanSlug(" CLINICA ") === "clinica"`).
+  Contrato de `getPlan`/`PlanSlug`/`PLAN_SLUGS` inalterado.
+- **CA04** `/precos` exibe os três valores em BRL; o selo "Recomendado" aparece **só**
+  no card da Clínica; cada CTA aponta para `/cadastro?plano={slug}` com o slug correto.
+- **CA05** Nenhuma ocorrência de "chegam em breve" permanece em `/precos` nem na
+  landing (verificável por busca de texto).
+- **CA06** A landing exibe os mesmos valores BRL da `/precos` (consistência entre as
+  duas telas, pois ambas consomem `PLANS`); há link "Ver planos" → `/precos`.
+- **CA07** `grep` por valores literais (`"R$ 59"`, `5900`, `14900`, `25900`,
+  `"Individual"`, `"Clínica"`, `"Pro"`) **não** encontra lista de planos duplicada
+  fora de `src/lib/plans.ts` — landing e `/precos` só importam `PLANS`/helper.
+- **CA08** O valor cru de `?plano` **não** é interpolado no DOM: o fluxo de
+  `/cadastro` continua usando `parsePlanSlug` → `getPlan(slug).nome`. (Verificável
+  por inspeção de código: nenhum `searchParams.get("plano")` renderizado direto.)
+- **CA09** Header de marketing tem elemento "Entrar" para `/login` focável por
+  teclado (Tab) com anel de foco visível.
+- **CA10** `AuthLayout` no `aside` tem ilustração com `aria-hidden="true"` e lista de
+  3–4 funcionalidades em pt-BR.
+- **CA11** Todas as ilustrações novas (landing + auth) têm `aria-hidden="true"` e não
+  há `<img src=...>` de asset externo (CSS/SVG/componente apenas).
+- **CA12** `npm run build` + typecheck/lint/test existentes passam sem erro.
+- **CA13** QA visual (Chrome DevTools) em `/`, `/precos`, `/login` em **mobile** e
+  **dark mode**: layout íntegro, foco visível no "Entrar", valores consistentes
+  landing↔`/precos`, **sem erros no console**.
+- **CA14** (Segurança/dados) Nenhum arquivo em `supabase/migrations` é criado ou
+  alterado; nenhum import de cliente Supabase/service role aparece nos arquivos
+  tocados; `tenants.plan` não é lido nem escrito; nenhum plano é persistido.
 
----
+## Valor de negócio
+- Aumenta conversão de cadastro (CTA mais forte, valores transparentes, ancoragem na
+  Clínica, acesso a login visível).
+- Transmite produto mais completo/profissional sem antecipar Fase 3 (sem cobrança
+  real), mantendo custo de infra zero (tudo estático no frontend).
 
-## 3. Requisitos não funcionais
+## Enquadramento no roadmap
+- **Fase atual (marketing/auth, pré-operacional):** esta melhoria vive aqui. Plano =
+  conteúdo de marketing; tenant nasce em `trial`; CTA → `/cadastro`, nunca checkout.
+- **Fase 3 (NÃO fazer agora):** billing/checkout, uso efetivo de `tenants.plan`,
+  cobrança de assinatura. Acoplar preço a billing nesta tarefa é **defeito explícito**.
+- Os valores R$ 59/149/259 são **conteúdo de marketing**; mudá-los no futuro é editar
+  `src/lib/plans.ts`, não uma migration.
 
-- **RNF-S2-01 (isolamento multi-tenant, inegociável).** Webhook e cron nunca cruzam tenants. No
-  webhook, o tenant vem da instância; o casamento filtra por `tenant_id`. No cron, cada linha
-  processada carrega seu `tenant_id`.
-- **RNF-S2-02 (idempotência).** Evento de entrada processado no máximo uma vez (dedupe por id do
-  evento). Lembrete D-1 enfileirado no máximo uma vez por agendamento/ciclo.
-- **RNF-S2-03 (autenticidade).** Webhook verifica token/assinatura antes de qualquer leitura de
-  negócio. Segredo do webhook em env, nunca no cliente.
-- **RNF-S2-04 (LGPD / PII).** Disparo só com opt-in. `messages.payload` e logs **sem** telefone,
-  documento ou texto em claro. O telefone recebido do webhook não é persistido em claro em
-  `webhook_events` — só o necessário para dedupe/diagnóstico, e preferencialmente hasheado ou
-  omitido.
-- **RNF-S2-05 (segredos no servidor).** Token Evolution, service role e segredo do webhook só em
-  Edge Functions / secrets. Nenhum `VITE_*`.
-- **RNF-S2-06 (resiliência).** Falha temporária não perde mensagem (fila + retentativa). Erros do
-  provedor/rede são não-fatais e registrados.
-- **RNF-S2-07 (versionamento).** Todo schema e todo agendamento de cron em **migration** nova;
-  nunca editar migration já aplicada. Mudança ao enum de `messages.template` (ver §5) é migration
-  nova.
+## Fora de escopo
+- Qualquer alteração de schema/migration/RLS/Edge Function (não há superfície de dados).
+- Persistir plano, escrever em `tenants.plan`, criar cobrança/checkout/billing.
+- Assets de imagem externos (ilustração é CSS/SVG/componente).
+- Alterar o contrato de `parsePlanSlug`/`getPlan`/`PlanSlug`.
 
----
-
-## 4. Enquadramento no roadmap
-
-Produto (produto.md): a confirmação interativa D-1 é objetivo central — **reduzir no-show**.
-A skill whatsapp-evolution lista isto como RF10/RF11 + RNF04 (fila de retentativa). Esta é a
-**Fatia 2 da Fase 2 do WhatsApp**, logo após a Fatia 1 (templates + render server-side, já em
-`master`).
-
-- **Entra agora:** lembrete D-1 automático (cron), webhook de entrada, confirmação por resposta
-  numérica `1`, resposta `2` = mensagem automática de retorno (tratamento manual), fila de
-  retentativa.
-- **Fora (Fase 3 / outras fatias):** botões interativos (resposta é **numérica**),
-  reagendamento automático, autoagendamento público e métricas consolidadas, módulo Asaas/PIX
-  (`cobranca`/`comprovante` seguem só sob demanda nesta fatia).
-
-Precedência correta: a máquina de estados de `appointments` (confirmado + `confirmed_at`) e a
-tabela `messages` com idempotência de envio já existem — esta fatia **consome** essas fundações.
-
----
-
-## 5. Modelo de dados e migrations
-
-Princípio de reuso: **não** recriar `messages`, `appointments`, `whatsapp_instances`,
-`message_templates` nem seus helpers RLS. As migrations novas são **aditivas**.
-
-### 5.0 Convenção de nomes das migrations
-Continuar a sequência de timestamp. Sugestão (o design/planejador fixa os nomes exatos):
-`20250223090000_messages_retry_fields.sql`, `20250223091000_webhook_events.sql`,
-`20250223092000_pg_cron_setup.sql`, `20250223093000_lembrete_d1_job.sql`,
-`20250223094000_retry_worker_job.sql`. Uma responsabilidade por migration (padrão do projeto).
-
-### 5.1 Nova tabela: `webhook_events` (idempotência + auditoria de entrada)
-
-**Por que uma tabela própria** (e não uma coluna em `messages`): o evento de entrada é um objeto
-distinto de um disparo de saída — chega **antes** de sabermos a qual agendamento casa, pode não
-casar nenhum, e precisa de uma chave de dedupe própria (id da mensagem da Evolution). Persistir o
-evento recebido é o que garante a idempotência do webhook (defeito #1 do papel): se o mesmo
-evento chegar de novo, a 2ª gravação viola o índice único e o processamento para antes de
-qualquer efeito.
-
-```sql
-create table if not exists webhook_events (
-  id                   uuid primary key default gen_random_uuid(),
-  -- resolvido pela instância (whatsapp_instances), NUNCA do payload. Pode ser null se a
-  -- instância não casar nenhum tenant (evento órfão) — ainda assim registrado p/ auditoria.
-  tenant_id            uuid references tenants (id) on delete cascade,
-  -- origem do evento; hoje só 'evolution'.
-  source               text not null default 'evolution' check (source in ('evolution')),
-  -- id da mensagem/evento da Evolution — CHAVE DE DEDUPE. Único por (source, external_event_id).
-  external_event_id    text not null,
-  -- nome da instância que recebeu (liga ao tenant); sem segredo.
-  instance_name        text,
-  -- 'recebido' | 'processado' | 'ignorado' | 'rejeitado' (autenticidade/schema) | 'erro'.
-  status               text not null default 'recebido'
-                       check (status in ('recebido','processado','ignorado','rejeitado','erro')),
-  -- agendamento casado quando houver (FK composta por tenant, igual a messages).
-  appointment_id       uuid,
-  -- resultado interpretado: 'confirmar' | 'reagendar' | 'nao_reconhecido' | null.
-  parsed_intent        text check (parsed_intent in ('confirmar','reagendar','nao_reconhecido')),
-  -- metadados SEM PII: telefone NÃO em claro (hash ou omitido); sem texto cru da mensagem.
-  payload              jsonb not null default '{}'::jsonb,
-  failure_reason       text,
-  created_at           timestamptz not null default now(),
-  -- FK composta por tenant: evento só liga a agendamento do MESMO tenant (MATCH SIMPLE: só
-  -- valida quando appointment_id não é nulo).
-  constraint webhook_events_appointment_fk
-    foreign key (tenant_id, appointment_id) references appointments (tenant_id, id) on delete set null
-);
-
--- DEDUPE real sob concorrência: o mesmo evento da Evolution só entra uma vez.
-create unique index if not exists webhook_events_dedupe_uidx
-  on webhook_events (source, external_event_id);
-create index if not exists webhook_events_tenant_idx on webhook_events (tenant_id);
-create index if not exists webhook_events_tenant_appointment_idx
-  on webhook_events (tenant_id, appointment_id);
+## Pontos levantados pelo usuário — rastreabilidade (nenhum descartado)
+| Ponto do usuário | Onde é atendido |
+|---|---|
+| Landing simples, melhorar CTA | RF08 |
+| Planos sem valor / mal descritos → valores + mais info | RF01, RF02, RF05, RF06, RF10 |
+| Falta botão de login no header | RF13, CA09 |
+| Painel esquerdo do login quase vazio → imagem + o que o sistema faz | RF14, CA10 |
+| Valores 59/149/259 | RF01, CA01, CA02 (em centavos: 5900/14900/25900) |
+| Clínica recomendada (ancoragem) | RF04, CA04 |
+| Ilustração via CSS/SVG, decorativa aria-hidden | RF12, RF14, CA11 |
+| pt-BR, mobile-first, dark mode, acessibilidade | RNF03–05, CA13 |
 ```
-
-**RLS de `webhook_events`.** Habilitar RLS. Esta tabela é escrita **só** pela Edge Function de
-webhook (service role, bypassa RLS) — nenhuma política de INSERT/UPDATE/DELETE para o cliente
-(mesmo padrão de `messages`). Para leitura: é **log operacional de comunicação** (não financeiro),
-então segue o padrão de `messages` — `admin`/`receptionist`/`professional` do tenant leem via
-`tenant_id = current_tenant_id()` e `current_role_name() in (...)`. `super_admin` sem caminho pelo
-cliente.
-
-```sql
-alter table webhook_events enable row level security;
-
-drop policy if exists webhook_events_select_same_tenant on webhook_events;
-create policy webhook_events_select_same_tenant on webhook_events for select
-  using (
-    tenant_id = current_tenant_id()
-    and current_role_name() in ('admin','receptionist','professional')
-  );
--- Sem policy de INSERT/UPDATE/DELETE: gravação exclusiva da Edge Function (service role).
-```
-
-> **Alternativa considerada e descartada:** coluna `external_event_id` em `messages`. Descartada
-> porque o evento de entrada frequentemente **não** gera uma linha de `messages` (resposta que
-> não casa, evento duplicado, resposta `1` que só muda `appointments`), então pendurar dedupe de
-> entrada em `messages` acopla dois ciclos de vida distintos e deixa buracos na idempotência.
-
-### 5.2 Campos de retentativa em `messages` (migration aditiva — ALTER)
-
-`messages` já tem `status in ('fila','enviado','entregue','falha')`, `dedupe_key`,
-`failure_reason`, `provider_message_id`. Falta o estado de **retentativa**. Adicionar por ALTER
-(migration nova — nunca editar a migration `20250220091000` já aplicada):
-
-```sql
-alter table messages
-  add column if not exists attempts        int not null default 0,
-  add column if not exists max_attempts     int not null default 5,
-  add column if not exists next_attempt_at  timestamptz,       -- quando o worker pode reenviar
-  add column if not exists last_attempt_at  timestamptz;
-
--- Índice para o worker varrer a fila elegível sem full scan:
-create index if not exists messages_retry_due_idx
-  on messages (status, next_attempt_at)
-  where status = 'fila';
-```
-
-- `attempts` / `max_attempts` (N): limite de tentativas.
-- `next_attempt_at`: agenda o próximo reenvio (backoff exponencial calculado pelo worker).
-- **Janela útil:** o worker reusa o vínculo `appointment_id` → `appointments.starts_at`. Se
-  `now() >= starts_at` para `template = 'lembrete_d1'`, marca `falha` (motivo `janela_vencida`),
-  não tenta mais.
-
-> O índice único parcial de idempotência de envio (`messages_dedupe_uidx` sobre `fila|enviado|
-> entregue`) permanece válido — a retentativa atualiza a mesma linha `fila`, sem criar nova.
-
-### 5.3 Enum `messages.template`: resposta automática de reagendamento
-
-O `check` atual de `messages.template` é `('confirmacao','lembrete_d1','cobranca','comprovante')`.
-A mensagem automática do RF-S2-06 ("entramos em contato para reagendar") precisa de uma chave.
-
-**Decisão:** adicionar um novo valor de template, `reagendar_retorno`, ao `check` de
-`messages.template` **e** a `message_templates` (nova chave de baseline/seed). Migration nova que:
-(1) recria o `check` de `messages.template` incluindo `reagendar_retorno` (via
-`drop constraint` + `add constraint`, idempotente); (2) estende `message_templates.template_key`
-e as funções `seed_message_templates` / `handle_new_user` (via `create or replace`, preservando o
-corpo) + backfill idempotente com o texto padrão pt-BR do novo template.
-
-Texto padrão sugerido (pt-BR, sem PII, variáveis da lista fechada):
-`'Oi {nome}, recebemos seu pedido de reagendar o {servico} na {empresa}. Nossa equipe entra em contato para marcar um novo horário.'`
-
-> **Alternativa descartada:** reusar `confirmacao` para o retorno de reagendamento. Descartada
-> porque polui a semântica do log e do dedupe, e o texto é diferente. Um template próprio mantém
-> o render server-side e a idempotência coerentes.
-
-### 5.4 pg_cron: disponibilidade e agendamento
-
-**Disponibilidade.** `pg_cron` **não** está habilitado hoje (grep não encontrou referência; as
-únicas extensões são `pgcrypto` e `btree_gist`). No Supabase hospedado, `pg_cron` roda no schema
-`cron` e é habilitável por `create extension`. No ambiente **local** (CLI, Postgres 15 do
-`config.toml`), `pg_cron` precisa estar na imagem; pode não estar disponível. **Decisão de
-schema:** a migration de setup usa `create extension if not exists pg_cron;` e, para a chamada
-HTTP à Edge Function, `create extension if not exists pg_net;` (ou `http`). O **design** decide o
-mecanismo de invocação (pg_net POST para a Edge Function vs. função SQL local); este documento
-exige apenas que:
-
-- o agendamento seja **versionado em migration** (nunca criado só pela UI do Supabase);
-- o cron chame uma **Edge Function com service role** (ou função `security definer`), nunca lógica
-  no cliente;
-- a granularidade seja a cada poucos minutos (p.ex. `*/5 * * * *`) tanto para o lembrete D-1
-  quanto para o worker de retentativa (dois jobs distintos);
-- se `pg_cron` não estiver disponível no ambiente local, a migration **não** pode quebrar o
-  `db reset` — envolver o `cron.schedule` em bloco condicional (`do $$ ... if exists(select from
-  pg_extension where extname='pg_cron') ...`) e **documentar** que o agendador real só é
-  verificado em ambiente com a extensão; a lógica de seleção (a query SQL/função que lista
-  elegíveis) é testada isoladamente.
-
-**Isolamento por tenant no cron.** O job varre **todos** os tenants, mas cada linha candidata
-carrega seu `tenant_id`; o disparo é por agendamento, e a resolução de instância/opt-in/janela é
-por tenant. Nenhum `tenant_id` de parâmetro externo.
-
-### 5.5 Resolução de tenant no webhook (sem JWT de usuário)
-
-O webhook de entrada **não** tem JWT de usuário — a autenticidade é por token/assinatura do
-provedor. O `tenant_id` é resolvido assim, no servidor, com service role:
-
-1. A Evolution entrega o evento identificando a **instância** (`instance`/`instanceName` no
-   payload). Validar com zod.
-2. `select tenant_id from whatsapp_instances where evolution_instance_name = <instance>` →
-   `tenant_id`. Se não casar, evento **órfão**: registrar em `webhook_events` com `tenant_id` null
-   e `status = 'ignorado'`.
-3. Todo o resto (busca de `customers` por telefone, agendamento, UPDATE) filtra por esse
-   `tenant_id`. **Nunca** confiar em `tenant_id` do payload.
-
-> Isto espelha a convenção da skill whatsapp-evolution: "resolver o tenant pela instância, nunca
-> por parâmetro do cliente".
-
-### 5.6 Autenticidade do webhook (Evolution v2.3.7)
-
-A versão em uso (v2.3.7, confirmada no adapter) autentica chamadas de saída com header `apikey`.
-Para o **webhook de entrada**, a Evolution não assina HMAC por padrão; o mecanismo prático e
-recomendado é um **segredo compartilhado** que o Atlas controla:
-
-- **Decisão:** exigir um token secreto na borda — ou um header fixo configurado na Evolution
-  (`Authorization`/`apikey` custom) **ou** um segredo embutido no path/query da URL de webhook
-  registrada na instância (ex.: `/whatsapp-inbound?token=<segredo>`), comparado em
-  **tempo constante** contra `WHATSAPP_WEBHOOK_SECRET` do env. Sem match → `401`, registra
-  `rejeitado`, nenhum efeito.
-- O segredo vive **só** em env/secret do servidor (`supabase/functions/.env.example` ganha
-  `WHATSAPP_WEBHOOK_SECRET=` e `EVOLUTION_WEBHOOK_*` conforme o design). Nunca `VITE_*`, nunca no
-  bundle.
-- O design **deve confirmar na doc da Evolution v2.3.7** o formato exato do payload de
-  `messages.upsert`/webhook de entrada (campos `key.id`, `key.remoteJid`, `message.conversation`
-  / `extendedTextMessage.text`, `instance`) e validar tudo com zod antes de usar.
-
-### 5.7 Checklist de migration (por migration nova)
-
-- [ ] `webhook_events`: `tenant_id` + índice + RLS habilitado + dedupe único
-      `(source, external_event_id)`; sem policy de write p/ cliente.
-- [ ] `messages` ALTER: campos de retentativa + índice da fila; não editar a migration original.
-- [ ] enum `messages.template` + `message_templates` estendidos para `reagendar_retorno` (drop/add
-      constraint idempotente; `create or replace` nas funções; backfill `on conflict do nothing`).
-- [ ] pg_cron/pg_net via `create extension if not exists`; `cron.schedule` condicional p/ não
-      quebrar `db reset` sem a extensão.
-- [ ] Nenhum segredo no SQL. Dinheiro N/A nesta fatia; tempo em `timestamptz` UTC.
-- [ ] Testado que usuário de outro tenant **não** lê `webhook_events`.
-
----
-
-## 6. Critérios de aceite (testáveis, numerados)
-
-1. **AC-01 (cron dispara D-1):** com um agendamento `pendente` de cliente `opt_in=true`, instância
-   `conectado`, `starts_at` ~24h à frente e sem `lembrete_d1` prévio, a execução do job enfileira
-   exatamente uma `messages` `template='lembrete_d1'`. (Testável chamando a função/SQL de
-   elegibilidade sem o scheduler real.)
-2. **AC-02 (cron idempotente):** executar o job duas vezes seguidas **não** cria um segundo
-   `lembrete_d1` para o mesmo agendamento.
-3. **AC-03 (sem opt-in não dispara):** agendamento de cliente `opt_in=false` **não** gera
-   `lembrete_d1`.
-4. **AC-04 (janela vencida):** agendamento com `starts_at` no passado **não** recebe D-1 (nem
-   novo, nem retentativa).
-5. **AC-05 (webhook autêntico):** POST sem o segredo correto retorna `401`, registra
-   `webhook_events.status='rejeitado'` e **nenhum** agendamento muda.
-6. **AC-06 (webhook schema inválido):** payload que falha o zod retorna `400`/registro
-   `rejeitado`, sem efeito.
-7. **AC-07 (resposta "1" confirma):** evento válido com texto `1` casado a um agendamento
-   `pendente`/`confirmado` do tenant certo leva `appointments.status='confirmado'` e
-   `confirmed_at` carimbado; `webhook_events.status='processado'`, `parsed_intent='confirmar'`.
-8. **AC-08 (idempotência de entrada):** reenviar o **mesmo** evento (mesmo `external_event_id`)
-   **não** gera segunda confirmação nem segundo efeito; a 2ª gravação em `webhook_events` é
-   barrada pelo índice único e o processamento para antes do efeito.
-9. **AC-09 (resposta "2" não altera):** evento com texto `2` casado a um agendamento **não** muda
-   `appointments.status`; enfileira uma `messages` `template='reagendar_retorno'`;
-   `webhook_events.parsed_intent='reagendar'`.
-10. **AC-10 (não casa):** evento de um telefone sem agendamento elegível no tenant é registrado
-    `ignorado` e não produz efeito nem erro ao provedor.
-11. **AC-11 (isolamento no casamento):** um telefone que existe em dois tenants só casa com o
-    agendamento do tenant **da instância** que recebeu; nunca confirma agendamento de outro
-    tenant.
-12. **AC-12 (transição inválida é segura):** resposta `1` para um agendamento já `cancelado`/
-    `concluido` **não** derruba a função (erro do trigger tratado), registra o resultado e segue.
-13. **AC-13 (retentativa com backoff):** uma `messages` em `fila` que falhou no envio é reenviada
-    pelo worker respeitando `next_attempt_at`; `attempts` incrementa a cada tentativa.
-14. **AC-14 (limite N):** após `attempts >= max_attempts` a mensagem vira `falha` com
-    `failure_reason` e não é mais reenviada.
-15. **AC-15 (retentativa respeita janela):** `lembrete_d1` em `fila` cujo agendamento já passou de
-    `starts_at` é marcado `falha` (`janela_vencida`) e não reenviado.
-16. **AC-16 (RLS webhook_events):** usuário autenticado do tenant A não lê `webhook_events` do
-    tenant B; o cliente não consegue INSERT/UPDATE/DELETE em `webhook_events`.
-17. **AC-17 (PII mínima):** `webhook_events.payload`, `messages.payload` e os logs não contêm
-    telefone, documento nem o texto cru da mensagem em claro.
-18. **AC-18 (sem segredo no cliente):** nenhum segredo de webhook/Evolution/service role aparece
-    no bundle do frontend nem em arquivo versionado; só `.env.example` com chaves vazias.
-19. **AC-19 (migrations versionadas):** todo schema/cron desta fatia está em migration nova; o
-    `db reset` roda limpo (ou, sem pg_cron local, não quebra e documenta a limitação).
-20. **AC-20 (build/typecheck):** `deno check` da(s) Edge Function(s) e o typecheck do projeto
-    passam limpos; QA ao vivo do webhook com payload simulado cobre `1`, `2`, duplicado e
-    inválido/não-autêntico.
-
----
-
-## 7. Fora de escopo
-
-- Botões/listas interativas da Evolution (resposta é **numérica**, texto livre).
-- Reagendamento automático / mudança de horário por resposta `2` (decisão "c": só mensagem de
-  retorno + tratamento manual).
-- Autoagendamento público, métricas consolidadas, módulo Asaas/PIX (`cobranca`/`comprovante`
-  seguem só sob demanda).
-- Recorte de leitura de `messages`/`webhook_events` por profissional (fase futura).
-- Múltiplas instâncias de WhatsApp por tenant.
-
----
-
-## 8. Premissas e pontos para o design resolver
-
-- **Premissa:** a Evolution v2.3.7 entrega o evento de entrada identificando a instância e o id da
-  mensagem; o design confirma os campos exatos na doc e os valida com zod.
-- **Premissa:** o segredo do webhook é um token compartilhado controlado pelo Atlas
-  (`WHATSAPP_WEBHOOK_SECRET`), já que a Evolution não assina HMAC por padrão.
-- **A decidir no design:** webhook como nova Edge Function (ex.: `whatsapp-inbound`) vs. nova rota
-  na função `whatsapp` — o schema não depende disso; recomendação: **função separada** (superfície
-  pública sem JWT, modelo de auth distinto do `send` autenticado por JWT).
-- **A decidir no design:** mecanismo de invocação do cron (pg_net POST para a Edge Function vs.
-  função SQL `security definer` que faz o trabalho) e os parâmetros de backoff (base, fator, N).
-- **A decidir no design:** faixa exata da janela D-1 (ex.: 23h–25h) e granularidade do cron.
-- **Nunca descartado:** todos os pontos do usuário (lembrete numérico via pg_cron; "responder 1
-  marca confirmado"; resposta 2 = opção c; fila de retentativa) estão cobertos acima.

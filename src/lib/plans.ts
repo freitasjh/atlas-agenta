@@ -30,6 +30,12 @@ export interface Plan {
   destaques: readonly string[];
   /** `true` apenas no plano recomendado (ancoragem de pricing). */
   recomendado?: boolean;
+  /**
+   * Preço mensal em **centavos inteiros** (constante de marketing, não coluna
+   * de Postgres). Segue a convenção `*_cents` por consistência conceitual;
+   * não é persistido nem acopla a billing/checkout (Fase 3).
+   */
+  price_cents: number;
 }
 
 /**
@@ -47,6 +53,7 @@ export const PLANS: readonly Plan[] = [
       "Até 150 agendamentos por mês",
       "Régua de mensagens padrão",
     ],
+    price_cents: 5900,
   },
   {
     slug: "clinica",
@@ -58,6 +65,7 @@ export const PLANS: readonly Plan[] = [
       "Mensagens personalizadas e taxa de reserva configurável",
     ],
     recomendado: true,
+    price_cents: 14900,
   },
   {
     slug: "pro",
@@ -68,6 +76,7 @@ export const PLANS: readonly Plan[] = [
       "Relatórios",
       "Suporte prioritário",
     ],
+    price_cents: 25900,
   },
 ] as const;
 
@@ -90,4 +99,21 @@ export function parsePlanSlug(raw: string | null): PlanSlug | null {
 export function getPlan(slug: PlanSlug): Plan {
   // `find` sempre acha: o slug é um `PlanSlug` validado e `PLANS` cobre o enum.
   return PLANS.find((plan) => plan.slug === slug) as Plan;
+}
+
+/**
+ * Formatador BRL **curto** (sem centavos) dedicado ao preço de marketing.
+ * Separado do `formatCentsToBRL` de `money.ts` de propósito: aquele é a borda
+ * de dinheiro operacional do domínio (sempre 2 casas, para serviço/cobrança),
+ * enquanto o preço de plano é "redondo" por decisão de produto.
+ */
+const BRL_WHOLE = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  maximumFractionDigits: 0,
+});
+
+/** Formata o preço mensal do plano em BRL sem centavos (ex.: `R$ 59`). */
+export function formatPlanPrice(plan: Plan): string {
+  return BRL_WHOLE.format(plan.price_cents / 100);
 }

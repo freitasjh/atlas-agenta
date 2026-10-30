@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const MARKETING_LINKS = [
@@ -45,6 +46,9 @@ export function MarketingLayout() {
                 {label}
               </NavLink>
             ))}
+            <Button asChild variant="outline" size="sm">
+              <Link to="/login">Entrar</Link>
+            </Button>
             <ThemeToggle />
           </nav>
         </div>
