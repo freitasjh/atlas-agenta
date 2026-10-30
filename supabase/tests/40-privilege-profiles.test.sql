@@ -9,6 +9,10 @@
 --      CA-03c (PRD §2.1). O CA-03d prova só que o USING não alcança a linha de colega: sem erro e
 --      valor inalterado. Os casos CA-03c e CA-03d reabrem o grant de role de propósito, para provar a
 --      policy sozinha.
+--      Lacuna de cobertura (review da ADR-05): com USING id = auth.uid(), a promoção de colega nunca
+--      chega ao WITH CHECK. Essa barreira fica provada só pelo grant de coluna (CA-03b). Se o USING
+--      for ampliado no futuro, nenhum teste pega a regressão da barreira para colega. Quem ampliar o
+--      USING precisa acrescentar um caso de colega com o grant de role reaberto.
 --
 -- Os critérios CA-xx são da ADR-02. A coluna "PRD" de cada um aponta o AC/RF correspondente
 -- quando existe.
@@ -474,7 +478,7 @@ select ok(
 select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
 select lives_ok(
   $$update profiles set full_name = 'Invadido pelo Super Admin' where id = '51515151-5151-4515-8515-515151515151'$$,
-  'CA-18: super_admin de outro tenant não grava full_name de A (sem erro, 0 linhas)'
+  'CA-18: super_admin de outro tenant não grava full_name de A (sem erro, valor inalterado)'
 );
 reset role;
 select tests.clear_authentication();
