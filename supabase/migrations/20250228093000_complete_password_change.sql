@@ -8,9 +8,10 @@
 --   não mexe em password_changed_at.
 -- - Perfil inexistente retorna false.
 -- - Execução só para service_role. Cliente (anon/authenticated) não zera o próprio flag.
--- - A escrita passa pelo guard profiles_guard_privileged_columns (ADR-02) sem bloqueio, porque
---   o guard só barra auth.role() = 'authenticated'. Esta função é security definer e roda como
---   dono da função, então auth.role() é 'service_role' quando chamada pela Edge.
+-- - A escrita passa pelo guard profiles_guard_privileged_columns (ADR-02) porque auth.role() lê
+--   o claim do JWT da requisição, não o dono da função. A chamada chega com JWT de service_role,
+--   então o guard libera. security definer só troca o current_user, não esse claim.
+--   O controle de acesso real é o revoke/grant abaixo.
 -- Nenhum dado de tenant é lido ou escrito. Nenhum segredo.
 
 create or replace function public.complete_password_change(p_user_id uuid)
