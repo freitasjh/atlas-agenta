@@ -13,6 +13,7 @@ import {
   type StatusFilter,
 } from "./EmpresasFilters";
 import { EmpresasTable } from "./EmpresasTable";
+import { MudarStatusDialog } from "./MudarStatusDialog";
 
 /** Valor com debounce leve para a busca client-side (não refaz request). */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -62,7 +63,8 @@ function buildSignature(tenants: TenantListItem[]): string {
  * por status e resumo de contagem. Busca e filtro são estado de UI client-side
  * sobre o resultado único da query (`useAdminTenants`) — combinam por AND e não
  * disparam novas requisições (volume baixo no MVP). Estados loading/vazio(2
- * variantes)/erro em pt-BR. A ação "Mudar status" por empresa chega na ADR-07.
+ * variantes)/erro em pt-BR. Cada linha expõe a ação "Mudar status"
+ * (`MudarStatusDialog`), que opera a assinatura por um canal auditado.
  */
 export function EmpresasPage() {
   const tenantsQuery = useAdminTenants();
@@ -141,7 +143,10 @@ export function EmpresasPage() {
               descricao="Ajuste a busca ou o filtro de status para ver outras empresas."
             />
           ) : (
-            <EmpresasTable tenants={filteredTenants} />
+            <EmpresasTable
+              tenants={filteredTenants}
+              renderAction={(tenant) => <MudarStatusDialog tenant={tenant} />}
+            />
           )}
         </>
       )}
