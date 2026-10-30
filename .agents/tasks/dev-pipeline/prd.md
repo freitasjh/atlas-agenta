@@ -1,300 +1,339 @@
-# PRD — Fatia 2 do WhatsApp (Fase 2): Confirmação interativa D-1
+# PRD — Marketing e Autenticação maduros (landing, /precos, painel de login)
 
-> **Status:** aguardando aprovação humana (`prd-approval.json → "pending"`).
-> **Tipo de rota:** Feature (pesada — primeira vez que o projeto tem webhook de ENTRADA
-> da Evolution e job agendado via pg_cron).
-> **Base:** `master` (já contém a Fatia 1: `message_templates` + render server-side no
-> `handleSend`; `lembrete_d1` já traz o texto "Responda 1 para confirmar ou 2 para reagendar").
-> **Entrega:** branch nova + commit; **sem** merge em master (o usuário abre PR/merge).
-
-Este PRD é o **contrato** da demanda: descreve O QUE precisa existir e COMO se prova que
-ficou pronto. O desenho técnico detalhado (desenho do webhook, backoff, invocação do cron,
-nomes de migration) vem nas ADRs do planejamento, após a aprovação humana deste documento.
+> Contrato da demanda. Descreve **o que** precisa existir e **como se prova** que
+> ficou pronto. A solução técnica detalhada (componentes, assinatura de funções,
+> ordem de implementação) vem nas ADRs do planejamento, após a aprovação humana
+> deste PRD.
+>
+> Fontes: análise de dados/segurança (`analysis-data.md`), análise de frontend
+> (`analysis-frontend.md`), steerings do projeto (produto, domínio, stack,
+> segurança/multi-tenant, convenções) e as mensagens verbatim do usuário.
+>
+> **Status de dados/segurança (consenso das duas análises): demanda SEM superfície
+> de dados.** Não toca banco, Supabase, RLS, Auth, Edge Functions, migrations nem
+> schema. É melhoria de UI 100% pública e estática no frontend.
 
 ---
 
 ## 1. Problema e valor de negócio
 
-Hoje o Atlas Agenda só dispara WhatsApp **sob demanda** (Fatia 1). O objetivo central do
-produto — **reduzir no-show** com confirmação interativa automática 24h antes (D-1,
-`produto.md`) — ainda não existe de ponta a ponta: o texto do lembrete já menciona "responda
-1 ou 2", mas nada dispara esse lembrete sozinho nem escuta a resposta do cliente.
+Hoje a camada pública do Atlas Agenda é minimalista demais e não vende o produto:
 
-Quando esta fatia estiver pronta:
+- A landing tem CTA fraca, não mostra preço e não dá acesso a login (só a cadastro).
+- A página de planos lista os três planos **sem valor** e com a copy "valores
+  chegam em breve" — o visitante não consegue decidir nem dimensionar.
+- O painel esquerdo do login (`aside` do `AuthLayout`) está quase vazio: um título
+  curto e um parágrafo, sem explicar o que o sistema faz nem suas funcionalidades.
 
-- **A empresa (tenant)** passa a ter o lembrete D-1 disparado automaticamente, sem ninguém
-  clicar. O cliente responde **1** no próprio WhatsApp e o agendamento vira `confirmado`
-  sozinho. Isso reduz no-show e reduz trabalho manual da recepção.
-- **A recepção** ganha visibilidade: a agenda distingue um agendamento confirmado **pelo
-  próprio cliente** (prova de intenção) de um confirmado manualmente. Essa distinção é o
-  valor de negócio visível da fatia.
-- **O cliente que quer reagendar** responde **2** e recebe uma mensagem automática de retorno
-  ("entramos em contato para reagendar"); o reagendamento em si continua manual (decisão do
-  usuário, opção "c").
-- **Resiliência:** uma falha temporária de envio não perde a mensagem — há fila de
-  retentativa com backoff e limite, respeitando a janela útil do lembrete.
+Quando esta demanda estiver pronta:
+
+- **Mais conversão de cadastro.** Hero com CTA reforçada, valores transparentes
+  (R$ 59 / R$ 149 / R$ 259), ancoragem no plano Clínica (recomendado) e acesso a
+  login visível no header reduzem o atrito da decisão.
+- **Percepção de produto completo e profissional.** Seções novas (benefícios /
+  para-quem-é, prévia de planos na landing, FAQ curto, painel de login com
+  ilustração e funcionalidades) transmitem maturidade sem antecipar a Fase 3.
+- **Custo de infra mantido perto de zero.** Tudo é estático no frontend; nenhuma
+  cobrança real, nenhum dado novo, nenhuma chamada de servidor.
+
+Objetivo duplo confirmado com o usuário: **conversão + aparência mais completa.**
 
 ---
 
 ## 2. Escopo
 
-### 2.1 Dados / Supabase (peso principal)
+### 2.1 Dados / Supabase — NADA
 
-**Entra:**
+- Nenhuma tabela nova, nenhuma coluna de banco, nenhum tipo de domínio novo.
+- **Nenhuma migration.** Não criar, editar ou tocar `supabase/migrations`. Uma ADR
+  que proponha migration para esta demanda está errada por definição.
+- Nenhuma política RLS, RBAC, Auth ou Edge Function é criada, exercida ou relaxada.
+- `price_cents` adicionado a `src/lib/plans.ts` é **constante TypeScript de
+  marketing**, não coluna de Postgres. Segue a convenção de nome `*_cents` (inteiro)
+  por consistência conceitual, mas vive em código.
+- `tenants.plan` não é lido nem escrito; nenhum plano é persistido; o tenant
+  continua nascendo em `trial`.
 
-- **Migrations aditivas** (nunca editar migration já aplicada):
-  - Nova tabela **`webhook_events`** (idempotência + auditoria de entrada): `tenant_id`,
-    `external_event_id` (chave de dedupe), `instance_name`, `status`, `appointment_id`,
-    `parsed_intent`, `payload` sem PII, `failure_reason`, `created_at`. Índice único
-    `(source, external_event_id)`. RLS habilitado.
-  - **`messages`** ganha campos de retentativa: `attempts`, `max_attempts`, `next_attempt_at`,
-    `last_attempt_at` + índice parcial da fila elegível.
-  - Enum `messages.template` e `message_templates` estendidos com **`reagendar_retorno`**
-    (novo template de baseline/seed, texto pt-BR sem PII).
-  - Setup de **pg_cron** (+ mecanismo de invocação) **versionado em migration**, condicional
-    para não quebrar `db reset` quando a extensão não existir no ambiente local.
-- **Edge Function de webhook de ENTRADA** (nova; recomendação de design: função separada,
-  ex. `whatsapp-inbound`, por ser superfície pública sem JWT). Valida autenticidade + zod +
-  idempotência; resolve tenant pela instância; casa resposta→agendamento; aplica efeito.
-- **Job de lembrete D-1** (cron) que varre agendamentos elegíveis e enfileira `lembrete_d1`.
-- **Worker de retentativa** (cron) que reenvia `messages.status='fila'` com backoff/limite.
+### 2.2 Frontend — o trabalho
 
-**Reuso obrigatório (não recriar):** `appointments` + máquina de estados/trigger
-(`confirmed_at`), `messages` (status/`dedupe_key`/`provider_message_id`), `whatsapp_instances`,
-`message_templates` + render server-side, opt-in, normalização E.164, adapter Evolution
-(mock/real por `EVOLUTION_MODE`).
+Tudo em rotas públicas já existentes (sem rota nova, sem guard de auth/RBAC/status):
 
-### 2.2 Frontend (superfície pequena, mas real)
-
-**Entra — ajustes cirúrgicos, zero rota nova, zero módulo novo:**
-
-- **Agenda** (`/app/agenda`): micro-selo "confirmado pelo cliente" ao lado do badge
-  `Confirmado`, quando a confirmação veio do cliente via WhatsApp (depende da coluna
-  `appointments.confirmed_via` — ver §2.4 e §7).
-- **Histórico de mensagens** (`/app/config/whatsapp`): rotular lembrete automático (cron),
-  resposta recebida (sem PII — rótulo derivado, nunca o texto digitado), retorno de
-  reagendamento, e o estado `fila` sob retentativa.
-- Vocabulário pt-BR novo em `src/lib/whatsapp.ts`; extensão dos schemas zod de
-  `useAppointments` e `useRecentMessages` para validar campos novos como dado não confiável
-  (enums fechados).
+- `src/lib/plans.ts` — **fonte única** dos planos. Estender de forma **aditiva** com
+  `price_cents` por plano + helper de formatação BRL curta. Contrato de `PlanSlug`,
+  `PLAN_SLUGS`, `parsePlanSlug`, `getPlan` e dos campos atuais de `Plan` permanece
+  intacto.
+- `src/marketing/pages.tsx` — `LandingPage` e `PrecosPage` reescritas para o novo
+  conteúdo, **consumindo `PLANS`** (nunca duplicando a lista nem colando valor).
+- `src/marketing/MarketingLayout.tsx` — header ganha o item "Entrar" → `/login`.
+- `src/auth/AuthLayout.tsx` — `aside` (painel esquerdo, `≥1024px`) enriquecido com
+  ilustração decorativa e lista de funcionalidades. Compartilhado por
+  login/cadastro/recuperar-senha; as páginas de formulário **não** mudam.
+- Sub-componentes locais de marketing (não primitivos de `src/components/ui`):
+  um card de plano reutilizável (landing em versão compacta e `/precos` em versão
+  completa, para garantir que o valor exibido seja o mesmo nas duas telas), uma
+  ilustração de marca via CSS/SVG (reusada pelo hero e pelo `aside`) e um FAQ curto.
 
 ### 2.3 Fora de escopo
 
-- Botões/listas interativas da Evolution (a resposta é **numérica**, texto livre).
-- Reagendamento automático / mudança de horário por resposta `2` (decisão "c": só mensagem
-  de retorno + tratamento manual).
-- Autoagendamento público, taxa de reserva antecipada, métricas consolidadas → **Fase 3**.
-- Módulo Asaas/PIX (`cobranca`/`comprovante` seguem só sob demanda).
-- Múltiplas instâncias de WhatsApp por tenant; recorte de leitura por profissional em
-  `messages`/`webhook_events` (fase futura).
-- Polling da agenda para a confirmação "aparecer sozinha" (otimização futura; refetch
-  on-focus do TanStack Query cobre o fluxo real).
-
-### 2.4 Dependência de contrato entre backend e frontend
-
-O selo "confirmado pelo cliente" exige um dado que hoje **não existe**: `confirmed_at` é só
-um timestamp e não diz **quem** confirmou. O frontend está **bloqueado** nisto:
-
-- **Decisão (Opção A, preferida):** coluna nova `appointments.confirmed_via`
-  (`cliente_whatsapp | manual`, nullable), gravada pelo webhook quando casa a resposta "1" e
-  deixada `manual` na confirmação pela UI. Determinística, versionada, sob o RLS existente.
-- **Se o planejamento decidir não criar a coluna nesta fatia:** o selo de origem **sai de
-  escopo do frontend** e fica só o badge `Confirmado`. Registrar como corte explícito.
-  (A Opção B — derivar a origem por join com `messages` — foi **rejeitada**: frágil, não
-  determinística e expõe mais de `messages` à leitura da agenda, com risco de PII.)
-- Para o histórico: `messages` precisa de forma de distinguir **direção** (recebida/enviada)
-  e **origem** (cron/sob-demanda/resposta). Sem isso, o histórico fica só com o rótulo de
-  template atual.
+- Qualquer alteração de schema/migration/RLS/Edge Function/Auth.
+- Persistir plano, escrever em `tenants.plan`, criar cobrança, checkout ou billing —
+  **isso é Fase 3**. Acoplar preço a billing nesta tarefa é **defeito explícito**.
+- Alterar o contrato de `parsePlanSlug` / `getPlan` / `PlanSlug` / `PLAN_SLUGS`.
+- Assets de imagem externos — a ilustração é CSS/SVG/componente.
+- Link público de autoagendamento, taxa de reserva antecipada, métricas
+  consolidadas (fora de escopo do MVP / Fase 3 por `produto.md`).
+- Mudar formatador operacional `src/lib/money.ts` (borda de dinheiro do domínio).
+- Instalar nova dependência (ex.: Radix Accordion) só para o FAQ.
 
 ---
 
 ## 3. Requisitos e critérios de aceite testáveis
 
-Cada requisito com entrada → saída observável. Testar o webhook com payload simulado (sem
-WhatsApp real); testar cron/retentativa pela lógica (função/SQL de elegibilidade) quando o
-scheduler real não estiver disponível, documentando o que ficou só verificado estaticamente.
+Cada requisito traz entrada → saída observável. IDs de requisito (RF) e de aceite
+(CA) unificam a numeração das duas análises.
 
-### Lembrete D-1 automático (cron)
+### 3.1 Fonte única de planos (`src/lib/plans.ts`)
 
-- **R1 — dispara D-1.** Entrada: agendamento `pendente`/`confirmado`, cliente
-  `whatsapp_opt_in=true`, instância do tenant `conectado`, `starts_at` ~24h à frente
-  (faixa configurável, p.ex. 23h–25h), sem `lembrete_d1` prévio. Saída: exatamente **uma**
-  `messages` `template='lembrete_d1'` enfileirada.
-- **R2 — idempotente.** Entrada: rodar o job duas vezes seguidas. Saída: **não** cria um
-  segundo `lembrete_d1` para o mesmo agendamento (dedupe por `lembrete_d1:a:<appointmentId>`).
-- **R3 — sem opt-in não dispara.** Entrada: cliente `whatsapp_opt_in=false`. Saída: **nenhum**
-  `lembrete_d1`.
-- **R4 — janela vencida.** Entrada: `starts_at` no passado. Saída: **não** recebe D-1 (nem
-  novo, nem retentativa).
+- **RF01** Cada `Plan` expõe `price_cents: number` inteiro — Individual `5900`,
+  Clínica `14900`, Pro `25900`. Centavos inteiros, nunca float, nunca string.
+  - **CA01** `getPlan("individual").price_cents === 5900`,
+    `getPlan("clinica").price_cents === 14900`,
+    `getPlan("pro").price_cents === 25900`.
+- **RF02** Existe helper de formatação BRL **curta** exportado de `plans.ts` que
+  converte `price_cents` → string pt-BR sem centavos.
+  - **CA02** O helper retorna exatamente `"R$ 59"`, `"R$ 149"`, `"R$ 259"` para
+    `5900` / `14900` / `25900`. (Decisão: helper dedicado em `plans.ts`, separado do
+    `formatCentsToBRL` de `money.ts`, que mostra `R$ 59,00` — ver §7.)
+- **RF03** `PlanSlug`, `PLAN_SLUGS`, `parsePlanSlug`, `getPlan` e os campos atuais de
+  `Plan` permanecem com contrato intacto; a mudança é puramente aditiva. `PlanSlug`
+  continua fora de `src/types/domain.ts` (plano não é persistido).
+  - **CA03** `parsePlanSlug("hacker") === null`, `parsePlanSlug(null) === null`,
+    `parsePlanSlug(" CLINICA ") === "clinica"`. Contrato de `getPlan`/`PlanSlug`/
+    `PLAN_SLUGS` inalterado.
+- **RF04** `clinica` permanece o único `recomendado: true` (ancoragem de pricing).
 
-### Webhook de entrada (autenticidade, schema, idempotência)
+### 3.2 Página de preços (`/precos`)
 
-- **R5 — autenticidade.** Entrada: POST sem o segredo correto. Saída: `401`,
-  `webhook_events.status='rejeitado'`, **nenhum** agendamento muda.
-- **R6 — schema inválido.** Entrada: payload que falha o zod. Saída: `400`/registro
-  `rejeitado`, sem efeito.
-- **R7 — idempotência de entrada.** Entrada: reenviar o **mesmo** evento (mesmo
-  `external_event_id`). Saída: **não** gera segunda confirmação nem efeito repetido; a 2ª
-  gravação em `webhook_events` é barrada pelo índice único e o processamento para antes do
-  efeito.
+- **RF05** `/precos` renderiza os três planos **consumindo `PLANS`** — sem lista
+  duplicada e sem valor colado fora de `src/lib/plans.ts`.
+  - **CA07** Busca por literais (`"R$ 59"`, `5900`, `14900`, `25900`, nomes dos
+    planos) **não** encontra lista de planos duplicada fora de `src/lib/plans.ts`;
+    landing e `/precos` só importam `PLANS`/helper.
+- **RF06** Cada card mostra: valor mensal em BRL (via RF02), público-alvo,
+  benefícios ampliados em pt-BR, selo "Recomendado" **apenas** na Clínica, e CTA
+  "Começar com o {nome}" apontando para `/cadastro?plano={slug}`.
+  - **CA04** `/precos` exibe os três valores em BRL; o selo "Recomendado" aparece
+    **só** no card da Clínica; cada CTA aponta para `/cadastro?plano={slug}` com o
+    slug correto (conferir o `href` real renderizado).
+- **RF07** Remover a copy "valores chegam em breve" / "valores e contratação chegam
+  em breve". Incluir nota discreta em pt-BR de que a contratação acontece ao criar a
+  conta — **sem checkout, sem billing**.
+  - **CA05** Nenhuma ocorrência de "chegam em breve" permanece em `/precos` nem na
+    landing. A nota de contratação sem checkout está presente.
 
-### Casamento resposta → agendamento + transição de estado
+### 3.3 Landing (`src/marketing/pages.tsx`)
 
-- **R8 — casamento determinístico.** Entrada: telefone E.164 do remetente + tenant resolvido
-  **pela instância**. Saída: encontra o agendamento do cliente no tenant com status
-  `pendente`/`confirmado`, que teve `lembrete_d1` enviado, `starts_at` no futuro, escolhendo o
-  de `starts_at` **mais próximo**. Se nenhum casar: `webhook_events.status='ignorado'`, sem
-  efeito, sem erro ao provedor.
-- **R9 — resposta "1" confirma.** Entrada: evento válido, texto `1`, casado a agendamento
-  `pendente`/`confirmado`. Saída: `appointments.status='confirmado'` + `confirmed_at`
-  carimbado (via trigger existente) + `confirmed_via='cliente_whatsapp'` (se Opção A);
-  `webhook_events.status='processado'`, `parsed_intent='confirmar'`.
-- **R10 — resposta "2" retorna, não altera.** Entrada: evento válido, texto `2`, casado.
-  Saída: `appointments.status` **inalterado**; enfileira `messages`
-  `template='reagendar_retorno'`; `webhook_events.parsed_intent='reagendar'`.
-- **R11 — resposta não reconhecida.** Entrada: texto que não casa `1`/`2` (após normalização:
-  trim, primeiro token, tolerância a "1 confirmar"). Saída: logado/`ignorado`, sem efeito
-  (resposta "não entendi" é decisão do design; mínimo é ignorar).
-- **R12 — isolamento no casamento.** Entrada: telefone que existe em **dois** tenants. Saída:
-  casa **só** com o agendamento do tenant da instância que recebeu; nunca confirma de outro
-  tenant.
-- **R13 — transição inválida é segura.** Entrada: resposta `1` para agendamento já
-  `cancelado`/`concluido`. Saída: a função **não** quebra (erro do trigger tratado), registra
-  o resultado e segue.
-- **R14 — resposta automática registrada.** A mensagem de retorno (R10) é registrada em
-  `messages` com opt-in, idempotência e PII mínima, como o fluxo `send` da Fatia 1.
+- **RF08** Hero com CTA reforçada, continuando a levar a `/cadastro` (primária) e a
+  `/precos` (secundária).
+- **RF09** Seção de benefícios / "para quem é" (barbearias e estúdios, clínicas e
+  consultórios, autônomos de serviço), cada item com o ganho concreto em pt-BR.
+- **RF10** Seção de prévia de planos com valores em BRL consumindo `PLANS` (mesma
+  fonte da `/precos`) + link "Ver planos" → `/precos`.
+  - **CA06** A landing exibe os **mesmos** valores BRL da `/precos` (consistência por
+    construção, pois ambas consomem `PLANS`); há link "Ver planos" → `/precos`.
+- **RF11** (Opcional, aceito pelo usuário) FAQ curto em pt-BR (3–4 Q&A), expansível
+  por teclado. Implementação com `<details>/<summary>` nativo — sem nova dependência.
+- **RF12** Ilustração decorativa via CSS/SVG/componente (sem asset externo), marcada
+  `aria-hidden="true"`.
 
-### Fila de retentativa
+### 3.4 Header de marketing (`MarketingLayout.tsx`)
 
-- **R15 — retentativa com backoff.** Entrada: `messages` em `fila` cujo envio falhou. Saída:
-  reenviada pelo worker respeitando `next_attempt_at`; `attempts` incrementa a cada tentativa.
-- **R16 — limite N.** Entrada: `attempts >= max_attempts`. Saída: `status='falha'` com
-  `failure_reason`; não é mais reenviada.
-- **R17 — retentativa respeita janela útil.** Entrada: `lembrete_d1` em `fila` cujo
-  agendamento já passou de `starts_at`. Saída: `status='falha'` (`janela_vencida`), não
-  reenviado.
+- **RF13** Adicionar link/botão "Entrar" → `/login`, acessível por teclado e com
+  foco visível (padrão `Button asChild + Link` → `<a href>` real; `focus-visible:ring`
+  já usado no header).
+  - **CA09** Header de marketing tem elemento "Entrar" para `/login`, focável por Tab,
+    com anel de foco visível e ativável por Enter.
 
-### Segurança / dados / verificação
+### 3.5 Painel de autenticação (`AuthLayout.tsx`)
 
-- **R18 — RLS `webhook_events`.** Usuário autenticado do tenant A **não** lê `webhook_events`
-  do tenant B; o cliente **não** consegue INSERT/UPDATE/DELETE em `webhook_events`.
-- **R19 — PII mínima.** `webhook_events.payload`, `messages.payload` e os logs **não** contêm
-  telefone, documento nem o texto cru da mensagem em claro.
-- **R20 — segredos fora do cliente.** Nenhum segredo (webhook/Evolution/service role) aparece
-  no bundle do frontend nem em arquivo versionado; só `.env.example` com chaves vazias.
-- **R21 — migrations versionadas.** Todo schema/cron está em migration nova; `db reset` roda
-  limpo (ou, sem pg_cron local, não quebra e documenta a limitação).
-- **R22 — build/typecheck.** `deno check` da(s) Edge Function(s) e o typecheck/build do
-  projeto passam limpos; QA ao vivo do webhook com payload simulado cobre `1`, `2`, duplicado
-  e inválido/não-autêntico.
+- **RF14** Enriquecer o `aside` (`≥1024px`) com ilustração CSS/SVG decorativa
+  (`aria-hidden="true"`) + lista de 3–4 funcionalidades em pt-BR: agenda sem
+  conflito por profissional, confirmação automática 24h antes (D-1), cobrança por
+  PIX ao fim do atendimento, baixa automática do pagamento.
+  - **CA10** O `aside` tem ilustração com `aria-hidden="true"` e lista de 3–4
+    funcionalidades em pt-BR.
+- **RF15** O `aside` continua `hidden lg:flex` (só em telas largas); no mobile o
+  formulário ocupa a tela toda. As rotas cadastro/recuperar-senha que reusam o
+  layout continuam funcionando.
+
+### 3.6 Segurança frontend (única superfície desta tarefa)
+
+- **RF16** O valor **cru** de `?plano` **nunca** é interpolado no DOM. A validação
+  continua **exclusivamente** em `parsePlanSlug` (em `/cadastro`), e a UI só exibe o
+  rótulo pt-BR via `getPlan(slugValidado).nome`. As CTAs apenas **geram**
+  `/cadastro?plano={slug}` a partir do `slug` já tipado de `PLANS`.
+  - **CA08** Nenhum `searchParams.get("plano")` é renderizado direto; o fluxo de
+    `/cadastro` segue usando `parsePlanSlug` → `getPlan(slug).nome`. `/cadastro?plano=xpto`
+    inválido continua caindo em `parsePlanSlug` → `null` sem quebrar (comportamento
+    pré-existente, não regredido).
+
+### 3.7 Requisitos não funcionais (herdados, aplicáveis aqui)
+
+- **RNF01** TypeScript estrito; sem `any`. `price_cents` tipado como `number`.
+- **RNF02** shadcn/ui reaproveitado de `src/components` (`Button`, `StatusBadge`,
+  `Logo` etc.) — não recriar primitivos.
+- **RNF03** Mobile-first + dark mode, usando os tokens de tema existentes
+  (`bg-card`, `text-muted-foreground`, `border-border`, `text-primary`,
+  `--status-*`). Nenhum token de cor novo.
+- **RNF04** Acessibilidade: contraste adequado, foco visível, navegação por teclado,
+  ilustrações decorativas com `aria-hidden`, landmarks/headings semânticos.
+- **RNF05** Todo texto de usuário em **pt-BR**.
+
+### 3.8 Verificação geral
+
+- **CA12** `npm run build` + typecheck/lint/testes existentes passam sem erro.
+- **CA14** (segurança/dados) Nenhum arquivo em `supabase/migrations` é criado ou
+  alterado; nenhum import de cliente Supabase/service role nos arquivos tocados;
+  `tenants.plan` não é lido nem escrito; nenhum plano é persistido; nenhum
+  `<img src=…>` de asset externo.
 
 ---
 
 ## 4. Regras de fronteira que a demanda arrisca
 
-Defeitos que esta fatia pode introduzir (do papel) e a invariante correspondente:
+A tarefa não cruza a camada de dados, então as fronteiras invioláveis do projeto
+**permanecem verdadeiras e não são exercidas nem relaxadas**. Registradas para
+rastreabilidade e como rede de proteção para o planejador e o review:
 
-- **Isolamento multi-tenant (RLS).** Webhook e cron **nunca** cruzam tenants. No webhook não
-  há JWT de usuário: o `tenant_id` é resolvido **pela instância**
-  (`whatsapp_instances.evolution_instance_name → tenant_id`), no servidor, com service role —
-  **nunca** do payload. No cron, cada linha candidata carrega seu `tenant_id`. RLS habilitado
-  em `webhook_events` e em toda tabela de domínio nova. Risco: casar resposta ao agendamento
-  de outro tenant → **proibido** (R12, R18).
-- **Idempotência de webhook.** Processar o mesmo evento duas vezes **não** confirma em
-  duplicidade (dedupe por `external_event_id`, índice único; o processamento para na 2ª
-  gravação antes de qualquer efeito) — R7.
-- **Autenticidade de webhook.** Verificada **antes** de qualquer efeito (segredo compartilhado
-  `WHATSAPP_WEBHOOK_SECRET`, comparação em tempo constante; a Evolution v2.3.7 não assina HMAC
-  por padrão). Sem match → `401` → `rejeitado` — R5. O design confirma o formato exato do
-  payload de entrada na doc da Evolution v2.3.7 e valida tudo com zod.
-- **Segredos fora do cliente.** Token Evolution, service role e segredo do webhook **só** no
-  servidor/env; nunca `VITE_*`, nunca no bundle — R20.
-- **LGPD.** Disparo só com `whatsapp_opt_in=true` — R3. PII mínima: sem telefone/documento/
-  texto cru em claro em `payload` ou logs (telefone para dedupe/diagnóstico hasheado ou
-  omitido) — R19. O histórico mostra rótulo derivado do efeito, nunca o texto digitado.
-- **Status de assinatura.** O cron respeita o status do tenant no servidor
-  (`bloqueado`/`cancelado` suspendem disparos, `seguranca-multitenant.md`).
-- **Nunca confirmar sem resposta válida casada** — R8/R9/R11.
+- **Isolamento multi-tenant (RLS).** `tenant_id` vem do JWT/`profiles`, nunca de
+  parâmetro do cliente; RLS em toda tabela de domínio. **Não exercido:** nenhuma
+  tabela de domínio é lida/escrita aqui.
+- **RBAC admin/professional/receptionist.** Recepção sem acesso a `charges`.
+  **Não exercido:** sem leitura de dados operacionais.
+- **Status de assinatura** (`trial/ativo/pendente/bloqueado/cancelado`), com
+  `bloqueado` redirecionando para quitação — vive nos guards de `/app` e `/admin`,
+  **não tocados** por esta demanda (marketing/auth público, sem guard).
+- **Webhooks** (idempotência por `gateway_charge_id` + id do evento; autenticidade
+  do Asaas). **Não exercido:** sem Edge Function, sem webhook nesta tarefa.
+- **Segredos fora do cliente.** Só `anon key` pública vai ao bundle; service role,
+  chave Asaas e token Evolution ficam em env/Edge Functions. **Respeitado:** nenhum
+  segredo é introduzido; nenhum import de service role nos arquivos tocados.
+- **LGPD** (`whatsapp_opt_in`, PII mínima em log). **Não exercido:** sem coleta de
+  PII, sem disparo, sem log de dado pessoal nesta tarefa.
+- **Entrada não confiável `?plano` (ÚNICA superfície real).** Validada só por
+  `parsePlanSlug`; valor cru nunca no DOM — ver RF16/CA08. Esta é a fronteira que a
+  demanda de fato toca e precisa preservar.
+- **Dinheiro em centavos inteiros.** `price_cents` respeita a convenção `*_cents`
+  mesmo sendo constante de marketing; exibição formatada em BRL.
 
 ---
 
-## 5. Perfis de acesso (quem executa cada ação)
+## 5. Perfis de acesso
 
-- **Sistema / service role (servidor):** executa o cron (lembrete D-1 e worker de
-  retentativa), processa o webhook de entrada, aplica a transição de status e escreve em
-  `messages`/`webhook_events`. Nenhum cliente comum executa estas operações.
-- **super_admin:** sem caminho pelo cliente para `webhook_events`/operações privilegiadas
-  (cross-tenant só por Edge Function auditada, fora desta fatia).
-- **admin / receptionist / professional (tenant):** **leem** o efeito já persistido —
-  o selo de confirmação na agenda (informação operacional, não financeira) e o histórico de
-  mensagens (projeção **sem PII**). `professional` vê o selo só nos próprios agendamentos
-  (herda o recorte de linhas da agenda). `receptionist` continua **sem** telas/dados
-  financeiros (esta fatia não toca financeiro). Nenhum papel do cliente escreve em
-  `webhook_events` (R18).
+Toda a superfície desta demanda é **pública e anônima** — não há usuário autenticado
+nem papel RBAC envolvido na execução das telas.
+
+| Ação | Quem executa |
+|------|--------------|
+| Ver landing (`/`), preços (`/precos`), termos (`/termos`) | Qualquer visitante anônimo |
+| Clicar "Entrar" no header → `/login` | Visitante anônimo (ainda não logado) |
+| Clicar CTA de plano → `/cadastro?plano={slug}` | Visitante anônimo |
+| Ver o `aside` enriquecido do login/cadastro/recuperar-senha | Visitante anônimo (em telas `≥1024px`) |
+
+Papéis `super_admin` / `admin` / `professional` / `receptionist` só existem **depois**
+do login, nas áreas `/admin` e `/app`, que **não** são tocadas aqui. Registrado para
+deixar claro que nenhuma regra de papel é alterada.
 
 ---
 
 ## 6. Enquadramento no roadmap e dependências
 
-- **Roadmap (`produto.md`):** confirmação interativa D-1 é objetivo central (reduzir no-show).
-  Esta é a **Fatia 2 da Fase 2 do WhatsApp**, logo após a Fatia 1 (templates + render
-  server-side, já em master). Cobre RF10/RF11 + RNF04 (fila de retentativa) da skill
-  whatsapp-evolution.
-- **Dependências anteriores (consome, não recria):** máquina de estados de `appointments`
-  (`confirmado` + `confirmed_at` via trigger), `messages` com idempotência de envio
-  (`dedupe_key`), `whatsapp_instances`, `message_templates` + render server-side, opt-in,
-  normalização E.164 e adapter Evolution (mock/real).
-- **Respeita o fora-de-escopo do MVP:** autoagendamento público, taxa de reserva antecipada e
-  métricas consolidadas permanecem **Fase 3** — não implementar aqui.
+- **Fase atual (marketing/auth pré-operacional):** esta melhoria vive aqui. Plano é
+  **conteúdo de marketing**; tenant nasce em `trial`; CTA → `/cadastro`, nunca
+  checkout. Alinhado com `src/lib/plans.ts` (ADR-13) e `produto.md`.
+- **Fase 3 (NÃO fazer agora):** billing/checkout, uso efetivo de `tenants.plan`,
+  cobrança de assinatura. `price_cents` fica em `plans.ts` justamente para que a
+  promoção à Fase 3 (mapear `slug → tenants.plan` + preço de cobrança real) tenha um
+  ponto único. Acoplar preço a billing nesta tarefa é defeito.
+- **Fora de escopo do MVP (Fase 1, por `produto.md`):** autoagendamento público,
+  taxa de reserva obrigatória antecipada, painel de métricas consolidadas — **não**
+  implementar.
+- **Dependências anteriores:** nenhuma pendência de dados. A tarefa depende apenas
+  dos componentes públicos já existentes (`PLANS`, `MarketingLayout`, `AuthLayout`,
+  `Button`, `StatusBadge`, `Logo`) e dos tokens de tema em `src/index.css`.
+- Mudar os valores R$ 59/149/259 no futuro é editar `src/lib/plans.ts`, não uma
+  migration.
 
 ---
 
 ## 7. Pontos levantados pelo usuário (nenhum descartado)
 
-| # | Ponto do usuário | Tratamento |
-|---|---|---|
-| 1 | "Primeiro os templates e depois a interação" | **Decisão tomada.** Templates = Fatia 1 (entregue em master). Esta fatia é a interação. Ordem respeitada. |
-| 2 | "Resposta pode ser numérica" | **Decisão tomada.** Resposta **numérica** (`1` confirmar / `2` reagendar). Botões interativos ficam fora de escopo. |
-| 3 | "Se responder sim, marca a agenda como confirmado" (e "é possível com a Evolution API?") | **Decisão tomada.** Resposta `1` → `appointments.status='confirmado'` + `confirmed_at` (R9). Viável com Evolution via webhook de entrada (confirmar payload na doc v2.3.7 no design). |
-| 4 | "Analise se tem mais melhorias possíveis" | **Decisões tomadas.** Incorporadas: fila de retentativa (RNF04), auditoria/idempotência via `webhook_events`, selo de origem da confirmação na agenda, rotulagem do histórico. |
-| 5 | Resposta `2` (reagendar) = **opção c** | **Decisão tomada.** Mensagem automática de retorno (`reagendar_retorno`) + tratamento manual; **sem** reagendamento automático, **sem** mudar horário (R10). |
-| 6 | Lembrete D-1 via **pg_cron** | **Decisão tomada.** Job agendado via pg_cron, versionado em migration, condicional ao ambiente (R1–R4, R21). |
+Cada ponto das mensagens verbatim e das decisões travadas, mapeado para onde é
+atendido ou registrado como decisão.
 
-**Perguntas em aberto deixadas para o design (não bloqueiam o PRD):** faixa exata da janela
-D-1 (ex. 23h–25h) e granularidade do cron; mecanismo de invocação do cron (pg_net POST vs.
-função SQL `security definer`); parâmetros de backoff (base, fator, N); webhook como função
-separada (recomendado) vs. nova rota; formato exato do payload de entrada da Evolution v2.3.7
-(a confirmar na doc); se há resposta automática "não entendi" para R11. A decisão de criar
-`appointments.confirmed_via` (§2.4) — adotar Opção A é a recomendação; se recusada, o selo de
-origem sai de escopo do frontend.
+| Ponto do usuário | Situação | Onde é atendido |
+|------------------|----------|-----------------|
+| Landing simples demais, melhorar a CTA | Decisão tomada | RF08 |
+| Planos sem valor / mal descritos → valores + mais informação | Decisão tomada | RF01, RF02, RF05, RF06, RF10 |
+| Falta botão de login no header | Decisão tomada | RF13, CA09 |
+| Painel esquerdo do login quase vazio → imagem + o que o sistema faz e funcionalidades | Decisão tomada | RF14, CA10 |
+| Valores dos planos: 59 / 149 / 259 (msg 2, item 1) | Decisão tomada | RF01 (5900/14900/25900 em centavos), CA01, CA02 |
+| Objetivo = conversão + aparência mais completa (msg 2, item 2 = "c") | Decisão tomada | Seções novas: RF09 (benefícios), RF10 (prévia de planos), RF11 (FAQ) |
+| Ilustração via CSS/SVG, sem asset externo, decorativa (msg 2, item 3 = "a") | Decisão tomada | RF12, RF14, CA11/CA14 |
+| Clínica como plano recomendado (ancoragem) | Decisão tomada | RF04, CA04 |
+| Valores são conteúdo de marketing, não billing; tenant nasce em trial; CTA → /cadastro | Decisão tomada (invariante) | §2.1, §4, §6 |
+| pt-BR, mobile-first, dark mode, acessibilidade | Decisão tomada | RNF03–RNF05, CA13 (visual) |
+| Helper BRL curto porque `money.ts` mostra `R$ 59,00` e o aceite pede `R$ 59` | Decisão tomada | RF02, CA02 (helper dedicado em `plans.ts`, não altera `money.ts`) |
+| FAQ sem instalar Radix Accordion (usar `<details>` nativo) | Decisão tomada | RF11 |
+| "pode executar" / "pode rodar o workflow" (msgs 3–4) | Autorização de execução | Processado pelo pipeline; sem decisão de produto pendente |
+
+**Perguntas em aberto:** nenhuma. Todas as escolhas de produto (valores, objetivo
+duplo, forma da ilustração, plano recomendado) foram confirmadas nas mensagens 1–2
+do usuário. A dívida de token de contraste do tema claro (`--primary`/`--ring`
+limítrofes) é **pré-existente** e **não** bloqueia esta entrega — fica como nota ao
+planejador, com a mitigação de usar `foreground` (não `primary`) no texto do preço.
 
 ---
 
-## 8. Critério de aceite visual (frontend, verificável via Chrome DevTools)
+## 8. Critério de aceite visual (QA via Chrome DevTools MCP)
 
-1. **Selo — confirmado pelo cliente.** Agendamento `status=confirmado` +
-   `confirmed_via=cliente_whatsapp` mostra o badge `Confirmado` **mais** o micro-selo (ícone
-   WhatsApp + `aria-label` "Confirmado pelo cliente no WhatsApp"), na lista e no bloco de
-   calendário (modo não-compacto). Verificável pela presença do `aria-label` no DOM e visual.
-2. **Selo — confirmado manualmente.** Agendamento `confirmado` + `confirmed_via=manual` mostra
-   **só** o badge `Confirmado`, sem micro-selo; `title` do badge: "Confirmado pela recepção".
-3. **Histórico — lembrete automático.** Após o cron, a linha `lembrete_d1` aparece com rótulo
-   "Lembrete (24h antes)" e indicador "Enviada", **sem PII**.
-4. **Histórico — resposta recebida.** A resposta aparece como "Recebida" com rótulo derivado
-   ("Confirmação do cliente" / "Pedido de reagendamento"), **nunca** o texto digitado; direção
-   por **ícone + texto**, não cor.
-5. **Histórico — fila/retentativa.** Mensagem em retentativa: badge `Na fila` + `title`
-   "Aguardando reenvio automático"; após o limite, badge `Falha` + `title` "Falhou após
-   várias tentativas".
-6. **Contraste (claro e escuro).** Medir no DevTools o contraste do texto do badge
-   `Confirmado` (mirar ≥ 4,5:1) e do ícone do micro-selo contra `bg-card` (mirar ≥ 3:1, WCAG
-   1.4.11), nos dois temas; registrar os números medidos e ajustar token/opacidade se abaixo.
-7. **Teclado/foco.** Tab chega ao bloco do agendamento com anel de foco visível; o selo não
-   cria alvo de foco extra nem quebra a ordem de tab; `aria-label` lido junto do bloco.
-8. **Mobile (~375px).** Lista e blocos não estouram com selo + badge; no bloco compacto o selo
-   cai no `title`; histórico em cards no mobile preservado.
-9. **PII na UI.** Em nenhuma superfície (agenda, histórico, tooltip, DOM) aparece telefone do
-   cliente ou texto literal recebido.
+QA executado em **mobile (390px)** e **desktop (1280px)**, nos temas **claro e
+escuro**, todos **sem erro no console**. Cada item exige evidência (snapshot/medição
+no DOM renderizado).
 
-> Nota: validação completa de WCAG exige teste manual com tecnologia assistiva e revisão
-> especializada; os itens acima são o que se verifica via DevTools nesta fatia.
+1. **CA-V1** `/precos`: os três planos mostram valor mensal em BRL, público-alvo e
+   benefícios ampliados; selo "Recomendado" **só** na Clínica; cada CTA
+   "Começar com o {nome}" tem `href` real `/cadastro?plano={slug}` com o slug
+   correto. Nenhuma copy "valores chegam em breve". Nota de contratação sem checkout
+   presente. (RF05–RF07)
+2. **CA-V2** Landing: hero com CTA primária + "Ver planos"; seção de benefícios /
+   para-quem-é; seção de prévia de planos; FAQ presente e expansível por teclado.
+   (RF08–RF11)
+3. **CA-V3** Consistência: o valor de cada plano na prévia da landing é **idêntico**
+   ao de `/precos` (ambos de `PLANS` via o helper). (CA06)
+4. **CA-V4** Header de marketing tem "Entrar" → `/login`, com foco visível e
+   ativável por teclado (Tab + Enter). (RF13)
+5. **CA-V5** `aside` do login em `≥1024px`: ilustração decorativa (`aria-hidden`) +
+   lista de 4 funcionalidades; em `<1024px` o `aside` não aparece e o formulário
+   ocupa a tela. (RF14, RF15)
+6. **CA-V6** A ilustração é `aria-hidden="true"` e nenhum texto essencial vive só
+   dentro dela; nenhum `<img src=…>` de asset externo. (RF12, CA11)
+7. **CA-V7** Mobile-first e dark mode: layout íntegro em 390px e 1280px, nos dois
+   temas. Medir contraste no DOM em subtítulo do hero, descrição de feature, preço
+   do plano e nota de contratação — ≥4,5:1 (texto normal) ou ≥3:1 (texto grande /
+   preço display). O preço usa `foreground` (não `primary`) para remover o risco de
+   contraste do jade no tema claro.
+8. **CA-V8** `?plano` inválido (`/cadastro?plano=xpto`) continua caindo em
+   `parsePlanSlug` → `null` sem quebrar; nenhum valor cru de `?plano` aparece no DOM.
+   (RF16, CA08)
+9. **CA-V9** `npm run build` + typecheck/lint/testes existentes passam. (CA12)
+
+---
+
+## 9. Entrega
+
+- Implementação em **branch nova** + **Pull Request** (padrão do projeto; sem push
+  direto em `main`).
+- Verificação automatizada (CA12) e QA visual (seção 8) concluídos antes do PR.
+- Quando a execução gerar aprendizado durável, registrar no brain conforme a regra
+  de aprendizado do projeto.

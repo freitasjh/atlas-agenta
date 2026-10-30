@@ -1,337 +1,332 @@
-# Análise de Frontend — Fatia 2 do WhatsApp (Confirmação interativa D-1)
+# Design de Frontend: Marketing + Auth mais maduros (landing, /preços, painel de login)
 
-> Papel: Designer dedicado de frontend do pipeline. Stack travada: React + Vite +
-> TypeScript + Tailwind + shadcn/ui, React Router, TanStack Query, react-hook-form + zod.
-> Base: branch `feat/message-templates-schema-rls` (Fatia 1 já entregue: `message_templates`
-> + render server-side no `handleSend`; `lembrete_d1` já carrega "1 confirmar / 2 reagendar").
+Status: design doc para o planner e para o gate humano do PRD. Nenhum código de aplicação foi escrito.
 
-## 0. Veredito de escopo — esta fatia é BACKEND-pesada, com superfície de frontend PEQUENA mas real
+Demanda (verbatim do usuário, autoritativa): a landing hoje é simples demais — sem valores, sem botão de login, só cadastro. Melhorar a CTA; a seção de planos precisa ser melhor descrita, com mais informações e **valores**; o painel esquerdo do login pode ter mais informações e uma imagem explicando o que o sistema faz; hoje falta informação básica sobre o que é e quais as funcionalidades do produto.
 
-A Fatia 2 entrega quatro peças de servidor: (1) cron `pg_cron` do lembrete D-1,
-(2) Edge Function de **webhook de entrada** da Evolution, (3) casamento resposta→agendamento
-com marcação `confirmado`, (4) fila de retentativa. Nenhuma delas é uma tela. O usuário final
-(cliente do tenant) interage **dentro do WhatsApp**, não no app.
+Tipo: melhoria de UI frontend. Escopo 100% público/frontend. **Não toca** dados, Supabase, RLS ou Edge Functions. As CTAs continuam levando a `/cadastro?plano=<slug>` e `/login`. O tenant continua nascendo em `trial`. Billing/checkout é Fase 3.
 
-Mas a fatia **toca o frontend** por efeito colateral observável, e aqui está o trabalho de
-design que importa — não inventar telas, e sim tornar o efeito do backend **legível** na UI
-que já existe:
+Decisões já travadas com o usuário (mensagens 2–4):
+- Valores mensais: Individual **R$ 59**, Clínica **R$ 149**, Pro **R$ 259**. Armazenar em **centavos inteiros** (`5900`, `14900`, `25900`) em `src/lib/plans.ts`, com helper de formatação BRL curta (`R$ 59`). Clínica é o recomendado (ancoragem de pricing).
+- Objetivo duplo: conversão + aparência mais completa. Seções novas aceitas: benefícios/para-quem-é, prévia de planos na landing, FAQ curto.
+- Ilustração do painel de login e da landing: **gerada via CSS/SVG/componentes**, sem assets externos. Decorativa, `aria-hidden`.
+- Adicionar link/botão **"Entrar"** (para `/login`) no header de marketing.
 
-1. **Agenda** — um agendamento que era `pendente` vira `confirmado` + ganha `confirmed_at`
-   quando o cliente responde "1". Hoje a UI mostra o badge `Confirmado`, mas **não distingue**
-   uma confirmação feita pelo próprio cliente (via WhatsApp D-1) de uma feita manualmente pela
-   recepção. Essa distinção é o valor de negócio da fatia (reduzir no-show provando que o
-   cliente confirmou). **Precisa aparecer.**
-2. **Histórico de mensagens** (`/app/config/whatsapp`) — passa a receber linhas novas:
-   `lembrete_d1` disparado pelo cron, e (decisão c) a mensagem automática de retorno quando o
-   cliente responde "2". Hoje a lista assume disparo **sob demanda** e não tem conceito de
-   origem (automático/cron) nem de **mensagem recebida**. Precisa de ajuste de leitura e de
-   rótulo, sem virar um inbox.
-3. **Estado `fila`/`falha`** — a fila de retentativa muda a semântica de `messages.status`:
-   `fila` agora pode significar "aguardando retentativa" e `falha` só aparece após o limite N.
-   O badge já existe; o texto de apoio precisa refletir a nova realidade para não assustar o
-   admin ("Na fila" por 2h é normal agora).
+Premissas verificadas no repositório:
+- `src/lib/plans.ts` é a fonte única apresentacional dos planos (ADR-13). Hoje expõe `PLAN_SLUGS`, `PlanSlug`, `Plan {slug,nome,publico,destaques,recomendado?}`, `PLANS` (ordem Individual→Clínica→Pro, só `clinica` com `recomendado`), `parsePlanSlug`, `getPlan`. **Não tem preço.** `parsePlanSlug` é o único ponto de validação do `?plano` não confiável; o valor cru nunca é interpolado no DOM.
+- `src/marketing/pages.tsx` tem `LandingPage` (hero + 3 `Feature`), `PrecosPage` (grade de 3 planos **sem valor**, com a copy "Valores e contratação chegam em breve") e `TermosPage`. O componente local `Feature` e `StatusBadge` já são reusados.
+- `src/marketing/MarketingLayout.tsx` tem header com `MARKETING_LINKS` (`/precos`, `/termos`) + `ThemeToggle`. **Não tem link de login.**
+- `src/auth/AuthLayout.tsx` tem o `aside` de apresentação (só em `lg:`, ≥1024px) com `Logo`, um `h2` curto e um parágrafo. É o painel a enriquecer. É compartilhado por login, cadastro e recuperar-senha.
+- `src/lib/money.ts` tem `formatCentsToBRL` (ex.: `4500` → `R$ 45,00`) e `parseBRLToCents`. O `formatCentsToBRL` **mostra os centavos** (`R$ 59,00`), e o aceite pede `R$ 59`. Por isso um helper curto é necessário (seção 5.1).
+- Tokens de cor/tipografia em `src/index.css` + `tailwind.config.ts`: app inicia em **dark** (`ThemeProvider`); fontes `Space Grotesk` (display) e `Inter` (sans) auto-hospedadas; `--primary` jade (`160 64% 45%` dark / `160 64% 38%` claro), `--radius: 0.75rem`. `tabular-nums` global no `body`.
+- Pattern de navegação confirmado: `Button asChild` + `Link` renderiza `<a href>` semântico (acessível). Seguir sempre.
 
-Conclusão: **documento de frontend com escopo contido**. Zero rota nova, zero módulo novo.
-Ajustes cirúrgicos em componentes existentes + um elemento de design novo (o selo de
-"confirmado pelo cliente"). Tudo o mais é dependência de dados/contrato do backend que o
-planejador deve honrar para que a UI possa ler o efeito.
+## 1. Telas, componentes e rotas
 
----
+Nenhuma rota nova é criada. Todas as rotas afetadas já existem e são públicas, sem guard de autenticação, RBAC ou status de assinatura. Isto é marketing/auth público. (Os guards de `/app` e `/admin` — auth + RBAC + `subscription_status`, com `bloqueado` redirecionando para quitação — não são tocados aqui e ficam registrados como contexto, não como trabalho.)
 
-## 1. Telas, componentes, rotas e guards
+| Rota | Componente | Situação |
+|------|------------|----------|
+| `/` | `LandingPage` (`src/marketing/pages.tsx`) | Existente. Hero reforçado + benefícios/para-quem-é + prévia de planos + FAQ curto. |
+| `/precos` | `PrecosPage` (`src/marketing/pages.tsx`) | Existente. Grade com valor em BRL, público-alvo, benefícios ampliados, selo "Recomendado" só na Clínica, nota de contratação sem checkout. |
+| `/termos` | `TermosPage` | Inalterada. |
+| `/login`, `/cadastro`, `/recuperar-senha` | `AuthLayout` + páginas | Só o `aside` do `AuthLayout` muda (ilustração + lista de funcionalidades). As páginas de formulário não mudam. |
+| (layout) | `MarketingLayout` | Ganha o link/botão "Entrar" → `/login` no header. |
 
-### 1.1 Rotas — NENHUMA nova
+Componentes e onde vivem:
 
-Todas as mudanças vivem em rotas e layouts já existentes, sob os guards já montados
-(`RequireAuth → RequireActiveSubscription → AppLayout`, mais os gates por capacidade de
-`usePermissions`). Não há rota pública, de auth, de admin ou de tenant nova.
+- `src/lib/plans.ts` — estendido: `price_cents` por plano + helper `formatPlanPrice`. Continua a fonte única; landing e `/precos` **consomem** dela (nunca duplicam a lista nem colam o valor).
+- `src/marketing/pages.tsx` — `LandingPage` e `PrecosPage` reescritas para o novo conteúdo. O componente local `Feature` é mantido e reusado. Novos sub-componentes locais de marketing (ver abaixo) ficam neste arquivo ou em `src/marketing/` se crescerem.
+- `src/marketing/MarketingLayout.tsx` — header ganha "Entrar".
+- `src/auth/AuthLayout.tsx` — `aside` enriquecido.
 
-| Superfície | Rota existente | Guard de acesso |
-| --- | --- | --- |
-| Agenda (selo de confirmação pelo cliente) | `/app/agenda` | auth + assinatura ativa; leitura por qualquer papel do tenant |
-| Histórico de mensagens (lembrete/recebida/retorno) | `/app/config/whatsapp` | auth + assinatura ativa; `RecentMessagesList` já é PII-safe e lida por qualquer papel |
-| Config de template `lembrete_d1` (já existe) | `/app/config/mensagens` | `canManageMessageTemplates` (admin) — **sem mudança nesta fatia** |
+Sub-componentes de marketing (locais, não são primitivos de UI — não vão para `src/components/ui`):
 
-### 1.2 RBAC — quem vê o quê
+- `PlanCard` — um card de plano, consumindo um `Plan` de `PLANS` + `formatPlanPrice(plan)`. Usado tanto em `/precos` (completo) quanto, em versão compacta, na prévia da landing, via uma prop `variant: "full" | "preview"`. Fonte única de markup do card, evita a divergência visual entre landing e `/precos`.
+- `BrandIllustration` — ilustração SVG/CSS decorativa (`aria-hidden`), reusada pelo hero da landing e pelo `aside` do login. Representa a tese do produto: a transição `pendente → confirmado` + um balão de WhatsApp + um selo de PIX. Sem asset externo.
+- `Faq` — lista curta de perguntas e respostas (3–4) na landing.
 
-- **admin / receptionist / professional** — todos veem o badge `Confirmado` e o selo de origem
-  na agenda (é informação operacional, não financeira). `receptionist` continua **sem** telas
-  de cobrança; esta fatia não toca financeiro, então nada a esconder a mais.
-- **professional** — vê o selo apenas nos próprios agendamentos (o RLS/escopo da agenda já
-  resolve isso; o selo herda o mesmo recorte de linhas).
-- O histórico de `/app/config/whatsapp` já é legível por qualquer papel do tenant com projeção
-  **sem PII** (ver `RecentMessagesList`/`useRecentMessages`). As mensagens novas (lembrete,
-  recebida, retorno) herdam a mesma projeção — **nunca** expor telefone nem o texto recebido
-  do cliente.
-
-### 1.3 Status de assinatura
-
-Guard central já cobre: `bloqueado` → tela de quitação (`BillingGateLayout`), `cancelado` →
-acesso suspenso. Nenhum tratamento novo. Observação de produto para o planejador (não é
-frontend): o **cron** do lembrete D-1 deve respeitar o status do tenant no servidor
-(`bloqueado`/`cancelado` suspendem disparos, por `seguranca-multitenant.md`). A UI não dispara
-o cron; só não há onde mostrar isso além do histórico ficar vazio — aceitável.
-
-### 1.4 Componentes tocados / criados
-
-**Alterados (mínimo):**
-
-- `src/app/agenda/AppointmentBlock.tsx` e a lista em `AgendaPage.tsx` — acrescentar o
-  **selo de "confirmado pelo cliente"** ao lado do `StatusBadge` quando o status for
-  `confirmado` **e** a confirmação tiver vindo do cliente (ver §1.5 sobre a fonte do dado).
-- `src/app/config/whatsapp/RecentMessagesList.tsx` — (a) suportar a direção
-  recebida/enviada; (b) distinguir disparo automático (cron) de sob demanda no rótulo;
-  (c) texto de apoio para `fila` sob retentativa.
-- `src/lib/whatsapp.ts` — acrescentar rótulos pt-BR dos novos estados/origens (fonte única de
-  vocabulário; nada de literais soltos nos componentes).
-
-**Criado (1 componente pequeno, reaproveitando primitivos):**
-
-- `src/components/ConfirmationSourceBadge.tsx` (ou um prop no `StatusBadge` existente — ver
-  §2.4 para a decisão) — o selo visual "✓ pelo cliente" / "✓ pela recepção". **Decisão:**
-  componente irmão dedicado, no molde do `WhatsAppStatusBadge` (que já foi criado como irmão
-  do `StatusBadge` justamente para não inchar o existente). Reusa os tokens de status já
-  calibrados AA; não cria token de cor novo.
-
-Nenhum primitivo de `src/components/ui` é recriado. Tudo consome o que já existe
-(`Badge`/`span` tokenizado, `Table`, `Skeleton`, `Tooltip` para o detalhe de origem).
-
-### 1.5 Dependência de dados crítica (o frontend NÃO pode resolver sozinho)
-
-Para a agenda distinguir "confirmado pelo cliente" de "confirmado manualmente", a UI precisa de
-um dado que hoje **não existe** no shape lido. `appointments.confirmed_at` existe mas é só um
-timestamp — não diz **quem** confirmou. Duas opções para o planejador (decisão de contrato,
-sinalizada como **dependência de dados**):
-
-- **Opção A (preferida):** coluna nova `appointments.confirmed_via` (enum
-  `cliente_whatsapp | manual`, nullable), gravada pelo webhook (service role) quando casa a
-  resposta "1", e deixada `manual` quando a recepção muda o status pela UI. É uma coluna de
-  domínio, versionada em migration, sob o RLS já existente de `appointments`. O frontend lê e
-  escolhe o selo. **Barata, determinística, legível.**
-- **Opção B (sem migration de appointments):** derivar a origem cruzando `appointments` com a
-  última `messages` do tipo `lembrete_d1`/resposta daquele `appointment_id`. **Rejeitada:** é
-  um join frágil, exige expor mais de `messages` na leitura da agenda (risco de PII/escopo) e
-  não é determinístico se houver reenvio. O selo é informação de agenda; deve morar em
-  `appointments`.
-
-> **Decisão de design:** adotar **Opção A**. O planejador cria `confirmed_via`; o hook
-> `useAppointments` passa a selecioná-lo; o selo da agenda é função pura de
-> `(status, confirmed_via)`. Se o planejador decidir não criar a coluna nesta fatia, o selo de
-> origem **sai de escopo do frontend** e fica só o badge `Confirmado` já existente — registrar
-> isso explicitamente como corte, não implementar a Opção B.
-
-Dependências de dados que o planejador deve garantir para a leitura PII-safe do histórico:
-
-- `messages` precisa de uma forma de distinguir **direção** (recebida vs enviada) e **origem**
-  (automática/cron vs sob demanda). Sinalizado como dependência: coluna `direction`
-  (`inbound | outbound`) e/ou `origin` (`cron | on_demand | webhook_reply`) em `messages`,
-  ou um `template`/`payload` que já carregue isso. O frontend só **lê e rotula**; não infere
-  direção de texto (o texto recebido não deve nem chegar ao cliente por PII).
-- A mensagem recebida do cliente **não deve** trazer o conteúdo bruto para a UI. O histórico
-  mostra "Cliente respondeu (confirmação)" / "Cliente respondeu (reagendar)" como rótulo
-  derivado do efeito, **nunca** o texto literal digitado.
-
----
+Decisão sobre a ilustração compartilhada: um único `BrandIllustration` parametrizável (prop de tamanho/densidade) em vez de dois SVGs separados. Motivo: a mesma tese visual ("anel de confirmação" da marca + estado confirmado) aparece nas duas telas; um componente só garante consistência e um ponto único de manutenção. A alternativa (dois SVGs inline distintos) foi descartada por duplicar markup decorativo.
 
 ## 2. Direção visual e design system
 
-A régua visual já está estabelecida pelas fatias anteriores (tokens `--status-*` calibrados AA,
-`StatusBadge`/`WhatsAppStatusBadge`, `font-display` nos títulos, mobile-first, dark mode). Esta
-fatia **não abre direção nova** — seria ruído. O trabalho é integrar o único elemento novo (o
-selo de origem da confirmação) com a mesma disciplina.
+### 2.1 Plano
 
-### 2.1 Tokens — reuso total, zero token novo
+Assunto: um micro-SaaS que tira o dono de serviço (barbearia, clínica, estúdio) do ciclo "lembrar o cliente na unha + correr atrás do PIX". O público da landing é esse dono, quase sempre no **celular**, decidindo em segundos se o produto resolve a dor dele. A única função da landing é: deixar claro o que o produto faz e levar ao cadastro. A função de `/precos` é: dar o preço e o tamanho certo, e levar ao cadastro com o plano escolhido.
 
-Cor, tipografia, espaçamento e raio saem do que já existe:
+Tese do hero: **o horário que se confirma sozinho e se paga sozinho.** O hero abre com a coisa mais característica do produto — a transição de estado `pendente → confirmado` — já presente hoje como um par de `StatusBadge`. A melhoria mantém essa tese e a amplia numa ilustração que mostra o ciclo completo em miniatura: lembrete no WhatsApp → confirmação → PIX pago. Não é o template "número gigante + label": é o artefato real do produto (badges de status + balão de conversa + selo PIX), que ninguém confunde com outra landing.
 
-- **Status** — tokens `--status-confirmado` / `--status-confirmado-foreground` (já AA) para o
-  badge `Confirmado`. O selo de origem **não** ganha cor própria: é uma variação de **peso e
-  ícone** sobre o mesmo token confirmado, para não competir com o badge nem criar um segundo
-  sistema de cor de status.
-- **Tipografia** — `text-xs font-medium` dos badges existentes; `font-display` só nos títulos
-  de seção já estabelecidos. Nada novo.
-- **Espaçamento/raio** — `rounded-full px-2.5 py-0.5` dos badges; gap `gap-1` ao alinhar selo +
-  badge, como o `AppointmentBlock` já faz entre horário e `StatusBadge`.
+Por que isso não é o default genérico: os três clusters de IA (cream + serifa + terracota; preto + verde-ácido; broadsheet com fios) são rejeitados. A paleta já é escolhida pelo projeto (ardósia/azul-noite + jade), a tese vem do domínio (confirmação de agendamento), e a assinatura — a transição de status viva — é específica deste produto, não decorativa. A régua de boldness é gasta num lugar só: a ilustração do ciclo. Todo o resto (tipografia, espaçamento, cards) fica disciplinado e quieto.
 
-### 2.2 O elemento de assinatura desta fatia: o selo "confirmado pelo cliente"
+Cores: **sem tokens novos.** Tudo sai de `src/index.css`.
+- `background` / `foreground`: base calma (ardósia escuro no dark, neutro claro no claro).
+- `card`: superfície de cada feature, plano e do `aside` de login.
+- `primary` (jade): acento — ícones, régua da ilustração, borda do plano recomendado, foco. Nunca em texto corrido sobre `background` no tema **claro** (reprova contraste, ver 2.4).
+- `muted` / `muted-foreground`: corpo secundário, descrições, notas.
+- `accent`: chip de ícone das features (já é o padrão do `Feature` atual).
+- Badges de status na ilustração: tokens `--status-pendente` / `--status-confirmado` via `StatusBadge` existente.
 
-O valor de negócio da fatia é **a prova de que o cliente confirmou sozinho**. O design deve
-tornar isso instantâneo no scan da agenda, sem poluir. Proposta:
+Tipografia (sem fonte nova): `Space Grotesk` (display) para `h1`/`h2`/`h3` e para o número do preço; `Inter` (sans) para corpo e listas; `tabular-nums` já global alinha os valores R$. Escala:
+- `h1` do hero: `font-display`, `clamp(1.75rem, 5vw, 2.75rem)`, `font-semibold`, `leading-tight`, `tracking-tight` (já é o padrão atual — mantido).
+- `h2` de seção: `font-display text-2xl font-semibold tracking-tight`.
+- Preço do plano: `font-display`, `text-4xl font-semibold`, com `/mês` em `text-sm text-muted-foreground` ao lado.
+- Corpo: `text-base` (hero) / `text-sm` (cards), `text-muted-foreground`.
+- Eyebrow/chip: `text-xs font-medium uppercase tracking-wide text-muted-foreground` (padrão do chip atual do hero — reusado).
 
-- Badge `Confirmado` (verde, como hoje) **mais** um micro-selo discreto adjacente: um ícone
-  `MessageCircle` (lucide, já usado na agenda para "enviar mensagem") pequeno, cor
-  `text-status-confirmado-foreground` sobre fundo transparente, com `title`/`aria-label`
-  "Confirmado pelo cliente no WhatsApp". Quando a confirmação foi manual, **nenhum** micro-selo
-  — a ausência é o sinal, e o `title` do badge diz "Confirmado pela recepção".
-- Em `AppointmentBlock` (bloco de calendário, espaço apertado): o micro-selo aparece **só** no
-  modo não-compacto; no compacto ele cai no `title` junto do resto (o bloco já joga detalhe no
-  `title` quando é baixo). Na **lista** da `AgendaPage` há espaço para selo + badge lado a lado.
+Layout: mobile-first. Uma coluna no celular; grades `sm:grid-cols-2` / `sm:grid-cols-3` para features e planos; o container de marketing continua `max-w-5xl`. O `aside` do login só aparece em `lg:`; no mobile o formulário ocupa a tela toda, sem a ilustração (regra do layout atual — preservada).
 
-Isso respeita "gaste a ousadia num lugar só": o selo é o único elemento novo, e é deliberado —
-ícone que já pertence ao vocabulário do WhatsApp no app, não um enfeite genérico.
+Assinatura: a ilustração do ciclo `pendente → confirmado → PIX pago`, com o "anel de confirmação" jade da marca ecoado. É o elemento que a pessoa lembra. Aparece no hero e, em escala menor, no `aside` do login.
 
-### 2.3 Histórico de mensagens — legibilidade dos novos tipos
+Esboço — landing (mobile):
 
-- **Rótulo de template** — `lembrete_d1` já tem rótulo "Lembrete (24h antes)". Acrescentar, via
-  `src/lib/whatsapp.ts`, o rótulo da **resposta recebida** ("Confirmação do cliente" /
-  "Pedido de reagendamento") e da **mensagem de retorno automática** ("Retorno de
-  reagendamento"). Sempre pt-BR, sentence case, voz do produto.
-- **Direção** — uma linha recebida ganha um indicador visual leve (ex.: ícone de seta de
-  entrada + rótulo "Recebida"), distinto do disparo "Enviada". **Não** usar cor para isso (cor
-  é reservada ao status); usar ícone + rótulo textual (a11y: nunca cor como único sinal).
-- **Estado `fila` sob retentativa** — o badge `Na fila` continua, mas a célula ganha um
-  `title`/tooltip "Aguardando reenvio automático" quando a mensagem está em retentativa, para
-  o admin não interpretar como travada. `falha` (após N tentativas) ganha o `title` "Falhou
-  após várias tentativas". Textos de `src/lib/whatsapp.ts`.
+```
+[chip] Agenda + cobrança num só lugar
+H1  Confirme cada horário e receba na hora,
+    direto pelo WhatsApp.
+parágrafo de subtítulo
+[ Começar agora ]  (CTA primária, size lg)
+[ Ver planos ]     (CTA secundária, outline)
+prova social curta / linha de confiança (sem métrica inventada)
 
-### 2.4 Decisão: componente irmão vs prop no `StatusBadge`
++-- BrandIllustration (aria-hidden) --------+
+|  WhatsApp  →  [Pendente]→[Confirmado]     |
+|  lembrete D-1        PIX pago ✓           |
++-------------------------------------------+
 
-Duas abordagens para o selo de origem:
+## Como o Atlas Agenda trabalha por você
+[Feature] [Feature] [Feature]   (3, já existem)
 
-- **Prop no `StatusBadge`** — acopla a um componente já consumido por Agenda/Clientes/
-  assinatura; inchar com uma preocupação específica de WhatsApp fere o padrão que o próprio
-  projeto estabeleceu (o `WhatsAppStatusBadge` foi criado irmão justamente para evitar isso).
-- **Componente irmão `ConfirmationSourceBadge`** — isolado, testável, só aparece onde faz
-  sentido (agenda). **Escolhido.** Fica em `src/components/`, recebe `confirmed_via` e `status`,
-  e renderiza o micro-selo só quando `status === "confirmado" && confirmed_via === "cliente_whatsapp"`.
+## Feito para o seu dia a dia   (benefícios / para quem é)
+- Barbearias e estúdios
+- Clínicas e consultórios
+- Autônomos de serviço
+(cada um com 1 linha do ganho concreto)
 
-### 2.5 Dark mode
+## Planos                       (prévia)
+[PlanCard preview] x3  (valor em BRL, selo na Clínica)
+[ Ver todos os planos ] → /precos
 
-Todos os tokens usados são theme-aware (trocam com `.dark`), herdados sem ajuste. O micro-selo,
-por usar `text-status-confirmado-foreground`, acompanha o tema automaticamente. Verificar
-contraste do ícone em ambos os temas no QA (§5).
+## Perguntas frequentes
+(3–4 Q&A)
+```
 
----
+Esboço — `/precos` (desktop, 3 colunas):
+
+```
+H1 Planos e preços
+parágrafo: escolha pelo tamanho da equipe (sem "chegam em breve")
+
++-- Individual --+  +-- Clínica ★ --+  +-- Pro --------+
+| Autônomo       |  | [Recomendado] |  | Multi-prof.   |
+| R$ 59 /mês     |  | Equipe        |  | R$ 259 /mês   |
+| ✓ ...          |  | R$ 149 /mês   |  | ✓ ...         |
+| ✓ ...          |  | ✓ ...         |  | ✓ ...         |
+| [Começar com   |  | [Começar com  |  | [Começar com  |
+|  o Individual] |  |  o Clínica]   |  |  o Pro]       |
++----------------+  +---------------+  +---------------+
+
+nota discreta: a contratação acontece ao criar a conta; sem cartão agora.
+```
+
+Esboço — `aside` do login (lg):
+
+```
+[Logo]
+
+BrandIllustration (aria-hidden, menor)
+
+H2  Agenda e cobrança, sem no-show.
+parágrafo curto
+✓ Agenda sem conflito por profissional
+✓ Confirmação automática 24h antes (D-1)
+✓ Cobrança por PIX ao fim do atendimento
+✓ Baixa automática do pagamento
+
+(rodapé do aside: linha discreta de marca)
+```
+
+### 2.2 Componentes
+
+Reusados de `src/components` / `src/components/ui`, sem recriar:
+- `Button` (com `asChild` + `Link`), `Card`/`CardHeader`/`CardContent`/`CardFooter` onde o padrão de card ajudar, `Separator`, `Badge`.
+- `StatusBadge` (`src/components/StatusBadge.tsx`) na ilustração do ciclo — reusa os tokens de status, não inventa cor.
+- `Logo` (`src/components/Logo.tsx`) no `aside`.
+- `ThemeToggle` no header (já está).
+- `formatCentsToBRL` **não** serve para o preço de marketing (mostra `,00`); usar o novo `formatPlanPrice` (seção 5.1).
+
+Sem `Accordion`: não existe `accordion` em `src/components/ui`. O FAQ usa `<details>/<summary>` nativos (acessível por padrão, sem dependência nova) estilizados com Tailwind, **ou** uma lista estática de Q&A. Decisão: `<details>/<summary>` nativo — dá expandir/colapsar acessível de teclado sem adicionar Radix Accordion. Alternativa descartada: instalar `@radix-ui/react-accordion` só para 3 perguntas (peso desnecessário no bundle).
+
+Novos (locais de marketing, não primitivos):
+- `PlanCard` (`variant: "full" | "preview"`).
+- `BrandIllustration`.
+- `Faq`.
+
+### 2.3 Estados visuais e badges
+
+- Plano recomendado (Clínica): borda `border-primary`, selo "Recomendado" (pílula `border-primary/30 bg-primary/10 text-primary`) — padrão já existente, mantido. No desktop pode receber um leve destaque de elevação (`shadow-sm` + `-translate-y` sutil apenas em `lg:`, respeitando `prefers-reduced-motion`), sem virar outro componente.
+- Planos não recomendados: `border-border bg-card`.
+- CTA primária: `Button` default (jade). CTA secundária/"Ver planos"/"Entrar": `outline` ou `ghost`.
+- Badges de status na ilustração: `StatusBadge status="pendente"` e `status="confirmado"`, com seta `→` decorativa `aria-hidden`.
+- A ilustração inteira é decorativa: `role` nenhum, `aria-hidden="true"` no container; o significado já está no texto ao redor.
+
+### 2.4 Copy pt-BR
+
+Toda a copy em pt-BR, voz afirmativa, sem jargão de sistema, sem métrica inventada.
+
+| Contexto | Texto |
+|----------|-------|
+| Header — novo item | "Entrar" (leva a `/login`) |
+| Hero — chip | "Agenda + cobrança num só lugar" (mantido) |
+| Hero — H1 | "Confirme cada horário e receba na hora, direto pelo WhatsApp." (mantido) |
+| Hero — subtítulo | mantido do atual |
+| Hero — CTA primária | "Começar agora" → `/cadastro` |
+| Hero — CTA secundária | "Ver planos" → `/precos` |
+| Benefícios — título | "Feito para o seu dia a dia" |
+| Benefício (barbearia/estúdio) | "Barbearias e estúdios: encaixe rápido e lembrete que derruba o buraco na agenda." |
+| Benefício (clínica) | "Clínicas e consultórios: confirmação 24h antes e menos faltas sem ligar para ninguém." |
+| Benefício (autônomo) | "Autônomos: cobre por PIX assim que termina e receba sem cobrar na mão." |
+| Prévia de planos — título | "Escolha o plano do tamanho da sua equipe" |
+| Prévia — link | "Ver todos os planos" → `/precos` |
+| `/precos` — H1 | "Planos e preços" (mantido) |
+| `/precos` — subtítulo | "Escolha pelo tamanho da sua equipe. Comece grátis e só contrate quando criar a conta." (substitui "Valores e contratação chegam em breve") |
+| Preço | "R$ 59" / "R$ 149" / "R$ 259", com "/mês" ao lado em `muted-foreground` |
+| Público-alvo | "Autônomo" / "Equipe" / "Multi-profissionais" (de `plan.publico`) |
+| Selo | "Recomendado" (só Clínica) |
+| CTA do card | "Começar com o {nome}" → `/cadastro?plano={slug}` (mantido) |
+| Nota de contratação | "A contratação acontece ao criar a conta. Nenhum cartão é pedido agora." |
+| FAQ Q1 | "Preciso instalar algo?" / "Não. O Atlas Agenda roda no navegador do celular e do computador." |
+| FAQ Q2 | "Como funciona o WhatsApp?" / "Você conecta o número da empresa uma vez e as mensagens de confirmação e cobrança saem automaticamente." |
+| FAQ Q3 | "Como o cliente paga?" / "Ao fim do atendimento, enviamos um PIX com QR Code e copia e cola. A baixa é automática quando o pagamento cai." |
+| FAQ Q4 | "Posso trocar de plano depois?" / "Pode. Comece pelo plano que couber hoje e ajuste conforme a equipe cresce." |
+| Login `aside` — H2 | "Agenda e cobrança, sem no-show." (mantido) |
+| Login `aside` — funcionalidades | "Agenda sem conflito por profissional" · "Confirmação automática 24h antes" · "Cobrança por PIX ao fim do atendimento" · "Baixa automática do pagamento" |
+
+Regra de voz: o botão diz o que acontece ("Começar agora", "Entrar"). O FAQ responde em uma frase. A nota de contratação é honesta sobre não haver checkout agora — alinha com a Fase 3 sem prometer o que não existe.
+
+### 2.5 O que foi descartado
+
+- Métrica de prova social com número ("90% menos faltas"): descartada — número inventado sem fonte vira ruído e risco de credibilidade. Se houver dado real no futuro, entra depois.
+- Banner/modal de cookies ou newsletter: fora de escopo.
+- Carrossel/slider no hero: descartado — a ilustração estática do ciclo comunica melhor e é mais acessível.
+- Animação de entrada elaborada: no máximo uma transição discreta de hover/elevação no card recomendado, respeitando `prefers-reduced-motion`. Nada de orquestração de scroll — não acrescenta informação.
+- Radix Accordion para o FAQ: descartado em favor de `<details>` nativo.
 
 ## 3. Acessibilidade
 
-- **Cor nunca é o único sinal.** O selo de origem tem ícone **e** `aria-label`/`title` textual
-  ("Confirmado pelo cliente no WhatsApp"). A direção recebida/enviada no histórico usa ícone +
-  rótulo textual, não cor. Alinha ao que `WhatsAppStatusBadge`/`StatusBadge` já fazem (rótulo
-  pt-BR sempre presente).
-- **Contraste WCAG.** O badge `Confirmado` usa tokens já calibrados AA nas fatias anteriores
-  (≥ 4,5:1 para texto). O micro-selo é um ícone decorativo-informativo: como ícone pequeno,
-  mirar **3:1** (WCAG 1.4.11, componentes gráficos) de `--status-confirmado-foreground` contra
-  o fundo do bloco (`bg-card`). O cálculo numérico exato depende dos valores de token e deve
-  ser **verificado no QA** com os hex resolvidos (claro e escuro) — não afirmo o número aqui
-  sem medir; é critério de aceite §5.
-- **Foco visível e teclado.** O `AppointmentBlock` já é um `<button>` focável com
-  `focus-visible:ring-2`. O selo é conteúdo dentro dele (não um novo alvo de foco) — não
-  adiciona ordem de tab nem armadilha. Se o selo virar um `Tooltip` do shadcn, o gatilho precisa
-  ser alcançável por teclado e o conteúdo anunciável; preferir `title` nativo + `aria-label`
-  para não introduzir alvo de foco redundante dentro do botão.
-- **Região viva.** A `WhatsAppPage` já tem `role="status" aria-live="polite"` para a conexão.
-  A agenda **não** precisa de live region para a confirmação (a mudança chega via refetch do
-  TanStack Query, não é um evento que o leitor precise ouvir em tempo real). Não adicionar
-  ruído de a11y.
-- **Labels associados.** Nenhum formulário novo nesta fatia. O template `lembrete_d1` já é
-  editado na tela de mensagens existente (labels já associados). Nada a fazer.
+Contraste WCAG calculado a partir dos tokens de `src/index.css` (os pares que a melhoria introduz ou destaca). Valores são estimativas de cálculo HSL→luminância; o QA deve medir no DOM renderizado.
 
----
+| Par | Tema | Razão aprox. | Resultado |
+|-----|------|--------------|-----------|
+| `foreground` sobre `background` | Escuro | ~16,7:1 | Passa AA/AAA |
+| `foreground` sobre `card` | Escuro | ~15:1 | Passa |
+| `muted-foreground` sobre `background` | Escuro | ~7:1 | Passa AA texto normal |
+| `muted-foreground` sobre `card` | Escuro | ~6,7:1 | Passa |
+| `foreground` sobre `background` | Claro | ~16,8:1 | Passa |
+| `muted-foreground` sobre `card` | Claro | ~5,6:1 | Passa |
+| `primary-foreground` sobre `primary` (botão/CTA) | Claro | ~3,2:1 | Limítrofe para texto normal; **pré-existente em todo o app**. Ver nota abaixo. |
+| `primary` como texto sobre `background` | Claro | ~3,3:1 | Reprova texto normal. **Não usar `primary` em texto corrido no claro** — só em ícone/borda/preço com peso display grande (≥24px bold conta como "texto grande", AA 3:1). |
+| `ring` (foco) sobre `background` | Claro | ~2,7:1 | Limítrofe 3:1 não-textual; **pré-existente**. |
+
+Notas:
+- Os itens limítrofes de `primary`/`ring` no tema claro são pré-existentes e afetam todo o app; esta tarefa não os piora. Recomendo ao planner **não** bloquear a entrega por eles, mas registrar como dívida de token (o ajuste já foi recomendado em design anterior: `--primary` claro → `160 64% 30%`, `--ring` claro → `160 64% 32%`). O preço "R$ 149" em jade só é aceitável se for `display` grande e em peso semibold (texto grande, 3:1); por segurança, **o preço usa `foreground`, não `primary`** — o jade fica na borda/selo do card recomendado. Isso remove o risco sem depender do ajuste de token.
+
+Demais requisitos:
+- Landmarks: `MarketingLayout` já tem `header`/`nav`/`footer`. Hero em `<section>`, cada bloco com `aria-labelledby` ligado ao seu `h2` (padrão atual mantido). FAQ em `<section aria-labelledby>`.
+- "Entrar" no header: é `Button asChild` + `Link`, `<a href="/login">` com `focus-visible:ring-2 ring-ring ring-offset-2` (herdado do `Button`), alcançável por Tab, ativável por Enter. Fica na mesma `nav`, na ordem após os links de conteúdo e antes/junto do `ThemeToggle`.
+- CTAs e cards: cada CTA é `<a>` real (pattern `Button asChild + Link`); nenhum `onClick` em `div`.
+- Ilustração: `aria-hidden="true"`, não é a única fonte de informação — o texto adjacente carrega o significado. Nenhum texto essencial vive só dentro do SVG.
+- FAQ `<details>/<summary>`: expandível por teclado por padrão; `summary` recebe foco visível; o conteúdo é lido por leitores de tela.
+- Preço: número em `tabular-nums` (global), com "/mês" como texto, não como sinal só visual. O valor não depende de cor.
+- `prefers-reduced-motion`: já respeitado pelo CSS global; qualquer hover/elevação do card recomendado precisa respeitar o media query (usar `transition` que o CSS global neutraliza).
+- Mobile: alvos de toque ≥40px (CTAs usam `size="lg"` = `h-11`; links do header `px-3 py-2`).
+- `aside` do login só em `lg:` (sem ilustração no mobile) — nenhuma informação essencial fica escondida no mobile, porque a funcionalidade está no formulário e na landing.
 
 ## 4. Arquitetura React
 
-- **Dados sempre via TanStack Query.** O selo de origem lê de `useAppointments` (já é um
-  `useQuery`); basta o `select` passar a trazer `confirmed_via` e o schema zod do hook validar
-  o novo campo. O histórico lê de `useRecentMessages` (já `useQuery`); o schema zod passa a
-  aceitar os novos campos (`direction`/`origin` ou equivalente) como **dado não confiável
-  validado** antes do uso. **Nada de `fetch` em `useEffect`.**
-- **Cliente Supabase do browser com anon key + sessão.** A leitura da agenda e do histórico
-  segue sob RLS; o cliente **nunca** envia `tenant_id` para filtrar — o isolamento é do banco.
-  O webhook e o cron são operações privilegiadas de **servidor** (service role em Edge
-  Function/SQL), fora do bundle — o frontend só **lê o efeito** já persistido.
-- **Componentes vs hooks vs estado de servidor.**
-  - Estado de servidor: `useAppointments`, `useRecentMessages` (existentes, estendidos no
-    schema).
-  - Lógica pura: o selo é função pura de `(status, confirmed_via)`; o rótulo de mensagem é
-    função pura no `src/lib/whatsapp.ts` (fonte única, testável sem render).
-  - Componentes: `ConfirmationSourceBadge` (apresentação pura), `RecentMessagesList`
-    (apresentação + leitura), `AppointmentBlock`/lista (composição).
-- **Invalidação de cache.** Nenhuma mutação nova no cliente nesta fatia (confirmação vem do
-  webhook, não de ação do usuário). A agenda e o histórico atualizam no refetch normal do
-  TanStack Query (foco/intervalo). Se o produto quiser a confirmação "aparecer sozinha" sem
-  reload, reaproveitar o padrão de **polling condicional** já usado em `useWhatsAppInstance`
-  (ex.: refetch da agenda com `refetchInterval` curto só quando há agendamentos ~24h à frente
-  e `pendente`). **Decisão:** não adicionar polling nesta fatia — é otimização, não requisito;
-  o refetch on-focus já cobre o fluxo real (a recepção abre a agenda e vê o estado atual).
-  Registrar como melhoria futura.
-- **Zod como guarda de dado externo.** Mesmo os dados vindos do próprio banco sob RLS passam
-  pelo schema zod dos hooks (o projeto já faz isso). Os campos novos entram no schema com tipo
-  estrito (enums fechados), não `string` solta — mantém `strict: true` honrado.
-- **Performance (RNF01, agenda < 1,5s).** O selo não adiciona request (vem no mesmo
-  `select` da agenda). O histórico continua limitado a 20 linhas (`DEFAULT_LIMIT`). Nenhum
-  waterfall novo. Skeletons já existentes cobrem o loading.
+### 4.1 Camadas
+
+- **Sem dados de servidor.** Não há `useQuery`/`useMutation` nesta tarefa: landing, `/precos` e o `aside` de login são estáticos, alimentados por `PLANS` (módulo puro). Nenhum `fetch`, nenhum `useEffect` para dados, nenhum cliente Supabase novo. (A regra "dados sempre via TanStack Query" continua valendo quando houver dado de servidor — aqui não há.)
+- Páginas e componentes de marketing são puramente apresentacionais e sem estado, exceto o FAQ (estado de aberto/fechado é do próprio `<details>`, sem React state).
+- A validação do `?plano` continua **exclusivamente** em `parsePlanSlug` (em `/cadastro`, inalterado). Esta tarefa não introduz nova leitura de `?plano`: as CTAs apenas **geram** `/cadastro?plano={slug}` a partir do `slug` já tipado de `PLANS` (nunca interpola valor cru).
+
+### 4.2 Fonte única de planos
+
+- `PlanCard` recebe um `Plan` inteiro (de `PLANS.map`) e chama `formatPlanPrice(plan)` para o rótulo BRL. Landing (preview) e `/precos` (full) consomem o **mesmo** `PlanCard` e o **mesmo** `PLANS`. Proibido: colar `59`/`149`/`259` no JSX, duplicar a lista, ou derivar o preço fora de `plans.ts`.
+- O valor consistente entre landing e `/precos` é garantido por construção: ambos leem `plan.price_cents` via `formatPlanPrice`. O QA confere a igualdade visualmente (seção 6).
+
+### 4.3 Sem formulário novo
+
+Nenhum formulário é adicionado. As páginas de auth (login/cadastro/recuperar-senha) mantêm `react-hook-form` + `zodResolver` exatamente como estão; só o `aside` compartilhado muda, e ele não tem formulário.
+
+## 5. Mudanças em `src/lib/plans.ts` (fonte única)
+
+### 5.1 Campo e helper
+
+- Adicionar `price_cents: number` à `interface Plan` e preencher: `individual` → `5900`, `clinica` → `14900`, `pro` → `25900`. Centavos inteiros, consistente com a convenção `*_cents`.
+- Adicionar helper de formatação BRL **curta** (sem centavos), porque `money.ts/formatCentsToBRL` renderiza `R$ 59,00` e o aceite pede `R$ 59`:
+
+```ts
+const BRL_WHOLE = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  maximumFractionDigits: 0,
+});
+
+/** Formata o preço mensal do plano em BRL sem centavos (ex.: `R$ 59`). */
+export function formatPlanPrice(plan: Plan): string {
+  return BRL_WHOLE.format(plan.price_cents / 100);
+}
+```
+
+Decisão: helper **dedicado em `plans.ts`**, não em `money.ts`. Motivo: `money.ts` é a borda de dinheiro operacional do domínio (sempre 2 casas, para valores de serviço/cobrança); o preço de marketing é "redondo" por decisão de produto e não deve mudar o formatador operacional. Mantém as duas preocupações separadas. Alternativa descartada: passar `maximumFractionDigits` como opção em `formatCentsToBRL` — polui a borda operacional com um caso de marketing.
+
+- `PlanSlug`, `parsePlanSlug`, `getPlan`, `PLAN_SLUGS`, `PLANS` permanecem intactos em assinatura e comportamento. `PlanSlug` continua **fora** de `src/types/domain.ts` (plano não é persistido; Fase 3).
+
+### 5.2 Invariantes
+
+- `price_cents` é dado de marketing, não acopla a billing/checkout e não toca `tenants.plan`. Está em `plans.ts` justamente para que a promoção à Fase 3 (mapear `slug → tenants.plan` + preço de cobrança real) tenha um ponto único.
+- A ilustração e os textos nunca derivam preço de outra fonte.
+
+## 6. Critério de aceite visual (QA com Chrome DevTools MCP)
+
+Todos sem erro no console. Cada item precisa de evidência (snapshot/medição). Rodar em mobile (390px) e desktop (1280px), tema **claro e escuro**.
+
+1. `src/lib/plans.ts` expõe `price_cents` (`5900`/`14900`/`25900`) e `formatPlanPrice` retorna `R$ 59` / `R$ 149` / `R$ 259`. `PlanSlug`/`parsePlanSlug`/`getPlan` inalterados (typecheck + testes existentes passam).
+2. `/precos`: os três planos mostram valor mensal em BRL, público-alvo, benefícios ampliados; selo "Recomendado" **só** na Clínica; CTA "Começar com o {nome}" leva a `/cadastro?plano={slug}` (conferir o `href` real). Sem a copy "valores chegam em breve". Nota de contratação sem checkout presente.
+3. Landing: hero com CTA primária + "Ver planos"; seção de benefícios/para-quem-é; seção de prévia de planos com os **mesmos** valores de `/precos` + link "Ver todos os planos" → `/precos`; FAQ presente e expansível por teclado.
+4. Consistência: o valor de cada plano na prévia da landing é idêntico ao de `/precos` (vêm de `PLANS` via `formatPlanPrice`).
+5. Header de marketing tem "Entrar" → `/login`, com foco visível e ativável por teclado (Tab + Enter).
+6. `aside` do login (em ≥1024px): ilustração CSS/SVG decorativa (`aria-hidden`) + lista de 4 funcionalidades. No mobile (<1024px) o `aside` não aparece e o formulário ocupa a tela.
+7. A ilustração é `aria-hidden` e nenhum texto essencial vive só dentro dela.
+8. Mobile-first e dark mode: layout não quebra em 390px nem em 1280px, nos dois temas. Medir contraste no DOM em: subtítulo do hero, descrição de feature, preço do plano, nota de contratação — ≥4,5:1 (texto normal) ou ≥3:1 (texto grande/preço display).
+9. Nenhum valor cru de `?plano` é interpolado no DOM; as CTAs usam `slug` de `PLANS`. (Conferir que `/cadastro?plano=xpto` inválido continua caindo no `parsePlanSlug` → `null`, sem quebrar — comportamento pré-existente, não regredido.)
+10. `npm run build` + typecheck/lint/testes existentes passam.
+
+## 7. Dependências de dados
+
+Nenhuma. A tarefa não precisa de tabela, política RLS, Edge Function, variável de ambiente nem migration. `price_cents` é constante de marketing em `plans.ts`, não persistido. Não há leitura/escrita de Supabase. Isto é registrado explicitamente para o planner: **não** abrir ADR de schema para esta demanda.
+
+## 8. Arquivos
+
+Modificar:
+- `src/lib/plans.ts` — `price_cents` na interface + nos 3 planos; `formatPlanPrice`.
+- `src/marketing/pages.tsx` — `LandingPage` (hero + benefícios + prévia + FAQ) e `PrecosPage` (preço + benefícios + nota) reescritas; consomem `PLANS`/`formatPlanPrice`/`PlanCard`.
+- `src/marketing/MarketingLayout.tsx` — item "Entrar" → `/login` no header.
+- `src/auth/AuthLayout.tsx` — `aside` com `BrandIllustration` + lista de funcionalidades.
+
+Criar (sub-componentes locais de marketing):
+- `PlanCard` (`variant` full/preview) — em `src/marketing/pages.tsx` ou `src/marketing/PlanCard.tsx` se crescer.
+- `BrandIllustration` — em `src/marketing/BrandIllustration.tsx` (reusado por landing e login; por isso componente próprio, não inline em `pages.tsx`).
+- `Faq` — em `src/marketing/pages.tsx` (local da landing).
+
+Não tocar: `src/lib/money.ts` (formatador operacional), `src/auth/*Page.tsx` (formulários), `parsePlanSlug`/`getPlan`/`PlanSlug`, qualquer coisa de `src/app`/`src/admin`, Supabase/migrations/Edge Functions.
+
+## 9. Testabilidade
+
+- Unitário: `formatPlanPrice` tem saída determinística (`R$ 59`/`R$ 149`/`R$ 259`) — teste direto em `plans.test.ts` se o planner quiser cobrir a regressão de formato (sem `,00`). Barato e vale a pena, porque o aceite trava o formato exato.
+- Integração/visual: landing, `/precos` e `aside` de login são verificados por QA Chrome DevTools (seção 6) — layout, consistência de valores, foco, dark mode, contraste.
+- A consistência landing↔`/precos` é testável por construção (fonte única) e confirmável visualmente; não precisa de mock de servidor porque não há servidor.
 
 ---
 
-## 5. Critério de aceite visual verificável (QA por ADR, Chrome DevTools MCP)
-
-Escrito para ser conferível na tela, não no código:
-
-1. **Selo na agenda — confirmado pelo cliente.** Um agendamento com
-   `status=confirmado` e `confirmed_via=cliente_whatsapp` mostra o badge `Confirmado` **mais**
-   o micro-selo (ícone WhatsApp + `aria-label` "Confirmado pelo cliente no WhatsApp"), tanto na
-   lista quanto no bloco de calendário (modo não-compacto). Verificável por inspeção do DOM
-   (presença do `aria-label`) e visual.
-2. **Selo na agenda — confirmado manualmente.** Um agendamento `confirmado` com
-   `confirmed_via=manual` mostra **só** o badge `Confirmado`, sem micro-selo; o `title` do badge
-   diz "Confirmado pela recepção". A ausência do selo é o sinal.
-3. **Histórico — lembrete automático.** Após o cron disparar, a linha `lembrete_d1` aparece
-   no histórico com rótulo "Lembrete (24h antes)" e indicador "Enviada", sem PII (sem telefone,
-   sem texto bruto).
-4. **Histórico — resposta recebida.** A resposta do cliente aparece como linha "Recebida" com
-   rótulo derivado ("Confirmação do cliente" ou "Pedido de reagendamento"), **nunca** o texto
-   digitado. Indicador de direção é ícone + texto, não cor.
-5. **Histórico — estado fila/retentativa.** Uma mensagem em retentativa mostra badge `Na fila`
-   com `title` "Aguardando reenvio automático"; após o limite, badge `Falha` com `title`
-   "Falhou após várias tentativas".
-6. **Contraste (claro e escuro).** Medir no DevTools o contraste do texto do badge `Confirmado`
-   (mirar ≥ 4,5:1) e do ícone do micro-selo contra `bg-card` (mirar ≥ 3:1), nos dois temas.
-   Registrar os números medidos; ajustar o token/opacidade do ícone se ficar abaixo.
-7. **Teclado/foco.** Tab chega ao bloco do agendamento com anel de foco visível; o selo não
-   cria alvo de foco extra nem quebra a ordem de tab. O `aria-label` do selo é lido pelo leitor
-   de tela junto do bloco.
-8. **Mobile (~375px).** Lista e blocos não estouram horizontalmente com selo + badge; no bloco
-   compacto o selo cai no `title`. Histórico em cards no mobile (padrão atual preservado).
-9. **PII.** Em nenhuma superfície (agenda, histórico, tooltip, DOM) aparece telefone do cliente
-   ou o texto literal recebido. Confirma a invariante LGPD no cliente.
-
----
-
-## 6. Dependências de dados / contrato (sinalizadas ao planejador)
-
-Frontend **bloqueado** nestes itens até o backend definir — são decisões de contrato, não de
-UI:
-
-- **`appointments.confirmed_via`** (enum `cliente_whatsapp | manual`, nullable) — migration +
-  gravação pelo webhook e pela mutação manual de status. Sem isso, o selo de origem (§2.2) sai
-  de escopo e fica só o badge `Confirmado`.
-- **Distinção de direção/origem em `messages`** — forma de a leitura PII-safe rotular
-  recebida/enviada e cron/sob-demanda (coluna `direction`/`origin` ou template dedicado). Sem
-  isso, o histórico não distingue os novos tipos e fica só com o rótulo de template atual.
-- **Garantia PII** — o backend **não** deve persistir o texto bruto recebido do cliente em
-  campo que a leitura PII-safe de `messages` traga para a UI. O rótulo exibido é derivado do
-  efeito (confirmou/pediu reagendar), não do conteúdo.
-- **Enums novos no `src/types/domain.ts`** — assim que o contrato do banco fechar, espelhar os
-  enums (`confirmed_via`, `direction`/`origin`) como `const` tipados, no padrão dos enums
-  existentes, para alimentar os schemas zod e os mapas de rótulo.
-
-Itens **fora de escopo do frontend** nesta fatia (confirmando o brief): botões interativos do
-WhatsApp (a resposta é numérica), reagendamento automático, autoagendamento público, métricas
-(Fase 3), módulo Asaas/PIX. A fila de retentativa, o cron e o webhook são servidor — a UI só
-reflete o resultado.
-
----
-
-## 7. Resumo do que o frontend entrega
-
-- 1 componente novo pequeno: `ConfirmationSourceBadge` (micro-selo de origem), irmão do
-  `StatusBadge`, sem token de cor novo.
-- Ajuste em `AppointmentBlock` + lista da `AgendaPage` para compor o selo quando a confirmação
-  veio do cliente.
-- Ajuste em `RecentMessagesList` + `src/lib/whatsapp.ts` para rotular lembrete automático,
-  resposta recebida (sem PII), retorno de reagendamento e estado de retentativa.
-- Extensão dos schemas zod de `useAppointments` e `useRecentMessages` para validar os campos
-  novos como dado não confiável, com enums fechados.
-- Zero rota nova, zero módulo novo, zero `fetch` solto, zero `tenant_id` no cliente, zero PII
-  na UI. Tudo sob os guards e tokens existentes, mobile-first, dark mode, pt-BR.
+Resumo para o planner: demanda **toca tela**, é frontend público puro, **sem dependência de dados**. Estender `plans.ts` (fonte única) com `price_cents` + `formatPlanPrice`; reescrever landing e `/precos` consumindo `PLANS` via um `PlanCard` compartilhado; adicionar "Entrar" no header de marketing; enriquecer o `aside` do `AuthLayout` com `BrandIllustration` (SVG/CSS, `aria-hidden`) + 4 funcionalidades. Preço tratado como conteúdo de marketing (centavos inteiros, nunca acopla a checkout). Boldness concentrada na ilustração do ciclo `pendente→confirmado→PIX`; resto quieto. Não abrir ADR de schema.

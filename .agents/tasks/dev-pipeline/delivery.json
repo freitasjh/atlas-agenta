@@ -1,23 +1,28 @@
 {
-  "module": "WhatsApp real — RealEvolutionAdapter (pair + sendText reais atras da porta existente)",
-  "branch": "feat/whatsapp-base-mock",
-  "baseBranch": "feat/scaffold-inicial-atlas-agenda",
-  "prPublished": false,
-  "prBlocker": "Entrega local-only confirmada pela orquestracao: repositorio sem git remote e sem CLI de forge (gh/glab/cr ausentes). PR nao publicado; publicacao pendente de o usuario conectar um remote. Os commits da feature vivem em feat/whatsapp-base-mock (branch de entrega duplicada descartada).",
-  "url": null,
+  "module": "Fase 1b — Pacotes/combos de serviços para tenants do segmento 'salao': montar um pacote agrupando serviços do próprio catálogo com um preço próprio fechado (centavos inteiros), aplicar o pacote num agendamento (em XOR com o serviço avulso) e refletir o pacote no agendamento (nome, preço snapshot em BRL, duração = soma das durações). Gating por segment='salao' só na UI; isolamento multi-tenant (RLS por tenant_id) e FK composta por tenant preservados; máquina de estados, prevenção de conflito e gancho de comissão (barbearia) intactos.",
+  "branch": "feat/combos-pacotes-salao",
+  "baseBranch": "master",
+  "prPublished": true,
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/15",
+  "number": 15,
+  "title": "feat: pacotes/combos de servicos para salao (Fase 1b)",
+  "state": "OPEN",
   "adrsDelivered": [
-    { "id": "adr-09", "title": "Fundacao HTTP: cliente, credenciais do env, schemas zod e normalizacao de numero" },
-    { "id": "adr-10", "title": "pair real: criar/conectar instancia idempotente e devolver QR base64" },
-    { "id": "adr-11", "title": "sendText real: enviar texto e devolver providerMessageId real" },
-    { "id": "adr-12", "title": "Endurecimento final: segredo/PII, mock intacto, confinamento do diff e divida aceita" }
+    { "id": "adr-01", "title": "Tabela combos (schema + RLS)" },
+    { "id": "adr-02", "title": "Tabela combo_services (N:N combo-services, FK composta por tenant)" },
+    { "id": "adr-03", "title": "appointments.combo_id opcional em XOR com service_id" },
+    { "id": "adr-04", "title": "Contrato TS, flag de segmento combos, hooks de dados e schemas zod" },
+    { "id": "adr-05", "title": "Gestao de pacotes em Configuracoes (/app/config/combos)" },
+    { "id": "adr-06", "title": "Aplicar pacote no agendamento (AppointmentFormDialog)" },
+    { "id": "adr-07", "title": "Exibir o pacote na agenda (selo Pacote) + gate de QA visual" }
   ],
   "verification": {
-    "appFilesChanged": "unico arquivo de aplicacao da fase: supabase/functions/whatsapp/evolution-adapter.ts (344 insercoes, 15 remocoes). index.ts, schemas.ts, migrations e UI intactos.",
-    "frontend": "npm run typecheck (tsc -b) e npm run build (tsc -b && vite build) limpos; TS estrito; unico aviso e chunk >500kB pre-existente.",
-    "edgeFunctionBoot": "supabase functions serve whatsapp --env-file supabase/functions/.env com EVOLUTION_MODE=real sobe no supabase-edge-runtime-1.77.4 (Deno v2.1.4); probe sem auth -> 401 estruturado, provando module graph compilado/executado sem erro de boot; log de serve sem erros.",
-    "secretAudit": "git grep da API key literal em arquivos versionados = vazio; URL ngrok ausente de src/ e do codigo da function; sem VITE_EVOLUTION em src/; .env git-ignored e nao rastreado; .env.example presente.",
-    "mockIntacto": "MockEvolutionAdapter inalterado e selecionavel por EVOLUTION_MODE=mock; contrato de fio pair/send camelCase e interface EvolutionAdapter preservados — troca mock->real transparente a Edge Function e ao frontend.",
-    "chromeDevtoolsQa": "Nao aplicavel nesta fase: nenhuma ADR (09-12) toca o frontend; UI de /app/config/whatsapp byte-a-byte inalterada e evolution-adapter.ts fora do grafo Vite. Nenhuma superficie visual nova para verificar.",
-    "realSendNotTested": "Envio real a terceiro NAO disparado no QA automatizado (decisao D-02 do usuario); passo de teste manual documentado em pr-result.json."
-  }
+    "appFilesChanged": "supabase/migrations/20250226094000_combos.sql, 20250226095000_combo_services.sql, 20250226096000_appointments_combo.sql; src/lib/segment-features.ts (+teste), src/lib/validations/{catalog,scheduling}.ts, src/lib/service-color.ts; src/hooks/{useCombos,useComboServices,useAppointments,useAvailableSlots}.ts; src/app/config/combos/{CombosPage,ComboFormDialog,ComboServicesField}.tsx; src/app/config/ConfigHubPage.tsx; src/app/agenda/{AgendaPage,AppointmentBlock,AppointmentFormDialog}.tsx; src/components/ComboTag.tsx; src/router.tsx; src/types/domain.ts.",
+    "static": "npm run typecheck (tsc -b) verde; npm run build (tsc -b && vite build) verde (apenas aviso pre-existente de chunk > 500 kB); npm run test (vitest) verde — 89 testes em 10 arquivos, incluindo 9 de segment-features cobrindo combos=true so para salao.",
+    "dataEndToEnd": "ADR-01/02/03 verificados contra o Supabase local REAL em transacao revertida (sem residuo): RF-S1 combo criado com preco proprio 10000c + 2 vinculos; RF-S2 servico de outro tenant rejeitado pela FK composta (23503); RF-S4 appointment via pacote com combo_id setado, service_id null e price_cents snapshot 10000; RF-S7/S7b XOR rejeita ambos preenchidos e ambos nulos (23514); RF-S8 tenant B ve 0 combos/combo_services do tenant A (RLS); RF-S9 tenant B nao referencia combo de A (FK composta); RF-S11/S12 pendente->confirmado->em_atendimento->concluido via pacote com confirmed_at carimbado e trigger de comissao sem quebrar; RF-S14 supabase db reset aplica todas as migrations exit 0 (idempotencia).",
+    "chromeDevtoolsQa": "NAO executavel nesta sessao: o servidor MCP chrome-devtools esta configurado em mcp.json (habilitado) porem suas ferramentas (navigate_page/take_snapshot/list_console_messages/...) nao estao expostas no toolset do subagente de entrega — mesma limitacao do PR #14/barbearia. A verificacao visual ao vivo com navegador nao pode ser conduzida daqui. Gating de frontend (ADR-04/05/06/07) verificado estaticamente: resolveFeatures liga combos so para salao (unit tests), entradas gated por combosFeature (ConfigHubPage, AppointmentFormDialog), ComboTag com text-foreground para contraste e significado por texto+icone.",
+    "rls": "combos e combo_services com RLS por tenant_id = current_tenant_id(); nenhum tenant_id vindo do cliente; SELECT aberto ao tenant (dado operacional), escrita so admin. FK composta por tenant nos dois lados do N:N e em appointments.combo_id. Trigger de transicao/comissao NAO tocado. Gating por segmento e SO de UI; nenhuma clausula de RLS por segment."
+  },
+  "qaPending": [],
+  "followUp": "QA visual via Chrome DevTools MCP ficou pendente por as ferramentas do servidor nao estarem expostas no toolset desta sessao. A verificacao de dados ponta a ponta ao vivo (criacao, FK composta, XOR, isolamento RLS, maquina de estados, comissao sem regressao, idempotencia de migration) e os testes de gating cobrem os criterios testaveis; recomenda-se uma passada visual manual do fluxo salao (hub -> montar pacote -> aplicar no agendamento -> selo na agenda -> regressao barbearia/clinica/legado) antes do merge."
 }
