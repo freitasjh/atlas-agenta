@@ -57,6 +57,24 @@ describe("changeStatusFormSchema (AC-04.3)", () => {
     const result = changeStatusFormSchema.safeParse({ status: "arquivado" });
     expect(result.success).toBe(false);
   });
+
+  it("status ausente falha com a mensagem pt-BR (sem destino escolhido)", () => {
+    const result = changeStatusFormSchema.safeParse({ reason: "" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === "status");
+      expect(issue?.message).toBe("Selecione o status destino.");
+    }
+  });
+
+  it("status undefined falha com a mensagem pt-BR", () => {
+    const result = changeStatusFormSchema.safeParse({ status: undefined });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === "status");
+      expect(issue?.message).toBe("Selecione o status destino.");
+    }
+  });
 });
 
 describe("adminTenantRowSchema / adminTenantsResponseSchema", () => {

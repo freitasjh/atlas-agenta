@@ -18,7 +18,13 @@ import { SUBSCRIPTION_STATUSES } from "@/types/domain";
  * `subscription-status.ts`). Mensagens de usuário em pt-BR.
  */
 export const changeStatusFormSchema = z.object({
-  status: z.enum(SUBSCRIPTION_STATUSES),
+  // Sem destino escolhido o campo chega `undefined`; `required_error`/`invalid_type_error`
+  // garantem a mensagem pt-BR do `FormMessage` em vez do "Required" padrão do zod.
+  status: z.enum(SUBSCRIPTION_STATUSES, {
+    required_error: "Selecione o status destino.",
+    invalid_type_error: "Selecione o status destino.",
+    message: "Selecione o status destino.",
+  }),
   reason: z
     .string()
     .trim()

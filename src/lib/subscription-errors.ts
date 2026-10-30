@@ -17,17 +17,28 @@ const AUTH_MESSAGE = "Sua sessão expirou. Entre novamente.";
 const GENERIC_MESSAGE =
   "Não foi possível atualizar a assinatura. Tente novamente.";
 
-/** Lê `error`/`message` de um erro desconhecido sem assumir o shape. */
+/**
+ * Lê o texto relevante de um erro desconhecido sem assumir o shape. Prefixa um
+ * `status` HTTP numérico (quando presente, ex.: `AdminSubscriptionError` do
+ * hook) para que a resolução por código funcione mesmo que o corpo não repita o
+ * número. Em seguida acrescenta `error`/`message`.
+ */
 function readErrorText(error: unknown): string {
   if (typeof error === "object" && error !== null) {
+    const parts: string[] = [];
+    if ("status" in error) {
+      const value = (error as { status: unknown }).status;
+      if (typeof value === "number") parts.push(String(value));
+    }
     if ("error" in error) {
       const value = (error as { error: unknown }).error;
-      if (typeof value === "string") return value;
+      if (typeof value === "string") parts.push(value);
     }
     if ("message" in error) {
       const value = (error as { message: unknown }).message;
-      if (typeof value === "string") return value;
+      if (typeof value === "string") parts.push(value);
     }
+    if (parts.length > 0) return parts.join(" ");
   }
   if (typeof error === "string") return error;
   return "";

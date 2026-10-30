@@ -56,6 +56,75 @@ export interface ChangeSubscriptionStatusInput {
 }
 
 /**
+ * Erro normalizado da Edge Function `admin-subscription`: carrega o `status`
+ * HTTP e o texto de erro do corpo recuperados do canal de erro do
+ * `functions.invoke`. É o que o dialog (ADR-07) passa para `mapSubscriptionError`
+ * — que resolve a mensagem pt-BR por código HTTP (409/403/404/400/401). Sem o
+ * `status`, o corpo não-2xx fica preso em `error.context` (uma `Response`) e
+ * todos os casos caíam no genérico (CA-07).
+ */
+export interface AdminSubscriptionError extends Error {
+  status?: number;
+}
+
+/**
+ * Recupera `{ status, error }` do canal de erro do `functions.invoke` e devolve
+ * um `AdminSubscriptionError` com o `status` HTTP e o texto do corpo embutidos
+ * na `message`, para o mapeador pt-BR (síncrono, por regex de código/keyword)
+ * enxergar o caso real. O corpo não-2xx do `FunctionsHttpError` vive em
+ * `error.context` (uma `Response`), não em `error.message`; lê de forma
+ * defensiva, como `readSendResponseFromError` em `useMessages.ts`. Nunca lança:
+ * se não conseguir ler, repassa o status e o texto original disponíveis.
+ */
+export async function normalizeInvokeError(
+  error: unknown,
+): Promise<AdminSubscriptionError> {
+  let status: number | undefined;
+  let bodyText = "";
+
+  if (typeof error === "object" && error !== null && "context" in error) {
+    const context = (error as { context: unknown }).context;
+    if (typeof context === "object" && context !== null) {
+      const maybeStatus = (context as { status?: unknown }).status;
+      if (typeof maybeStatus === "number") status = maybeStatus;
+
+      if (typeof (context as { json?: unknown }).json === "function") {
+        try {
+          const body = await (
+            context as { json: () => Promise<unknown> }
+          ).json();
+          if (typeof body === "object" && body !== null && "error" in body) {
+            const value = (body as { error: unknown }).error;
+            if (typeof value === "string") bodyText = value;
+          }
+        } catch {
+          // Corpo ilegível (não-JSON / já consumido): mantém o status e a
+          // mensagem original; o mapeador cai no genérico com segurança.
+        }
+      }
+    }
+  }
+
+  const originalMessage =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message: unknown }).message ?? "")
+      : "";
+
+  // Embute status + corpo + mensagem original para o mapeador (regex por
+  // \b409\b / "transição" / etc.) resolver a mensagem pt-BR correta.
+  const message = [status !== undefined ? String(status) : "", bodyText, originalMessage]
+    .filter((part) => part.length > 0)
+    .join(" ")
+    .trim();
+
+  const normalized: AdminSubscriptionError = new Error(
+    message.length > 0 ? message : "admin-subscription invoke failed",
+  );
+  if (status !== undefined) normalized.status = status;
+  return normalized;
+}
+
+/**
  * Muda o `subscription_status` de uma empresa via Edge Function
  * `admin-subscription` (operação privilegiada, service role no servidor). O
  * corpo carrega `tenantId` como **alvo** — nunca `role`/`tenant_id` como
@@ -75,7 +144,9 @@ export function useChangeSubscriptionStatus() {
           reason: input.reason,
         },
       });
-      if (error) throw error;
+      // O corpo não-2xx (409/403/404/400) vive em `error.context`, não em
+      // `error.message`; normaliza para o dialog mapear a mensagem pt-BR certa.
+      if (error) throw await normalizeInvokeError(error);
       return changeStatusResponseSchema.parse(data);
     },
     onSuccess: () => {
