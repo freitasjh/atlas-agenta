@@ -1,7 +1,17 @@
+import { Check } from "lucide-react";
 import { Link, Outlet } from "react-router-dom";
 
+import { BrandIllustration } from "@/marketing/BrandIllustration";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+
+/** Funcionalidades do produto, resumidas no painel de login (RF14, CA10). */
+const AUTH_HIGHLIGHTS = [
+  "Agenda sem conflito por profissional",
+  "Confirmação automática 24h antes",
+  "Cobrança por PIX ao fim do atendimento",
+  "Baixa automática do pagamento",
+] as const;
 
 /**
  * Layout das rotas de autenticação: card centralizado com split visual.
@@ -12,15 +22,30 @@ export function AuthLayout() {
     <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-2">
       {/* Painel de apresentação (apenas em telas largas). */}
       <aside className="hidden flex-col justify-between bg-card p-10 lg:flex">
-        <Logo />
-        <div className="space-y-3">
+        <div className="space-y-8">
+          <Logo />
+          <BrandIllustration variant="aside" className="max-w-xs" />
+        </div>
+        <div className="space-y-4">
           <h2 className="font-display text-2xl font-semibold tracking-tight">
             Agenda e cobrança, sem no-show.
           </h2>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Confirmações automáticas no WhatsApp e cobrança via PIX, num só
-            lugar.
-          </p>
+          <ul className="space-y-2.5">
+            {AUTH_HIGHLIGHTS.map((highlight) => (
+              <li
+                key={highlight}
+                className="flex items-start gap-2.5 text-sm text-muted-foreground"
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+                >
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
+                {highlight}
+              </li>
+            ))}
+          </ul>
         </div>
       </aside>
 
