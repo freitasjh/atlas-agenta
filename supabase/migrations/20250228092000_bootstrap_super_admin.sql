@@ -4,8 +4,10 @@
 -- Não cria usuário no Auth: quem cria é a Edge Function (ADR-06) ou o seed local (ADR-07).
 -- Não recebe nem grava senha.
 --
--- Ordem dentro da função: o profile sai do tenant ANTES de o tenant ser apagado. Se o tenant
--- fosse apagado primeiro, `profiles.tenant_id ... on delete cascade` removeria o próprio profile.
+-- O tenant órfão NÃO é apagado. O trigger de cadastro já grava dados nele (5 linhas em
+-- `message_templates`), e um delete em `tenants` cairia em cascata em todas as tabelas com
+-- `tenant_id`. Sem profile apontando para ele, o tenant fica invisível pelo RLS. A limpeza,
+-- se for desejada, é tarefa separada e explícita.
 --
 -- Idempotência: se já existe algum `super_admin`, retorna false sem alterar nada. O advisory
 -- lock de transação evita que duas chamadas concorrentes criem dois super admins.
@@ -22,8 +24,6 @@ language plpgsql
 security definer
 set search_path = public, pg_catalog
 as $$
-declare
-  v_tenant_id uuid;
 begin
   -- Serializa execuções concorrentes desta função dentro da transação.
   perform pg_advisory_xact_lock(hashtext('bootstrap_super_admin'));
@@ -34,7 +34,7 @@ begin
   end if;
 
   -- 2. Trava a linha do usuário alvo. Sem linha, o cadastro não aconteceu.
-  select tenant_id into v_tenant_id
+  perform 1
     from public.profiles
    where id = p_user_id
    for update;
@@ -44,19 +44,13 @@ begin
   end if;
 
   -- 3. Converte para super admin sem tenant, com troca obrigatória ligada.
+  --    O tenant_id antigo sai do profile e o tenant órfão permanece no banco, sem dados
+  --    acessíveis pelo RLS.
   update public.profiles
      set role = 'super_admin',
          tenant_id = null,
          must_change_password = true
    where id = p_user_id;
-
-  -- 4. Remove o tenant órfão, só se nenhum outro profile aponta para ele. Falha de chave
-  --    estrangeira aborta a função inteira, e nada fica pela metade.
-  if v_tenant_id is not null then
-    delete from public.tenants
-     where id = v_tenant_id
-       and not exists (select 1 from public.profiles where tenant_id = v_tenant_id);
-  end if;
 
   return true;
 end;
@@ -65,7 +59,7 @@ $$;
 comment on function public.bootstrap_super_admin(uuid) is
   'Converte o profile de p_user_id em super_admin sem tenant, com must_change_password ligado '
   '(ADR-04). Idempotente: retorna false se já existe super_admin. Só service_role executa. '
-  'Não cria usuário no Auth e não recebe senha. Candidata a docs/ como decisão de bootstrap.';
+  'Não apaga tenant nenhum. Não cria usuário no Auth e não recebe senha.';
 
 -- Permissões: menor privilégio. Supabase concede EXECUTE a anon/authenticated por padrão em
 -- funções do schema public, então a revogação é explícita.
