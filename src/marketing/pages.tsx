@@ -4,6 +4,7 @@ import { CalendarCheck, MessageCircle, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlaceholderPanel } from "@/components/PlaceholderPanel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PlanCard } from "@/marketing/PlanCard";
 import { PLANS } from "@/lib/plans";
 
 /**
@@ -108,6 +109,13 @@ function Feature({
   );
 }
 
+/**
+ * `/precos` (ADR-05): consome `PlanCard variant="full"` — fonte única de markup
+ * do card (ADR-03), que formata o preço com `formatPlanPrice` a partir de
+ * `PLANS` (ADR-01). Nenhuma lista de planos duplicada nem valor colado fora de
+ * `src/lib/plans.ts`. Sem checkout/billing: a contratação acontece ao criar a
+ * conta (RF07).
+ */
 export function PrecosPage() {
   return (
     <div className="space-y-8">
@@ -116,59 +124,20 @@ export function PrecosPage() {
           Planos e preços
         </h1>
         <p className="text-muted-foreground">
-          Escolha pelo tamanho da sua equipe. Valores e contratação chegam em
-          breve — por enquanto, conheça o que cada plano oferece.
+          Escolha pelo tamanho da sua equipe. Comece grátis e só contrate quando
+          criar a conta.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {PLANS.map((plano) => (
-          <div
-            key={plano.slug}
-            className={
-              plano.recomendado
-                ? "flex flex-col gap-4 rounded-lg border border-primary bg-card p-6"
-                : "flex flex-col gap-4 rounded-lg border border-border bg-card p-6"
-            }
-          >
-            <div className="flex flex-col gap-2">
-              {plano.recomendado ? (
-                <span className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                  Recomendado
-                </span>
-              ) : null}
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {plano.publico}
-                </p>
-                <h2 className="font-display text-xl font-semibold">
-                  {plano.nome}
-                </h2>
-              </div>
-            </div>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              {plano.destaques.map((item) => (
-                <li key={item} className="flex items-start gap-2">
-                  <CalendarCheck
-                    className="mt-0.5 h-4 w-4 shrink-0 text-primary"
-                    aria-hidden="true"
-                  />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-            <Button
-              asChild
-              className="mt-auto w-full"
-              variant={plano.recomendado ? "default" : "outline"}
-            >
-              <Link to={`/cadastro?plano=${plano.slug}`}>
-                Começar com o {plano.nome}
-              </Link>
-            </Button>
-          </div>
+          <PlanCard key={plano.slug} plan={plano} variant="full" />
         ))}
       </div>
+
+      <p className="text-sm text-muted-foreground">
+        A contratação acontece ao criar a conta. Nenhum cartão é pedido agora.
+      </p>
     </div>
   );
 }
