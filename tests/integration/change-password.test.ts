@@ -24,6 +24,21 @@ async function changePassword(password: string, token?: string): Promise<Functio
   return response;
 }
 
+/** Confere que a troca recusada (400/409) não mexeu no flag nem na reserva (ADR-08, critério 2). */
+async function expectNotMutated(userId: string, flagWasOn: boolean): Promise<void> {
+  const profile = await readProfile(userId);
+  expect(profile.must_change_password).toBe(flagWasOn);
+  expect(profile.password_change_claimed_until).toBeNull();
+  expect(profile.password_changed_at).toBeNull();
+}
+
+/** `rpc` devolve a linha como array ou objeto, conforme o PostgREST. */
+function firstRow(data: unknown): { claim_status?: string; claim_token?: string | null } | undefined {
+  return (Array.isArray(data) ? data[0] : data) as
+    | { claim_status?: string; claim_token?: string | null }
+    | undefined;
+}
+
 afterAll(async () => {
   await deleteTestUsers();
 });
@@ -42,6 +57,7 @@ describe("CA-13 validação e autenticação da troca de senha", () => {
     const response = await changePassword("x".repeat(7), user.accessToken);
     expect(response.status).toBe(400);
     expect(response.json?.code).toBe("password_too_short");
+    await expectNotMutated(user.id, true);
   });
 
   it("senha igual à provisória responde 400 password_is_initial", async () => {
@@ -49,6 +65,7 @@ describe("CA-13 validação e autenticação da troca de senha", () => {
     const response = await changePassword(PROVISIONAL_PASSWORD, user.accessToken);
     expect(response.status).toBe(400);
     expect(response.json?.code).toBe("password_is_initial");
+    await expectNotMutated(user.id, true);
   });
 
   it("corpo com campo extra responde 400 invalid_body", async () => {
@@ -60,6 +77,7 @@ describe("CA-13 validação e autenticação da troca de senha", () => {
     responses.push(response);
     expect(response.status).toBe(400);
     expect(response.json?.code).toBe("invalid_body");
+    await expectNotMutated(user.id, true);
   });
 
   it("usuário sem flag responde 409 password_change_not_required", async () => {
@@ -67,6 +85,7 @@ describe("CA-13 validação e autenticação da troca de senha", () => {
     const response = await changePassword(freshPassword(), user.accessToken);
     expect(response.status).toBe(409);
     expect(response.json?.code).toBe("password_change_not_required");
+    await expectNotMutated(user.id, false);
   });
 
   it("senha válida responde 200, zera o flag e só a senha nova entra", async () => {
@@ -76,6 +95,7 @@ describe("CA-13 validação e autenticação da troca de senha", () => {
     const response = await changePassword(newPassword, user.accessToken);
     expect(response.status, response.text).toBe(200);
     expect(response.json?.ok).toBe(true);
+    expect(response.text).not.toContain(newPassword);
 
     const profile = await readProfile(user.id);
     expect(profile.must_change_password).toBe(false);
@@ -231,5 +251,55 @@ describe("ADR-08 sessão comum não mexe na reserva (grants e guard)", () => {
     expect(direct.error?.message ?? "").toContain("privileged_column_change_denied");
 
     expect((await readProfile(user.id)).password_change_claimed_until).toBeNull();
+  });
+});
+
+/*
+ * Não exercitado pela suíte: o 409 `password_change_superseded` da Edge Function (ADR-08,
+ * critério 9, caso B, resposta HTTP). Chegar lá exige forçar falha na RPC de conclusão, o que
+ * esta suíte não faz. A sequência de banco do caso B é coberta abaixo. A resposta HTTP fica como
+ * risco aberto para o QA, conforme registrado na revisão da ADR-10.
+ */
+describe("ADR-08 critério 9, caso B: requisição atrasada no banco", () => {
+  it("B libera a própria reserva, A conclui com false e o flag segue ligado", async () => {
+    const user = await createSuperAdminUser("cp-caso-b");
+    const svc = serviceClient();
+
+    const { data: dataA } = await svc.rpc("claim_password_change", { p_user_id: user.id });
+    const a = firstRow(dataA);
+    expect(a?.claim_status).toBe("claimed");
+    const tokenA = String(a?.claim_token);
+
+    // A fica lenta: a reserva expira.
+    const { error: expireErr } = await svc
+      .from("profiles")
+      .update({ password_change_claimed_until: new Date(Date.now() - 1000).toISOString() })
+      .eq("id", user.id);
+    expect(expireErr).toBeNull();
+
+    // B toma a reserva, grava a senha e falha ao concluir. Libera a própria reserva.
+    const { data: dataB } = await svc.rpc("claim_password_change", { p_user_id: user.id });
+    const b = firstRow(dataB);
+    expect(b?.claim_status).toBe("claimed");
+    const tokenB = String(b?.claim_token);
+    expect(tokenB).not.toBe(tokenA);
+    const released = await svc.rpc("release_password_change_claim", {
+      p_user_id: user.id,
+      p_claim_token: tokenB,
+    });
+    expect(released.error).toBeNull();
+
+    // A chega e tenta concluir: superada, então false, flag segue ligado e a reserva segue nula.
+    const finishA = await svc.rpc("finish_password_change", {
+      p_user_id: user.id,
+      p_claim_token: tokenA,
+    });
+    expect(finishA.error).toBeNull();
+    expect(finishA.data).toBe(false);
+
+    const profile = await readProfile(user.id);
+    expect(profile.must_change_password).toBe(true);
+    expect(profile.password_change_claimed_until).toBeNull();
+    expect(profile.password_changed_at).toBeNull();
   });
 });
