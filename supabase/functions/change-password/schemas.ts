@@ -27,6 +27,17 @@ export type PasswordBodyErrorCode =
   | "password_too_long"
   | "password_is_initial";
 
+/**
+ * Linha devolvida por `claim_password_change` (dado vindo do banco, validado antes de uso).
+ * `claim_token` é a expiração da reserva tomada; nulo quando a troca não foi reservada.
+ */
+export const claimRowSchema = z.object({
+  claim_status: z.enum(["claimed", "in_progress", "not_required"]),
+  claim_token: z.string().nullable(),
+});
+
+export type ClaimRow = z.infer<typeof claimRowSchema>;
+
 export type PasswordBodyResult =
   | { ok: true; password: string }
   | { ok: false; code: PasswordBodyErrorCode };
