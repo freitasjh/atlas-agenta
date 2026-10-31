@@ -107,12 +107,15 @@ describe("CA-07 e CA-08 script cria e é idempotente", () => {
 });
 
 describe("CA-10 URL remota sem flag sai antes de conectar", () => {
-  it("sai com erro sem tentar a rede e sem ecoar a senha da URL", () => {
+  it("sai com código 1 pela trava de host, com a mensagem de recusa, sem ecoar a senha da URL", () => {
     const secret = randomUUID();
     const remote = `postgresql://operador:${secret}@db.example.invalid:5432/postgres`;
     const run = runScript(remote);
 
-    expect(run.status).not.toBe(0);
+    // `fail` do script sai com 1 e imprime a recusa. Um crash ou erro de sintaxe não imprime
+    // essa mensagem, então o caso não passa por eles.
+    expect(run.status, run.output).toBe(1);
+    expect(run.output).toContain("Banco não local");
     expect(run.durationMs).toBeLessThan(10_000);
     expect(run.output).not.toContain(secret);
   });

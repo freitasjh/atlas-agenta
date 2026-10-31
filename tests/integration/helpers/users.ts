@@ -127,14 +127,38 @@ export async function completePasswordChange(userId: string): Promise<void> {
   if (error) throw new Error(`complete_password_change falhou: ${error.message}`);
 }
 
-/** Apaga o usuário de auth. O profile cai em cascata. A empresa criada pelo trigger não é apagada. */
+/**
+ * Apaga o usuário de auth (o profile cai em cascata) e, se nenhum outro profile usar a empresa, a
+ * empresa criada pelo trigger para esse usuário. A empresa é lida antes de apagar o usuário, porque
+ * depois disso o profile não existe mais.
+ */
 export async function deleteTestUsers(): Promise<void> {
   const admin = serviceClient();
   while (created.length > 0) {
     const id = created.pop();
     if (!id) continue;
+    const { data: profile, error: readError } = await admin
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (readError) throw new Error(`Leitura do profile de teste falhou: ${readError.message}`);
+    const tenantId = profile?.tenant_id ?? null;
+
     const { error } = await admin.auth.admin.deleteUser(id);
     if (error) throw new Error(`Limpeza do usuário de teste falhou: ${error.message}`);
+
+    if (tenantId) {
+      const { count, error: countError } = await admin
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId);
+      if (countError) throw new Error(`Contagem de profiles da empresa falhou: ${countError.message}`);
+      if (count === 0) {
+        const { error: tenantError } = await admin.from("tenants").delete().eq("id", tenantId);
+        if (tenantError) throw new Error(`Limpeza da empresa de teste falhou: ${tenantError.message}`);
+      }
+    }
   }
 }
 
