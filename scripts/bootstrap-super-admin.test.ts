@@ -4,6 +4,7 @@ import { decideBootstrapAction } from "../supabase/functions/_shared/super-admin
 import {
   isAuthUsersUniqueViolation,
   isLocalUrl,
+  isParsableUrl,
   shouldBlockRemote,
   sslOptionsFor,
 } from "./bootstrap-super-admin.ts";
@@ -121,4 +122,36 @@ Deno.test("violação em auth.identities ou profiles não conta como corrida", (
     false,
   );
   strictEqual(isAuthUsersUniqueViolation(new Error("outro erro")), false);
+});
+
+Deno.test("URL inválida não é parseável", () => {
+  strictEqual(isParsableUrl("postgres://user:senha@host:porta_ruim/db"), false);
+  strictEqual(isParsableUrl("postgres://user:senha@host:5432/db"), true);
+});
+
+Deno.test("URL de banco malformada não vaza a senha na saída do script", async () => {
+  const secret = "SEGREDO-TESTE-ADR07";
+  const script =
+    new URL("./bootstrap-super-admin.ts", import.meta.url).pathname;
+  const output = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--allow-env",
+      "--allow-net",
+      "--allow-read",
+      script,
+      "--allow-remote",
+    ],
+    env: {
+      SUPABASE_DB_URL:
+        `postgres://user:${secret}@db.example.com:porta_ruim/postgres`,
+    },
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const text = new TextDecoder().decode(output.stdout) +
+    new TextDecoder().decode(output.stderr);
+  strictEqual(output.code, 1);
+  strictEqual(text.includes(secret), false);
+  strictEqual(text.includes("postgres://"), false);
 });

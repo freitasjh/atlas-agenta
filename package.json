@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:scripts": "deno test scripts/bootstrap-super-admin.test.ts",
+    "test:scripts": "deno test --allow-run --allow-env --allow-net --allow-read scripts/bootstrap-super-admin.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

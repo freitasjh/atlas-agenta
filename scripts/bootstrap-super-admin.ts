@@ -43,6 +43,17 @@ export function isLocalUrl(rawUrl: string): boolean {
   }
 }
 
+// Só checa se a string é uma URL. Não devolve nem repete o valor: o erro do driver pode conter a
+// senha do banco.
+export function isParsableUrl(rawUrl: string): boolean {
+  try {
+    new URL(rawUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function shouldBlockRemote(
   rawUrl: string,
   allowRemote: boolean,
@@ -187,13 +198,15 @@ async function main(): Promise<void> {
 
   // TLS com validação fora do localhost (LGPD: credencial e senha não trafegam em claro nem para
   // um intermediário). Não depende de `sslmode` na URL. Ver sslOptionsFor.
-  const sql = postgres(dbUrl, {
-    max: 1,
-    onnotice: () => {},
-    ssl: sslOptionsFor(dbUrl, Deno.env.get("SUPABASE_DB_CA_CERT")),
-  });
+  // O cliente é criado dentro do try: o driver lança com a URL completa se ela for inválida.
+  let sql: postgres.Sql | undefined;
   let outcome: Outcome;
   try {
+    sql = postgres(dbUrl, {
+      max: 1,
+      onnotice: () => {},
+      ssl: sslOptionsFor(dbUrl, Deno.env.get("SUPABASE_DB_CA_CERT")),
+    });
     outcome = await sql.begin((tx) => bootstrap(tx));
   } catch {
     // Mensagem genérica: não ecoa detalhes do banco, que podem conter PII ou segredo.
@@ -201,7 +214,7 @@ async function main(): Promise<void> {
       "Não foi possível criar o super admin. Nada foi gravado. Verifique o ambiente e tente de novo.",
     );
   } finally {
-    await sql.end();
+    await sql?.end();
   }
 
   if (outcome.status === "recusa_papel") {
