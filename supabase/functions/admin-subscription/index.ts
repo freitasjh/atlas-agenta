@@ -50,6 +50,7 @@ interface Identity {
   userId: string;
   tenantId: string | null;
   role: RoleName;
+  mustChangePassword: boolean;
 }
 
 /**
@@ -100,7 +101,7 @@ async function resolveIdentity(
   const userId = userData.user.id;
   const { data: profile, error: profileErr } = await service
     .from("profiles")
-    .select("tenant_id, role")
+    .select("tenant_id, role, must_change_password")
     .eq("id", userId)
     .maybeSingle();
 
@@ -110,6 +111,7 @@ async function resolveIdentity(
     userId,
     tenantId: profile.tenant_id as string | null,
     role: profile.role as RoleName,
+    mustChangePassword: profile.must_change_password === true,
   };
 }
 
@@ -126,6 +128,19 @@ async function handleSetStatus(
   if (identity.role !== "super_admin") {
     console.warn("set_status: forbidden role attempt", identity.role);
     return errorResponse("Você não tem permissão para alterar o status de assinatura.", 403);
+  }
+
+  // Com troca de senha pendente, o super admin não opera o painel (RQ-07). A checagem fica antes
+  // de carregar o tenant alvo, para não revelar a existência de empresa a quem ainda não trocou.
+  // Service role ignora RLS, então o bloqueio precisa existir aqui, não só na policy.
+  if (identity.mustChangePassword) {
+    return jsonResponse(
+      {
+        code: "password_change_required",
+        message: "Troque sua senha antes de operar o painel.",
+      },
+      403,
+    );
   }
 
   const { tenantId, status, reason } = input;
