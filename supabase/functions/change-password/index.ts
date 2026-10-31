@@ -64,7 +64,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   password_change_not_required: "Não há troca de senha pendente para esta conta.",
   password_change_in_progress: "Já existe uma troca de senha em andamento. Aguarde e tente novamente.",
   password_change_superseded:
-    "Outra troca de senha foi feita ao mesmo tempo e pode ter substituído a sua. Tente novamente.",
+    "Outra troca de senha foi concluída ao mesmo tempo e pode ter substituído a sua. Entre com a senha definida na troca mais recente.",
   internal_error: "Não foi possível trocar a senha. Tente novamente.",
 };
 
