@@ -4,10 +4,14 @@
 // Ordem garantida pelo handler:
 //   1. o `userId` vem do JWT validado pelo GoTrue (nunca do corpo);
 //   2. o corpo é validado (schemas.ts) antes de qualquer escrita;
-//   3. o flag é lido com service role; sem flag ligado, nada é gravado (409);
-//   4. a senha vai para o Auth ANTES do flag cair. Se o Auth falhar, o flag segue ligado;
-//   5. o flag cai pela RPC `complete_password_change` (ADR-05), que só service role executa.
-//      Se a RPC falhar depois da senha gravada, o flag segue ligado e uma nova tentativa é aceita.
+//   3. a troca é reservada no banco (`claim_password_change`, ADR-08). Sem flag ligado: 409
+//      `password_change_not_required`. Com reserva ativa de outra requisição: 409
+//      `password_change_in_progress`. Nos dois casos nada é gravado;
+//   4. a senha vai para o Auth ANTES do flag cair. Se o Auth falhar, a reserva é liberada e o
+//      flag segue ligado;
+//   5. o flag cai pela RPC `complete_password_change` (ADR-05), que só service role executa e
+//      também limpa a reserva. Se a RPC falhar depois da senha gravada, a reserva é liberada e
+//      uma nova tentativa é aceita.
 //
 // Respostas de erro: `{ code, message }` com mensagem pt-BR estável por código. Nunca ecoa a
 // senha, o hash, a service role nem o nome do marcador. Logs técnicos curtos, sem PII.
@@ -27,6 +31,7 @@ type ErrorCode =
   | "method_not_allowed"
   | "unauthenticated"
   | "password_change_not_required"
+  | "password_change_in_progress"
   | "internal_error"
   | PasswordBodyErrorCode;
 
@@ -38,6 +43,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   password_too_long: 400,
   password_is_initial: 400,
   password_change_not_required: 409,
+  password_change_in_progress: 409,
   internal_error: 500,
 };
 
@@ -49,6 +55,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   password_too_long: "A senha deve ter no máximo 72 bytes.",
   password_is_initial: "Escolha uma senha diferente da senha provisória.",
   password_change_not_required: "Não há troca de senha pendente para esta conta.",
+  password_change_in_progress: "Já existe uma troca de senha em andamento. Aguarde e tente novamente.",
   internal_error: "Não foi possível trocar a senha. Tente novamente.",
 };
 
@@ -112,35 +119,45 @@ async function changePassword(
   password: string,
   service: SupabaseClient,
 ): Promise<Response> {
-  // 3. Sem flag ligado, nada é gravado. Perfil ausente também é "sem troca pendente".
-  const { data: profile, error: profileErr } = await service
-    .from("profiles")
-    .select("must_change_password")
-    .eq("id", userId)
-    .maybeSingle();
+  // 3. Reserva a troca no banco, antes de tocar no Auth. Um único UPDATE condicional decide a
+  //    corrida: só uma requisição fica com a reserva. As demais recebem 409 e a senha não muda.
+  const { data: claim, error: claimErr } = await service.rpc("claim_password_change", {
+    p_user_id: userId,
+  });
 
-  if (profileErr) {
-    console.error("change-password: failed to load profile", profileErr.message);
+  if (claimErr || typeof claim !== "string") {
+    console.error("change-password: claim_password_change failed", claimErr?.message ?? "bad-shape");
     return errorResponse("internal_error");
   }
-  if (!profile || profile.must_change_password !== true) {
+  if (claim === "not_required") {
     return errorResponse("password_change_not_required");
   }
+  if (claim === "in_progress") {
+    return errorResponse("password_change_in_progress");
+  }
+  if (claim !== "claimed") {
+    console.error("change-password: unexpected claim result");
+    return errorResponse("internal_error");
+  }
 
-  // 4. Grava a senha no Auth antes de zerar o flag (RQ-08). Falha aqui mantém o flag intacto.
+  // 4. Grava a senha no Auth antes de zerar o flag (RQ-08). Se falhar, libera a reserva e o flag
+  //    segue ligado, então a troca pode ser repetida.
   const { error: updateErr } = await service.auth.admin.updateUserById(userId, { password });
   if (updateErr) {
     console.error("change-password: auth password update failed");
+    await releaseClaim(userId, service);
     return errorResponse("internal_error");
   }
 
-  // 5. Zera o flag só pelo servidor. `false` = outra aba já zerou o flag.
+  // 5. Zera o flag só pelo servidor. A RPC também limpa a reserva. `false` significa que o flag
+  //    já estava zerado, o que com a reserva só ocorre se ela expirou e outra troca concluiu.
   const { data: completed, error: rpcErr } = await service.rpc("complete_password_change", {
     p_user_id: userId,
   });
 
   if (rpcErr) {
     console.error("change-password: complete_password_change failed", rpcErr.message);
+    await releaseClaim(userId, service);
     return errorResponse("internal_error");
   }
   if (completed !== true) {
@@ -148,6 +165,14 @@ async function changePassword(
   }
 
   return okResponse();
+}
+
+/** Libera a reserva após falha. Erro aqui só vai para o log: a reserva expira sozinha. */
+async function releaseClaim(userId: string, service: SupabaseClient): Promise<void> {
+  const { error } = await service.rpc("release_password_change_claim", { p_user_id: userId });
+  if (error) {
+    console.error("change-password: release_password_change_claim failed", error.message);
+  }
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
