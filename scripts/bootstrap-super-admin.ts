@@ -207,7 +207,8 @@ async function main(): Promise<void> {
   // um intermediário). Não depende de `sslmode` na URL. Ver sslOptionsFor.
   // O cliente é criado dentro do try: o driver lança com a URL completa se ela for inválida.
   let sql: postgres.Sql | undefined;
-  let outcome: Outcome;
+  let outcome: Outcome | undefined;
+  let failure: string | undefined;
   try {
     sql = postgres(dbUrl, {
       max: 1,
@@ -217,13 +218,19 @@ async function main(): Promise<void> {
     outcome = await sql.begin((tx) => bootstrap(tx));
   } catch {
     // Mensagem genérica: não ecoa detalhes do banco, que podem conter PII ou segredo.
-    fail(
-      "Não foi possível criar o super admin. Nada foi gravado. Verifique o ambiente e tente de novo.",
-    );
+    failure =
+      "Não foi possível criar o super admin. Nada foi gravado. Verifique o ambiente e tente de novo.";
   } finally {
+    // Fecha a conexão antes de qualquer saída do processo (Deno.exit não executa finally).
     await sql?.end();
   }
 
+  if (failure !== undefined) {
+    fail(failure);
+  }
+  if (outcome === undefined) {
+    fail("Estado inesperado ao localizar o super admin.");
+  }
   if (outcome.status === "recusa_papel") {
     fail(
       "Este e-mail já existe com outro papel. Resolva manualmente antes de criar o super admin.",
