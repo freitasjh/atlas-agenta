@@ -123,6 +123,7 @@ describe("CA-11 segredos fora da saída do script", () => {
     const run = runScript(dbUrl);
     expect(run.output).not.toContain(PROVISIONAL_PASSWORD);
     expect(run.output).not.toContain(dbUrl);
+    expect(run.output).not.toContain(loadEnv().serviceRoleKey);
     expect(run.output).not.toContain("bootstrap_role");
   });
 });

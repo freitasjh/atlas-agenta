@@ -39,10 +39,16 @@ function setCommands(vars: Record<string, string>): string {
 export function sql(query: string, vars: Record<string, string> = {}): string {
   const args = ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"];
   const { dbUrl } = loadEnv();
+  // Ambiente mínimo, como o do script de operador: chaves de API do shell não chegam ao psql.
+  const childEnv: Record<string, string> = {
+    PATH: process.env.PATH ?? "",
+    HOME: process.env.HOME ?? "",
+    ...pgEnvFromUrl(dbUrl),
+  };
   const result = spawnSync("psql", args, {
     input: `${setCommands(vars)}${query}`,
     encoding: "utf8",
-    env: { ...process.env, ...pgEnvFromUrl(dbUrl) },
+    env: childEnv,
   });
   if (result.status !== 0) {
     throw new Error(`psql falhou: ${(result.stderr ?? "").trim()}`);
