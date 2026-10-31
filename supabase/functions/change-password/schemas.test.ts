@@ -1,8 +1,20 @@
 // Testes de schema da Edge Function `change-password` (ADR-08). Rodar com:
 //   deno test supabase/functions/change-password/schemas.test.ts
 import { deepStrictEqual as assertEquals } from "node:assert/strict";
-import { parseChangePasswordBody } from "./schemas.ts";
+import {
+  isDefinitiveAuthRejection,
+  parseChangePasswordBody,
+} from "./schemas.ts";
 import { PROVISIONAL_PASSWORD } from "../_shared/super-admin-bootstrap.ts";
+
+Deno.test("libera reserva só para resposta 4xx do Auth", () => {
+  assertEquals(isDefinitiveAuthRejection(422), true);
+  assertEquals(isDefinitiveAuthRejection(401), true);
+  assertEquals(isDefinitiveAuthRejection(500), false);
+  assertEquals(isDefinitiveAuthRejection(503), false);
+  assertEquals(isDefinitiveAuthRejection(0), false);
+  assertEquals(isDefinitiveAuthRejection(undefined), false);
+});
 
 Deno.test("aceita senha válida com 8 caracteres", () => {
   assertEquals(parseChangePasswordBody({ password: "Senha@123" }), {

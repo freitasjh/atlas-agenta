@@ -7,8 +7,9 @@
 //   3. a troca é reservada no banco (`claim_password_change`, ADR-08), que devolve um token da
 //      reserva. Sem flag ligado: 409 `password_change_not_required`. Com reserva ativa de outra
 //      requisição: 409 `password_change_in_progress`. Nos dois casos nada é gravado;
-//   4. a senha vai para o Auth ANTES do flag cair. Se o Auth falhar, a reserva desta requisição
-//      é liberada e o flag segue ligado;
+//   4. a senha vai para o Auth ANTES do flag cair. Se o Auth recusar com 4xx, a reserva desta
+//      requisição é liberada. Em timeout, erro de rede ou 5xx a reserva expira sozinha em 60 s.
+//      Em qualquer falha o flag segue ligado;
 //   5. o flag cai pela RPC `finish_password_change(user, token)`, que só zera o flag se a reserva
 //      ainda for a desta requisição. Se a reserva já não é desta requisição (outra troca tomou a
 //      reserva, ou a reserva foi liberada após falha de outra troca), a resposta é 409
@@ -23,6 +24,7 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   claimRowSchema,
+  isDefinitiveAuthRejection,
   parseChangePasswordBody,
   type PasswordBodyErrorCode,
 } from "./schemas.ts";
@@ -172,8 +174,12 @@ async function changePassword(
   //    requisição e o flag segue ligado, então a troca pode ser repetida.
   const { error: updateErr } = await service.auth.admin.updateUserById(userId, { password });
   if (updateErr) {
-    console.error("change-password: auth password update failed");
-    await releaseClaim(userId, claimToken, service);
+    console.error("change-password: auth password update failed", updateErr.status ?? "no-status");
+    // Só libera a reserva quando o GoTrue recusou com 4xx (a senha não mudou). Em timeout, erro de
+    // rede ou 5xx a escrita pode ainda estar em curso: a reserva expira sozinha em 60 s.
+    if (isDefinitiveAuthRejection(updateErr.status)) {
+      await releaseClaim(userId, claimToken, service);
+    }
     return errorResponse("internal_error");
   }
 

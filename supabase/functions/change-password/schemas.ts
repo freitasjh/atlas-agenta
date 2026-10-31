@@ -38,6 +38,15 @@ export const claimRowSchema = z.object({
 
 export type ClaimRow = z.infer<typeof claimRowSchema>;
 
+/**
+ * Diz se a falha da escrita no Auth é uma resposta HTTP 4xx do GoTrue. Essa resposta garante que
+ * a senha não mudou, então a reserva pode ser liberada. Timeout, erro de rede (sem status) e 5xx
+ * podem deixar a escrita em curso no GoTrue: nesses casos a reserva expira sozinha em 60 s.
+ */
+export function isDefinitiveAuthRejection(status: unknown): boolean {
+  return typeof status === "number" && status >= 400 && status < 500;
+}
+
 export type PasswordBodyResult =
   | { ok: true; password: string }
   | { ok: false; code: PasswordBodyErrorCode };
