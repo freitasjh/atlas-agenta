@@ -24,6 +24,8 @@ import {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 const ZERO_INSTANCE_ID = "00000000-0000-0000-0000-000000000000";
+// Índice único parcial do e-mail em auth.users (GoTrue). Verificado no stack local (ADR-07 rev. 3).
+const AUTH_EMAIL_UNIQUE_CONSTRAINT = "users_email_partial_key";
 
 // Linha lida do banco é externa: validada com zod antes de uso.
 const profileSchema = z.object({
@@ -51,8 +53,10 @@ function fail(message: string): never {
 
 type Outcome = { status: BootstrapAction; userId: string | null };
 
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "code" in err && err.code === "23505";
+// Só a corrida no e-mail de auth.users conta. Outras violações (identities, profiles) são erro.
+function isEmailUniqueViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "23505" &&
+    "constraint_name" in err && err.constraint_name === AUTH_EMAIL_UNIQUE_CONSTRAINT;
 }
 
 // Insere usuário e identidade. O trigger handle_new_user cria o profile na mesma transação.
@@ -111,7 +115,7 @@ async function bootstrap(tx: postgres.TransactionSql): Promise<Outcome> {
     // Savepoint: se a inserção bater no índice único, só ela é desfeita e a transação segue válida.
     createdId = await tx.savepoint((sp) => insertSuperAdmin(sp));
   } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
+    if (!isEmailUniqueViolation(err)) throw err;
     // Outra execução criou o super admin entre a leitura e o insert. Depois do commit dela, a
     // releitura enxerga o usuário e o resultado é ja_existe.
     const [raced] = await tx<{ id: string }[]>`
@@ -145,7 +149,13 @@ async function main(): Promise<void> {
     fail("Banco não local. Para executar contra um ambiente remoto, passe --allow-remote.");
   }
 
-  const sql = postgres(dbUrl, { max: 1, onnotice: () => {} });
+  // TLS obrigatório fora do localhost (RNF/LGPD: credencial e senha não trafegam em claro).
+  // Não depende de `sslmode` estar na URL. `require` criptografa, mas não valida o certificado.
+  const sql = postgres(dbUrl, {
+    max: 1,
+    onnotice: () => {},
+    ssl: isLocalUrl(dbUrl) ? false : "require",
+  });
   let outcome: Outcome;
   try {
     outcome = await sql.begin((tx) => bootstrap(tx));
