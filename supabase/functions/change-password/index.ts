@@ -86,6 +86,9 @@ function okResponse(): Response {
   });
 }
 
+/** Timeout de cada chamada HTTP do client. Abaixo da janela de 60 s da reserva (ADR-08). */
+const HTTP_TIMEOUT_MS = 15_000;
+
 /** Client com a service role (bypassa RLS). Só no servidor, nunca exposto ao cliente. */
 function createServiceClient(): SupabaseClient {
   const url = Deno.env.get("SUPABASE_URL");
@@ -95,6 +98,16 @@ function createServiceClient(): SupabaseClient {
   }
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          signal: AbortSignal.any([
+            ...(init?.signal ? [init.signal] : []),
+            AbortSignal.timeout(HTTP_TIMEOUT_MS),
+          ]),
+        }),
+    },
   });
 }
 
