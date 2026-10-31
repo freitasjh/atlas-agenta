@@ -134,10 +134,12 @@ async function handleSetStatus(
   // de carregar o tenant alvo, para não revelar a existência de empresa a quem ainda não trocou.
   // Service role ignora RLS, então o bloqueio precisa existir aqui, não só na policy.
   if (identity.mustChangePassword) {
+    const passwordMessage = "Troque sua senha antes de operar o painel.";
     return jsonResponse(
       {
+        error: passwordMessage,
         code: "password_change_required",
-        message: "Troque sua senha antes de operar o painel.",
+        message: passwordMessage,
       },
       403,
     );
