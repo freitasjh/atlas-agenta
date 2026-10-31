@@ -10,9 +10,11 @@
 //   4. a senha vai para o Auth ANTES do flag cair. Se o Auth falhar, a reserva desta requisição
 //      é liberada e o flag segue ligado;
 //   5. o flag cai pela RPC `finish_password_change(user, token)`, que só zera o flag se a reserva
-//      ainda for a desta requisição. Se outra troca tomou a reserva (requisição atrasada), a
-//      resposta é 409 `password_change_superseded`. Falha da RPC: libera a reserva e 500.
-//   `complete_password_change` (ADR-05) não é usada aqui e fica intacta.
+//      ainda for a desta requisição. Se a reserva já não é desta requisição (outra troca tomou a
+//      reserva, ou a reserva foi liberada após falha de outra troca), a resposta é 409
+//      `password_change_superseded`. Falha da RPC: libera a reserva e 500.
+//   `complete_password_change` (ADR-05) não é chamada aqui. Seu corpo foi reescrito pela
+//   migration 20250228095000 para limpar a reserva, sem mudar assinatura nem retorno.
 //
 // Respostas de erro: `{ code, message }` com mensagem pt-BR estável por código. Nunca ecoa a
 // senha, o hash, a service role nem o nome do marcador. Logs técnicos curtos, sem PII.
@@ -64,7 +66,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   password_change_not_required: "Não há troca de senha pendente para esta conta.",
   password_change_in_progress: "Já existe uma troca de senha em andamento. Aguarde e tente novamente.",
   password_change_superseded:
-    "Outra troca de senha foi concluída ao mesmo tempo e pode ter substituído a sua. Entre com a senha definida na troca mais recente.",
+    "Sua troca de senha não foi concluída, porque outra tentativa a substituiu. A senha pode ter sido alterada. Entre novamente e, se necessário, repita a troca.",
   internal_error: "Não foi possível trocar a senha. Tente novamente.",
 };
 
@@ -188,7 +190,7 @@ async function changePassword(
     return errorResponse("internal_error");
   }
   if (finished === false) {
-    console.error("change-password: superseded by a newer claim");
+    console.error("change-password: claim no longer owned (superseded or released)");
     return errorResponse("password_change_superseded");
   }
 
