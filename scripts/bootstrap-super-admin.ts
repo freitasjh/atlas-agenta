@@ -189,6 +189,13 @@ async function main(): Promise<void> {
     fail("Defina SUPABASE_DB_URL no ambiente antes de executar.");
   }
 
+  // Antes da trava de host: sem isso, URL malformada cai na mensagem de "banco não local".
+  if (!isParsableUrl(dbUrl)) {
+    fail(
+      "SUPABASE_DB_URL não é uma URL válida. Revise o valor no ambiente e tente de novo.",
+    );
+  }
+
   const allowRemote = Deno.args.includes("--allow-remote");
   if (shouldBlockRemote(dbUrl, allowRemote)) {
     fail(

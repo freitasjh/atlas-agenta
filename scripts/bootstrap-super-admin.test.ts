@@ -129,8 +129,10 @@ Deno.test("URL inválida não é parseável", () => {
   strictEqual(isParsableUrl("postgres://user:senha@host:5432/db"), true);
 });
 
-Deno.test("URL de banco malformada não vaza a senha na saída do script", async () => {
-  const secret = "SEGREDO-TESTE-ADR07";
+async function runScript(
+  args: string[],
+  dbUrl: string,
+): Promise<{ code: number; text: string }> {
   const script =
     new URL("./bootstrap-super-admin.ts", import.meta.url).pathname;
   const output = await new Deno.Command(Deno.execPath(), {
@@ -140,18 +142,36 @@ Deno.test("URL de banco malformada não vaza a senha na saída do script", async
       "--allow-net",
       "--allow-read",
       script,
-      "--allow-remote",
+      ...args,
     ],
-    env: {
-      SUPABASE_DB_URL:
-        `postgres://user:${secret}@db.example.com:porta_ruim/postgres`,
-    },
+    env: { SUPABASE_DB_URL: dbUrl },
     stdout: "piped",
     stderr: "piped",
   }).output();
   const text = new TextDecoder().decode(output.stdout) +
     new TextDecoder().decode(output.stderr);
-  strictEqual(output.code, 1);
+  return { code: output.code, text };
+}
+
+Deno.test("URL de banco malformada não vaza a senha na saída do script", async () => {
+  const secret = "SEGREDO-TESTE-ADR07";
+  const { code, text } = await runScript(
+    ["--allow-remote"],
+    `postgres://user:${secret}@db.example.com:porta_ruim/postgres`,
+  );
+  strictEqual(code, 1);
   strictEqual(text.includes(secret), false);
   strictEqual(text.includes("postgres://"), false);
+});
+
+Deno.test("URL malformada sem --allow-remote falha com mensagem de URL inválida, não de banco remoto", async () => {
+  const secret = "SEGREDO-TESTE-ADR07";
+  const { code, text } = await runScript(
+    [],
+    `postgres://user:${secret}@db.example.com:porta_ruim/postgres`,
+  );
+  strictEqual(code, 1);
+  strictEqual(text.includes("não é uma URL válida"), true);
+  strictEqual(text.includes("Banco não local"), false);
+  strictEqual(text.includes(secret), false);
 });
