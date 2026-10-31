@@ -82,15 +82,29 @@ function createServiceClient(): SupabaseClient {
   });
 }
 
-/** Resolve o userId a partir do JWT validado pelo GoTrue. Retorna null se inválido/ausente. */
-async function resolveUserId(req: Request, service: SupabaseClient): Promise<string | null> {
+type AuthResult =
+  | { kind: "ok"; userId: string }
+  | { kind: "unauthenticated" }
+  | { kind: "error" };
+
+/**
+ * Resolve o userId a partir do JWT validado pelo GoTrue. Só o GoTrue rejeitando o token
+ * (401/403) vira `unauthenticated`; falha de infraestrutura vira `error` (500), para o cliente
+ * não tratar indisponibilidade do servidor como sessão expirada.
+ */
+async function resolveUserId(req: Request, service: SupabaseClient): Promise<AuthResult> {
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
+  if (!token) return { kind: "unauthenticated" };
 
   const { data, error } = await service.auth.getUser(token);
-  if (error || !data.user) return null;
-  return data.user.id;
+  if (error) {
+    if (error.status === 401 || error.status === 403) return { kind: "unauthenticated" };
+    console.error("change-password: auth getUser failed", error.status ?? "no-status");
+    return { kind: "error" };
+  }
+  if (!data.user) return { kind: "unauthenticated" };
+  return { kind: "ok", userId: data.user.id };
 }
 
 async function changePassword(
@@ -154,10 +168,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // 1. Autenticação: o userId sai do JWT, nunca do corpo.
-    const userId = await resolveUserId(req, service);
-    if (!userId) {
+    const auth = await resolveUserId(req, service);
+    if (auth.kind === "unauthenticated") {
       return errorResponse("unauthenticated");
     }
+    if (auth.kind === "error") {
+      return errorResponse("internal_error");
+    }
+    const userId = auth.userId;
 
     // 2. Corpo validado antes de qualquer escrita.
     let rawBody: unknown;
