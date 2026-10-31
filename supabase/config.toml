@@ -122,6 +122,12 @@ inspector_port = 8083
 [functions.custom-access-token]
 verify_jwt = false
 
+# Cadastro de empresa (ADR-02, RQ-19): superfície PÚBLICA, porque é o próprio cadastro e quem chama
+# ainda não tem sessão. A função valida o corpo com zod (`.strict()`) e cria a empresa pela RPC
+# `create_tenant_with_admin`, com service role no servidor. Não há `verify_jwt` de usuário aqui.
+[functions.signup-tenant]
+verify_jwt = false
+
 # Webhook de ENTRADA da Evolution (ADR-03, Fatia 2): superfície PÚBLICA, sem JWT de usuário. A
 # autenticidade é feita pelo segredo compartilhado `WHATSAPP_WEBHOOK_SECRET` (comparação em tempo
 # constante dentro da função), não pelo GoTrue — por isso `verify_jwt = false` SÓ para esta
