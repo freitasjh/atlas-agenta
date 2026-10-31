@@ -25,6 +25,8 @@ export type BootstrapAction = "criado" | "ja_existe" | "recusa_papel";
 
 export function decideBootstrapAction(state: BootstrapState): BootstrapAction {
   if (!state.exists) return "criado";
-  if (state.profileRole === "super_admin" && state.tenantId === null) return "ja_existe";
+  if (state.profileRole === "super_admin" && state.tenantId === null) {
+    return "ja_existe";
+  }
   return "recusa_papel";
 }

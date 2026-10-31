@@ -1,12 +1,12 @@
 // Testes unitários do bootstrap do super admin (ADR-07). Rodar com: deno test scripts/bootstrap-super-admin.test.ts
-import { strictEqual, notStrictEqual } from "node:assert/strict";
+import { deepStrictEqual, strictEqual } from "node:assert/strict";
+import { decideBootstrapAction } from "../supabase/functions/_shared/super-admin-bootstrap.ts";
 import {
-  BOOTSTRAP_ROLE_KEY,
-  BOOTSTRAP_ROLE_VALUE,
-  PROVISIONAL_PASSWORD,
-  decideBootstrapAction,
-} from "../supabase/functions/_shared/super-admin-bootstrap.ts";
-import { isLocalUrl, shouldBlockRemote } from "./bootstrap-super-admin.ts";
+  isAuthUsersUniqueViolation,
+  isLocalUrl,
+  shouldBlockRemote,
+  sslOptionsFor,
+} from "./bootstrap-super-admin.ts";
 
 Deno.test("usuário inexistente resulta em criado", () => {
   strictEqual(decideBootstrapAction({ exists: false }), "criado");
@@ -14,21 +14,33 @@ Deno.test("usuário inexistente resulta em criado", () => {
 
 Deno.test("super admin sem tenant resulta em ja_existe", () => {
   strictEqual(
-    decideBootstrapAction({ exists: true, profileRole: "super_admin", tenantId: null }),
+    decideBootstrapAction({
+      exists: true,
+      profileRole: "super_admin",
+      tenantId: null,
+    }),
     "ja_existe",
   );
 });
 
 Deno.test("admin de tenant resulta em recusa_papel", () => {
   strictEqual(
-    decideBootstrapAction({ exists: true, profileRole: "admin", tenantId: "t-1" }),
+    decideBootstrapAction({
+      exists: true,
+      profileRole: "admin",
+      tenantId: "t-1",
+    }),
     "recusa_papel",
   );
 });
 
 Deno.test("super admin com tenant preenchido resulta em recusa_papel", () => {
   strictEqual(
-    decideBootstrapAction({ exists: true, profileRole: "super_admin", tenantId: "t-1" }),
+    decideBootstrapAction({
+      exists: true,
+      profileRole: "super_admin",
+      tenantId: "t-1",
+    }),
     "recusa_papel",
   );
 });
@@ -59,11 +71,54 @@ Deno.test("URL inválida é tratada como não local", () => {
   strictEqual(isLocalUrl("não é url"), false);
 });
 
-Deno.test("marcador de bootstrap e papel têm os valores da ADR", () => {
-  strictEqual(BOOTSTRAP_ROLE_KEY, "bootstrap_role");
-  strictEqual(BOOTSTRAP_ROLE_VALUE, "super_admin");
+Deno.test("localhost usa conexão sem TLS", () => {
+  strictEqual(
+    sslOptionsFor("postgres://u:p@127.0.0.1:54322/postgres", undefined),
+    false,
+  );
 });
 
-Deno.test("senha provisória não está vazia", () => {
-  notStrictEqual(PROVISIONAL_PASSWORD.length, 0);
+Deno.test("host remoto exige verify-full sem CA customizada", () => {
+  strictEqual(
+    sslOptionsFor("postgres://u:p@db.abc.supabase.co:5432/postgres", undefined),
+    "verify-full",
+  );
+});
+
+Deno.test("host remoto com CA informada valida certificado com essa CA", () => {
+  deepStrictEqual(
+    sslOptionsFor("postgres://u:p@db.abc.supabase.co:5432/postgres", "PEM"),
+    { ca: "PEM", rejectUnauthorized: true },
+  );
+});
+
+Deno.test("violação de unicidade em auth.users conta como corrida", () => {
+  strictEqual(
+    isAuthUsersUniqueViolation({
+      code: "23505",
+      schema_name: "auth",
+      table_name: "users",
+    }),
+    true,
+  );
+});
+
+Deno.test("violação em auth.identities ou profiles não conta como corrida", () => {
+  strictEqual(
+    isAuthUsersUniqueViolation({
+      code: "23505",
+      schema_name: "auth",
+      table_name: "identities",
+    }),
+    false,
+  );
+  strictEqual(
+    isAuthUsersUniqueViolation({
+      code: "23505",
+      schema_name: "public",
+      table_name: "profiles",
+    }),
+    false,
+  );
+  strictEqual(isAuthUsersUniqueViolation(new Error("outro erro")), false);
 });

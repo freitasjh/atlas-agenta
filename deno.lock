@@ -2352,6 +2352,10 @@
     }
   },
   "workspace": {
+    "dependencies": [
+      "npm:postgres@3.4.5",
+      "npm:zod@3.23.8"
+    ],
     "packageJson": {
       "dependencies": [
         "npm:@fontsource/inter@5.1.0",
