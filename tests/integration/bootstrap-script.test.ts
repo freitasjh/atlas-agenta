@@ -1,9 +1,10 @@
 // Script de operador scripts/bootstrap-super-admin.ts (ADR-07). Roda o script de verdade via Deno
 // contra o banco local. Cobre CA-07, CA-08, CA-10 e CA-11.
 //
-// CA-09 (recusa de usuário existente com papel de tenant) não roda aqui: exigiria mudar o papel
-// de admin@neox.com.br, que esta suíte não altera. A decisão pura (`decideBootstrapAction`) já
-// cobre o caso nos testes unitários do script (`npm run test:scripts`).
+// CA-09 (recusa de usuário existente com papel de tenant) não tem caso aqui: exigiria mudar o papel
+// de admin@neox.com.br, que esta suíte não altera (ADR-10, regras da suíte). O caso é coberto pelos
+// testes unitários de `scripts/bootstrap-super-admin.test.ts` ("admin de tenant resulta em
+// recusa_papel"), rodados por `npm run test:scripts`.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -66,9 +67,9 @@ describe("CA-07 e CA-08 script cria e é idempotente", () => {
   let tenantsBefore = 0;
 
   beforeAll(() => {
+    tenantsBefore = Number(sql("select count(*) from public.tenants;"));
     first = runScript(dbUrl);
     second = runScript(dbUrl);
-    tenantsBefore = Number(sql("select count(*) from public.tenants;"));
   });
 
   it("primeira execução termina com código 0 e status criado ou ja_existe", () => {
@@ -125,7 +126,3 @@ describe("CA-11 segredos fora da saída do script", () => {
     expect(run.output).not.toContain("bootstrap_role");
   });
 });
-
-// Pendente: exige alterar o papel de admin@neox.com.br, que esta suíte não altera. Ver o
-// comentário no topo do arquivo.
-it.skip("CA-09 recusa usuário existente com papel de tenant (pendente, ver comentário do arquivo)", () => {});
