@@ -51,60 +51,87 @@ function fail(message: string): never {
 
 type Outcome = { status: BootstrapAction; userId: string | null };
 
-// Roda dentro de uma transação. Qualquer exceção desfaz a inserção (inclusive usuário e identidade).
-async function bootstrap(tx: postgres.TransactionSql): Promise<Outcome> {
-  const [existing] = await tx<{ id: string }[]>`
-    select id from auth.users where lower(email) = lower(${SUPER_ADMIN_EMAIL}) limit 1 for update`;
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "23505";
+}
 
-  if (!existing) {
-    const [created] = await tx<{ id: string }[]>`
-      insert into auth.users (
-        id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
-        raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous,
-        created_at, updated_at, confirmation_token, recovery_token,
-        email_change_token_new, email_change, phone_change, phone_change_token,
-        email_change_token_current, reauthentication_token
-      ) values (
-        gen_random_uuid(), ${ZERO_INSTANCE_ID}, 'authenticated', 'authenticated', ${SUPER_ADMIN_EMAIL},
-        extensions.crypt(${PROVISIONAL_PASSWORD}, extensions.gen_salt('bf')), now(),
-        ${tx.json({ provider: "email", providers: ["email"], [BOOTSTRAP_ROLE_KEY]: BOOTSTRAP_ROLE_VALUE })},
-        '{}'::jsonb, false, false, now(), now(),
-        '', '', '', '', '', '', '', ''
-      )
-      returning id`;
+// Insere usuário e identidade. O trigger handle_new_user cria o profile na mesma transação.
+async function insertSuperAdmin(tx: postgres.TransactionSql): Promise<string> {
+  const [created] = await tx<{ id: string }[]>`
+    insert into auth.users (
+      id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous,
+      created_at, updated_at, confirmation_token, recovery_token,
+      email_change_token_new, email_change, phone_change, phone_change_token,
+      email_change_token_current, reauthentication_token
+    ) values (
+      gen_random_uuid(), ${ZERO_INSTANCE_ID}, 'authenticated', 'authenticated', ${SUPER_ADMIN_EMAIL},
+      extensions.crypt(${PROVISIONAL_PASSWORD}, extensions.gen_salt('bf')), now(),
+      ${tx.json({ provider: "email", providers: ["email"], [BOOTSTRAP_ROLE_KEY]: BOOTSTRAP_ROLE_VALUE })},
+      '{}'::jsonb, false, false, now(), now(),
+      '', '', '', '', '', '', '', ''
+    )
+    returning id`;
 
-    await tx`
-      insert into auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
-      values (
-        gen_random_uuid(), ${created.id}, ${created.id},
-        ${tx.json({ sub: created.id, email: SUPER_ADMIN_EMAIL, email_verified: true, phone_verified: false })},
-        'email', now(), now()
-      )`;
+  await tx`
+    insert into auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
+    values (
+      gen_random_uuid(), ${created.id}, ${created.id},
+      ${tx.json({ sub: created.id, email: SUPER_ADMIN_EMAIL, email_verified: true, phone_verified: false })},
+      'email', now(), now()
+    )`;
 
-    // O trigger handle_new_user criou o profile dentro da mesma transação. Confere antes de commitar.
-    const [profileRow] = await tx`
-      select role, tenant_id, must_change_password from profiles where id = ${created.id}`;
-    const profile = profileRow ? profileSchema.parse(profileRow) : null;
-    const ok = profile !== null &&
-      profile.role === "super_admin" &&
-      profile.tenant_id === null &&
-      profile.must_change_password === true;
-    if (!ok) {
-      throw new Error("perfil fora do esperado");
-    }
-    return { status: "criado", userId: created.id };
-  }
+  return created.id;
+}
 
+// Decide o status a partir do profile atual do usuário existente. Não altera nada (RQ-05).
+async function outcomeForExisting(tx: postgres.TransactionSql, userId: string): Promise<Outcome> {
   const [profileRow] = await tx`
-    select role, tenant_id, must_change_password from profiles where id = ${existing.id}`;
+    select role, tenant_id, must_change_password from profiles where id = ${userId}`;
   const profile = profileRow ? profileSchema.parse(profileRow) : null;
   const state: BootstrapState = {
     exists: true,
     profileRole: profile?.role ?? null,
     tenantId: profile?.tenant_id ?? null,
   };
-  // Usuário existente nunca tem senha nem flag alterados aqui (RQ-05).
-  return { status: decideBootstrapAction(state), userId: existing.id };
+  return { status: decideBootstrapAction(state), userId };
+}
+
+// Roda dentro de uma transação. Qualquer exceção desfaz a inserção (inclusive usuário e identidade).
+async function bootstrap(tx: postgres.TransactionSql): Promise<Outcome> {
+  const [existing] = await tx<{ id: string }[]>`
+    select id from auth.users where lower(email) = lower(${SUPER_ADMIN_EMAIL}) limit 1 for update`;
+
+  if (existing) {
+    return outcomeForExisting(tx, existing.id);
+  }
+
+  let createdId: string;
+  try {
+    // Savepoint: se a inserção bater no índice único, só ela é desfeita e a transação segue válida.
+    createdId = await tx.savepoint((sp) => insertSuperAdmin(sp));
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    // Outra execução criou o super admin entre a leitura e o insert. Depois do commit dela, a
+    // releitura enxerga o usuário e o resultado é ja_existe.
+    const [raced] = await tx<{ id: string }[]>`
+      select id from auth.users where lower(email) = lower(${SUPER_ADMIN_EMAIL}) limit 1`;
+    if (!raced) throw err;
+    return outcomeForExisting(tx, raced.id);
+  }
+
+  // Confere o profile criado pelo trigger antes de commitar.
+  const [profileRow] = await tx`
+    select role, tenant_id, must_change_password from profiles where id = ${createdId}`;
+  const profile = profileRow ? profileSchema.parse(profileRow) : null;
+  const ok = profile !== null &&
+    profile.role === "super_admin" &&
+    profile.tenant_id === null &&
+    profile.must_change_password === true;
+  if (!ok) {
+    throw new Error("perfil fora do esperado");
+  }
+  return { status: "criado", userId: createdId };
 }
 
 async function main(): Promise<void> {
