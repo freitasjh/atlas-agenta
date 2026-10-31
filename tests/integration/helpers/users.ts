@@ -162,6 +162,22 @@ export async function deleteTestUsers(): Promise<void> {
   }
 }
 
+/**
+ * Cria um auth user sem profile. Cria um usuário comum (o trigger gera profile e empresa), e depois
+ * apaga o profile e a empresa pela service role. O usuário de auth fica para a limpeza do afterAll.
+ * Serve para montar uma linha de insert que passe na FK para auth.users.
+ */
+export async function createAuthUserWithoutProfile(prefix = "orphan"): Promise<string> {
+  const user = await createCommonUser(prefix);
+  const tenantId = await tenantIdOf(user.id);
+  const svc = serviceClient();
+  const { error: profileError } = await svc.from("profiles").delete().eq("id", user.id);
+  if (profileError) throw new Error(`Remoção do profile de teste falhou: ${profileError.message}`);
+  const { error: tenantError } = await svc.from("tenants").delete().eq("id", tenantId);
+  if (tenantError) throw new Error(`Remoção da empresa de teste falhou: ${tenantError.message}`);
+  return user.id;
+}
+
 /** Empresa do usuário comum (tenant criado pelo trigger no cadastro). */
 export async function tenantIdOf(userId: string): Promise<string> {
   const profile = await readProfile(userId);

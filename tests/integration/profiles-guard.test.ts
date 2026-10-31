@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { serviceClient } from "./helpers/clients.ts";
 import {
+  createAuthUserWithoutProfile,
   createCommonUser,
   createSuperAdminUser,
   deleteTestUsers,
   readProfile,
+  tenantIdOf,
   type TestUser,
 } from "./helpers/users.ts";
 
@@ -65,13 +67,22 @@ describe("CA-05 cliente não altera colunas privilegiadas de profiles", () => {
 });
 
 describe("CA-06 cliente não cria nem apaga profile", () => {
-  it("insert por sessão autenticada é negado", async () => {
+  it("insert por sessão autenticada é negado pela RLS (42501) em linha válida nas constraints", async () => {
+    // Id de auth user existente sem profile (passa na FK), empresa existente e papel
+    // `professional` com tenant (passa em profiles_tenant_required_for_non_super). Assim o único
+    // motivo para recusar a linha é a ausência de policy de insert.
+    const orphanId = await createAuthUserWithoutProfile("guard-orphan");
+    const tenantId = await tenantIdOf(admin.id);
+
     const { error } = await admin.client.from("profiles").insert({
-      id: randomUUID(),
-      role: "admin",
-      tenant_id: null,
+      id: orphanId,
+      tenant_id: tenantId,
+      role: "professional",
     });
-    expect(error).not.toBeNull();
+    expect(error?.code).toBe("42501");
+
+    const { data } = await serviceClient().from("profiles").select("id").eq("id", orphanId);
+    expect(data ?? []).toHaveLength(0);
   });
 
   it("delete do próprio profile por sessão autenticada não remove a linha", async () => {

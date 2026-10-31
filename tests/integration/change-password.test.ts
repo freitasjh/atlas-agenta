@@ -132,10 +132,18 @@ describe("ADR-08 reserva e corrida entre duas requisições", () => {
       const passwordA = freshPassword();
       const passwordB = freshPassword();
 
-      const [a, b] = await Promise.all([
-        changePassword(passwordA, user.accessToken),
-        changePassword(passwordB, user.accessToken),
-      ]);
+      // Janela de cada requisição: início antes do envio e fim ao receber a resposta. Se as janelas
+      // não se sobrepõem, as chamadas foram serializadas e a rodada não prova a corrida.
+      const timed = async (password: string) => {
+        const started = performance.now();
+        const response = await changePassword(password, user.accessToken);
+        return { response, started, ended: performance.now() };
+      };
+      const [timedA, timedB] = await Promise.all([timed(passwordA), timed(passwordB)]);
+      expect(timedA.started < timedB.ended && timedB.started < timedA.ended).toBe(true);
+
+      const a = timedA.response;
+      const b = timedB.response;
       const outcomes = [a, b].map((r) => r.status).sort();
       expect(outcomes).toEqual([200, 409]);
 
