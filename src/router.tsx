@@ -25,6 +25,7 @@ import { CobrancasPage, DashboardPage, QuitacaoPage } from "@/app/pages";
 import { AgendaPage } from "@/app/agenda/AgendaPage";
 import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
+import { MembrosPage } from "@/app/config/membros/MembrosPage";
 import { RelatoriosHubPage } from "@/app/relatorios/RelatoriosHubPage";
 import { ComissoesPage } from "@/app/relatorios/ComissoesPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
@@ -40,6 +41,8 @@ import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscriptio
 
 import { AdminLayout } from "@/admin/AdminLayout";
 import { AdminDashboardPage, EmpresasPage } from "@/admin/pages";
+import { ConvitesPage } from "@/admin/convites/ConvitesPage";
+import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
 
 /**
  * Casca de roteamento (data router). A raiz monta providers + skip-link +
@@ -135,6 +138,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                             path: "mensagens",
                             element: <TemplatesMensagemPage />,
                           },
+                          { path: "membros", element: <MembrosPage /> },
                         ],
                       },
                       {
@@ -176,6 +180,8 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                       },
                       { path: "empresas", element: <EmpresasPage /> },
                       { path: "dashboard", element: <AdminDashboardPage /> },
+                      { path: "convites", element: <ConvitesPage /> },
+                      { path: "auditoria", element: <AuditoriaPage /> },
                     ],
                   },
                 ],
