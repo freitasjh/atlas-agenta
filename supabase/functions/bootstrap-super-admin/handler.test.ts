@@ -179,7 +179,6 @@ Deno.test("sem usuário cria usuário e profile super_admin sem tenant", async (
     id: "novo-id",
     tenant_id: null,
     role: "super_admin",
-    must_change_password: true,
   });
   deepStrictEqual(calls.deleteUser, []);
 });

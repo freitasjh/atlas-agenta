@@ -262,12 +262,12 @@ async function createSuperAdmin(service: SupabaseClient): Promise<Response> {
   const userId = data.user.id;
 
   // O trigger de auth.users foi removido (ADR-02), então o profile nasce aqui, com service role.
-  // `must_change_password` liga a trava do painel (RLS, ADR-03) até a troca obrigatória (ADR-04).
+  // A troca obrigatória vive em `app_metadata.must_change_password` (gravado acima); as colunas
+  // antigas de `profiles` foram removidas na ADR-12.
   const { error: profileError } = await service.from("profiles").insert({
     id: userId,
     tenant_id: null,
     role: "super_admin",
-    must_change_password: true,
   });
   if (profileError) {
     console.error("bootstrap-super-admin: profile insert failed", profileError.code ?? "no-code");
