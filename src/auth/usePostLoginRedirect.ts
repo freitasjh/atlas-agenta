@@ -1,46 +1,38 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import type { AuthSession } from "@supabase/supabase-js";
 
-import { supabase } from "@/lib/supabase";
 import { parseAuthClaims } from "@/lib/auth-claims";
+import { resolvePostLoginDestination } from "@/auth/resolvePostLoginDestination";
 
 /**
- * Decide o destino pós-login. Respeita o `from` (rota que o guard interrompeu)
- * quando houver; caso contrário, manda `super_admin` para `/admin` e os demais
- * papéis para `/app`.
+ * Redireciona depois do login usando a sessão que o `signInWithPassword`
+ * devolveu (ou a sessão atual) — ADR-08.
  *
- * O papel vem das claims do access token (ADR-07), não de uma leitura de
- * `profiles`: o hook `custom-access-token` já emitiu `user_role` no token da
- * sessão (ADR-01). Decodificar no cliente não é fronteira de segurança — serve
- * para rotear; os guards e o RLS decidem acesso. Sessão sem claims cai no
- * destino padrão `/app`; o guard (ADR-08) trata como identidade ilegível. As
- * regras de destino (ex.: troca de senha obrigatória) ficam na ADR-11.
+ * Nenhuma consulta de rede: o papel e a flag de troca de senha já estão nas
+ * claims do access token (ADR-07), e a decisão é da função pura
+ * `resolvePostLoginDestination`. Decodificar no cliente não é fronteira de
+ * segurança — serve para rotear; guards e RLS decidem acesso.
+ *
+ * O `from` (rota que o guard interrompeu) só vale para papéis de tenant e só se
+ * for caminho interno válido. Depois da troca de senha ele NÃO é preservado: o
+ * destino é sempre o do papel.
  */
 export function usePostLoginRedirect() {
   const navigate = useNavigate();
 
   return useCallback(
-    async (from?: string) => {
-      if (from) {
-        navigate(from, { replace: true });
-        return;
-      }
+    (session: AuthSession | null, from?: string | null) => {
+      const claims = session ? parseAuthClaims(session.access_token) : null;
 
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-        if (error) throw error;
-        const claims = session
-          ? parseAuthClaims(session.access_token)
-          : null;
-        navigate(claims?.role === "super_admin" ? "/admin" : "/app", {
-          replace: true,
-        });
-      } catch {
-        navigate("/app", { replace: true });
-      }
+      navigate(
+        resolvePostLoginDestination({
+          role: claims?.role ?? null,
+          mustChangePassword: claims?.mustChangePassword ?? false,
+          from,
+        }),
+        { replace: true },
+      );
     },
     [navigate],
   );
