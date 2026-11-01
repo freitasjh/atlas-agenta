@@ -11,7 +11,8 @@ import { sessionQueryKey } from "@/hooks/useSession";
  * evento `PASSWORD_RECOVERY` (usado pela tela de redefinição, ADR-07).
  *
  * Em `SIGNED_OUT`, também remove as queries de identidade dependentes para não
- * servir profile/tenant obsoletos antes do redirect do guard.
+ * servir tenant obsoleto antes do redirect do guard. A identidade em si vem das
+ * claims do JWT (ADR-07), que deixam de existir junto com a sessão.
  *
  * Único consumidor que toca o client no LOAD (montado no `RootLayout` que
  * envolve todas as rotas). Por isso traz o guard por `isSupabaseConfigured`:
@@ -35,7 +36,6 @@ export function AuthListener() {
       queryClient.setQueryData(sessionQueryKey, session);
 
       if (event === "SIGNED_OUT") {
-        queryClient.removeQueries({ queryKey: ["profile"] });
         queryClient.removeQueries({ queryKey: ["tenant"] });
       }
     });

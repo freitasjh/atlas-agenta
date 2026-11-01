@@ -51,7 +51,6 @@ import {
 } from "@/hooks/useAppointments";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import { useServices } from "@/hooks/useServices";
-import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
@@ -287,13 +286,12 @@ export function AgendaPage() {
   // pode ler comissão (admin/professional; receptionist nunca). Defesa em
   // profundidade — a trava real do snapshot é o RLS financeiro da ADR-02.
   const showCommission = commissionFeature && canViewCommission;
-  const { tenant } = useCurrentUser();
+  const { tenant, userId } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
   const servicosLower = servicosLabel.toLowerCase();
   const profissionaisLower = profissionaisLabel.toLowerCase();
 
-  const { data: profile } = useProfile();
   const professionalsQuery = useProfessionals({ activeOnly: true });
   const servicesQuery = useServices({ activeOnly: true });
 
@@ -317,11 +315,11 @@ export function AgendaPage() {
   // Profissional vinculado ao próprio login (quando `professional`).
   const ownProfessional = useMemo(() => {
     if (canScheduleForAnyProfessional) return null;
-    if (!profile) return null;
+    if (!userId) return null;
     return (
-      professionalsQuery.data?.find((p) => p.profile_id === profile.id) ?? null
+      professionalsQuery.data?.find((p) => p.profile_id === userId) ?? null
     );
-  }, [canScheduleForAnyProfessional, profile, professionalsQuery.data]);
+  }, [canScheduleForAnyProfessional, userId, professionalsQuery.data]);
 
   // Para o `professional`, a lista já chega filtrada pelo RLS; o filtro visível
   // some. Para admin/recepção, aplica o filtro escolhido (ou todos).

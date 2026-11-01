@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useProfessionals } from "@/hooks/useProfessionals";
-import { useProfile } from "@/hooks/useProfile";
 
 /**
  * Deriva o `professional_id` efetivo da sessão para o recorte de UI do dashboard
@@ -11,8 +11,9 @@ import { useProfile } from "@/hooks/useProfile";
  *
  *   - `admin`/`receptionist` (`canScheduleForAnyProfessional === true`)
  *     → `undefined`: os agregados/listas cobrem o **tenant inteiro**.
- *   - `professional` → o `professionals.id` ligado ao próprio `profile.id`:
- *     os números/listas ficam na **própria agenda**.
+ *   - `professional` → o `professionals.id` ligado ao próprio `userId`
+ *     (identidade da claim da sessão; `professionals.profile_id` aponta para o
+ *     `auth.users.id`): os números/listas ficam na **própria agenda**.
  *
  * É **defesa em profundidade / conveniência de UI**, NÃO a fronteira: as RPCs
  * (`SECURITY INVOKER`) e as leituras rodam sob o RLS de `appointments`, que já
@@ -21,15 +22,15 @@ import { useProfile } from "@/hooks/useProfile";
  */
 export function useEffectiveProfessionalId(): string | undefined {
   const { canScheduleForAnyProfessional } = usePermissions();
-  const { data: profile } = useProfile();
+  const { userId } = useCurrentUser();
   const professionalsQuery = useProfessionals({ activeOnly: true });
 
   return useMemo(() => {
     if (canScheduleForAnyProfessional) return undefined;
-    if (!profile) return undefined;
+    if (!userId) return undefined;
     return (
-      professionalsQuery.data?.find((p) => p.profile_id === profile.id)?.id ??
+      professionalsQuery.data?.find((p) => p.profile_id === userId)?.id ??
       undefined
     );
-  }, [canScheduleForAnyProfessional, profile, professionalsQuery.data]);
+  }, [canScheduleForAnyProfessional, userId, professionalsQuery.data]);
 }

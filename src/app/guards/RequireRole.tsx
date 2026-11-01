@@ -12,11 +12,11 @@ interface RequireRoleProps {
 }
 
 /**
- * Guard de RBAC. O `role` vem SEMPRE de `useCurrentUser` (profile do servidor,
- * sob RLS) — nunca de parâmetro do cliente; nenhum `tenant_id` é lido aqui.
+ * Guard de RBAC. O `role` vem SEMPRE de `useCurrentUser` (claim `user_role` do
+ * JWT, ADR-07) — nunca de parâmetro do cliente; nenhum `tenant_id` é lido aqui.
  *
  * - Carregando → fallback.
- * - Sessão com profile/tenant ilegível → logout defensivo + `/login`
+ * - Sessão com identidade/tenant ilegível → logout defensivo + `/login`
  *   (anti "fail-open"); não libera acesso em erro.
  * - `role` fora de `roles` → tela 403 "Acesso restrito" (nomeada, sem redirect
  *   silencioso), com link para a área do papel: `admin`/`professional`/
@@ -31,7 +31,7 @@ export function RequireRole({ roles }: RequireRoleProps) {
   const {
     isLoadingAuth,
     isAuthenticated,
-    hasProfileError,
+    hasIdentityError,
     hasTenantError,
     role,
   } = useCurrentUser();
@@ -40,7 +40,7 @@ export function RequireRole({ roles }: RequireRoleProps) {
     return <RouteFallback />;
   }
 
-  if (isAuthenticated && (hasProfileError || hasTenantError)) {
+  if (isAuthenticated && (hasIdentityError || hasTenantError)) {
     return <DefensiveLogout />;
   }
 

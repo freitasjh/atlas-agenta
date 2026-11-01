@@ -21,7 +21,6 @@ import {
 
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useProfile } from "@/hooks/useProfile";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import {
   useDashboardSummary,
@@ -67,10 +66,9 @@ const PERIOD_OPTIONS: { value: DashboardPeriod; label: string }[] = [
 
 export function DashboardPage() {
   const { canScheduleForAnyProfessional } = usePermissions();
-  const { tenant } = useCurrentUser();
+  const { tenant, userId } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
-  const { data: profile } = useProfile();
   const professionalsQuery = useProfessionals({ activeOnly: true });
 
   const [period, setPeriod] = useState<DashboardPeriod>("semana");
@@ -79,11 +77,11 @@ export function DashboardPage() {
   // padrão `ownProfessional` da AgendaPage.
   const ownProfessional = useMemo(() => {
     if (canScheduleForAnyProfessional) return null;
-    if (!profile) return null;
+    if (!userId) return null;
     return (
-      professionalsQuery.data?.find((p) => p.profile_id === profile.id) ?? null
+      professionalsQuery.data?.find((p) => p.profile_id === userId) ?? null
     );
-  }, [canScheduleForAnyProfessional, profile, professionalsQuery.data]);
+  }, [canScheduleForAnyProfessional, userId, professionalsQuery.data]);
 
   // Admin/recepção → undefined (tenant inteiro); professional → só a própria
   // agenda. Conveniência de UI / defesa em profundidade; o RLS é a fronteira.

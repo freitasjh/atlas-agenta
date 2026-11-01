@@ -7,7 +7,7 @@ import {
   SUBSCRIPTION_STATUSES,
   type CurrentTenant,
 } from "@/types/domain";
-import { useProfile } from "@/hooks/useProfile";
+import { useAuthClaims } from "@/hooks/useAuthClaims";
 
 /**
  * Schema de validação do shape devolvido pelo `tenants`. `subscription_status`
@@ -25,16 +25,17 @@ export const tenantSchema = z.object({
 });
 
 /**
- * Tenant do profile (`subscription_status`, `trade_name`, `timezone`).
+ * Tenant do usuário (`subscription_status`, `trade_name`, `timezone`).
  *
- * `select` SEM `tenant_id` do cliente — o RLS (via `current_tenant_id()`)
- * garante que só o tenant do usuário volta. `super_admin` não tem `tenant_id`:
- * o hook fica desabilitado e `data` permanece `undefined` (tratado como `null`
- * pelo agregador).
+ * O `tenantId` vem da claim `tenant_id` do JWT (ADR-07) — só habilita a query.
+ * O `select` continua SEM `tenant_id` do cliente: o RLS (via
+ * `current_tenant_id()`) garante que só o tenant do usuário volta.
+ * `super_admin` não tem `tenant_id`: o hook fica desabilitado e `data`
+ * permanece `undefined` (tratado como `null` pelo agregador).
  */
 export function useTenant() {
-  const { data: profile } = useProfile();
-  const tenantId = profile?.tenant_id ?? null;
+  const claims = useAuthClaims();
+  const tenantId = claims?.tenantId ?? null;
 
   return useQuery<CurrentTenant>({
     queryKey: ["tenant", tenantId],
