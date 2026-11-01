@@ -7,11 +7,13 @@ import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { LandingPage, PrecosPage, TermosPage } from "@/marketing/pages";
 
 import { AuthLayout } from "@/auth/AuthLayout";
+import { GateLayout } from "@/auth/GateLayout";
 import {
   CadastroPage,
   LoginPage,
   RecuperarSenhaPage,
   RedefinirSenhaPage,
+  TrocarSenhaPage,
 } from "@/auth/pages";
 
 import { AppLayout } from "@/app/AppLayout";
@@ -62,6 +64,19 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
           { path: "cadastro", element: <CadastroPage /> },
           { path: "recuperar-senha", element: <RecuperarSenhaPage /> },
           { path: "redefinir-senha", element: <RedefinirSenhaPage /> },
+        ],
+      },
+      // Troca de senha obrigatória (ADR-10). Exige sessão (`RequireAuth`), mas
+      // fica FORA do guard de troca (ADR-11): incluir o guard aqui criaria
+      // laço, porque é esta tela que limpa a flag.
+      {
+        path: "trocar-senha",
+        element: <RequireAuth />,
+        children: [
+          {
+            element: <GateLayout />,
+            children: [{ index: true, element: <TrocarSenhaPage /> }],
+          },
         ],
       },
       // App do tenant (autenticado — guards são stubs nesta fase)

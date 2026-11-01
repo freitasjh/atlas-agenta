@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { mapInitialPasswordError } from "@/lib/auth-errors";
+import {
+  isInitialSessionExpiredError,
+  mapInitialPasswordError,
+} from "@/lib/auth-errors";
 import { initialPasswordSchema } from "@/lib/validations/auth";
 
 /**
@@ -194,4 +197,49 @@ describe("mapInitialPasswordError", () => {
       expect(mapInitialPasswordError(input)).toBe(GENERIC);
     },
   );
+});
+
+/**
+ * A tela de troca usa o predicado para decidir se oferece o link de login
+ * (ADR-10, achado 3 da revisão). Ele precisa concordar EXATAMENTE com a linha
+ * "sessão expirada" do mapeador — mensagem e link nunca divergem.
+ */
+describe("isInitialSessionExpiredError", () => {
+  it.each([
+    ["401 direto", { status: 401 }],
+    ["401 do context", { context: { status: 401 } }],
+    ["401 por statusCode", { statusCode: 401 }],
+    ["unauthenticated sem status", { code: "unauthenticated" }],
+    ["unauthenticated no body", { body: { code: "unauthenticated" } }],
+    [
+      "superseded com status",
+      { status: 409, code: "password_change_superseded" },
+    ],
+    ["superseded sem status", { code: "password_change_superseded" }],
+  ])("reconhece sessão expirada: %s", (_case, input) => {
+    expect(isInitialSessionExpiredError(input)).toBe(true);
+    expect(mapInitialPasswordError(input)).toBe(SESSION_EXPIRED);
+  });
+
+  it.each([
+    ["409 in_progress", { status: 409, code: "password_change_in_progress" }],
+    ["409 sem código", { status: 409 }],
+    ["400 password_is_initial", { status: 400, code: "password_is_initial" }],
+    ["400 password_too_short", { status: 400, code: "password_too_short" }],
+    ["500", { status: 500 }],
+    ["403", { status: 403 }],
+    ["rede", new TypeError("Failed to fetch")],
+    ["null", null],
+    ["string", "falhou"],
+    ["array", []],
+  ])("NÃO trata como sessão expirada: %s", (_case, input) => {
+    expect(isInitialSessionExpiredError(input)).toBe(false);
+    expect(mapInitialPasswordError(input)).not.toBe(SESSION_EXPIRED);
+  });
+
+  it("nunca lança", () => {
+    for (const input of [undefined, null, 0, "", {}, Symbol("x")]) {
+      expect(() => isInitialSessionExpiredError(input)).not.toThrow();
+    }
+  });
 });

@@ -7,3 +7,4 @@ export { LoginPage } from "@/auth/LoginPage";
 export { CadastroPage } from "@/auth/CadastroPage";
 export { RecuperarSenhaPage } from "@/auth/RecuperarSenhaPage";
 export { RedefinirSenhaPage } from "@/auth/RedefinirSenhaPage";
+export { TrocarSenhaPage } from "@/auth/TrocarSenhaPage";
