@@ -187,4 +187,15 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
       { path: "*", element: <NotFound /> },
     ],
   },
-]);
+], {
+  // Flags do React Router 7 ativadas já no 6 (ADR-14): sem isto cada carga
+  // emite 5 avisos de deprecação. `v7_startTransition` fica no `RouterProvider`
+  // (main.tsx) — é o único que pertence a ele.
+  future: {
+    v7_fetcherPersist: true,
+    v7_normalizeFormMethod: true,
+    v7_partialHydration: true,
+    v7_relativeSplatPath: true,
+    v7_skipActionErrorRevalidation: true,
+  },
+});

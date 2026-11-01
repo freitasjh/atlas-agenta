@@ -135,10 +135,11 @@ export function useUpdatePassword() {
 /**
  * Resultado da troca de senha obrigatória (ADR-09).
  *
- * `claims` vem do token RENOVADO. `null` significa que a renovação falhou (ou
- * não devolveu token): a senha já foi salva, então a mutation NÃO falha — a
- * tela (ADR-10) decide sair e pedir login de novo. Nunca se libera o painel
- * com token defasado.
+ * `claims` vem do token NOVO: relogin com a senha recém-definida no 200, ou
+ * token renovado no 409 `password_change_not_required`. `null` significa que a
+ * criação da sessão falhou (ou não devolveu token): a senha já foi salva, então
+ * a mutation NÃO falha — a tela (ADR-10) decide sair e pedir login de novo.
+ * Nunca se libera o painel com token defasado.
  */
 export interface ChangeInitialPasswordResult {
   ok: true;
@@ -182,6 +183,38 @@ async function readInvokeError(error: unknown): Promise<InvokeErrorDetails> {
   return { status: context.status, code };
 }
 
+/** Claims de um access token qualquer, ou `null`. Nunca lança. */
+function claimsFromToken(accessToken: string | null | undefined): AuthClaims | null {
+  return accessToken ? parseAuthClaims(accessToken) : null;
+}
+
+/** Claims do token renovado pelo `refreshSession` (token ainda válido). */
+async function refreshSessionClaims(): Promise<AuthClaims | null> {
+  const { data, error } = await supabase.auth.refreshSession();
+  if (error) return null;
+  return claimsFromToken(data.session?.access_token);
+}
+
+/**
+ * Claims do token criado por um login novo. Qualquer falha (rede, transporte,
+ * `AuthError`) devolve `null`: a senha já foi salva e a tela cai em `/login`.
+ */
+async function signInClaims(
+  email: string,
+  password: string,
+): Promise<AuthClaims | null> {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) return null;
+    return claimsFromToken(data.session?.access_token);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Troca a senha provisória pela definitiva (ADR-09) via Edge Function
  * `change-password` (ADR-04).
@@ -189,8 +222,15 @@ async function readInvokeError(error: unknown): Promise<InvokeErrorDetails> {
  * - O corpo leva SÓ `password`: o usuário vem do JWT (`verify_jwt`), nunca do
  *   cliente. A senha existe apenas nas variáveis da mutation — não entra em
  *   query key, `localStorage` nem `console`.
- * - Sucesso e 409 `password_change_not_required` (flag já limpo por outra aba)
- *   seguem para a renovação do token e devolvem as claims do token novo.
+ * - O e-mail é lido da sessão ANTES do invoke: o GoTrue revoga as sessões do
+ *   usuário quando a senha muda, então depois do `200` o `getSession()` pode
+ *   voltar vazio e o relogin ficaria sem identidade.
+ * - `200` (senha trocada, sessões revogadas): `refreshSession` responderia 400.
+ *   A sessão nova nasce de `signInWithPassword` com a senha nova; as claims do
+ *   token novo são o resultado. Falha do login não derruba a mutation —
+ *   devolve `claims: null` e a tela pede login de novo.
+ * - `409 password_change_not_required` (flag já limpo por outra aba): a senha
+ *   NÃO mudou e a sessão continua válida, então o caminho é `refreshSession`.
  * - `gcTime: 0`: o cache da mutation (incluindo as variáveis) morre assim que
  *   não há observador; a tela também chama `mutation.reset()` no sucesso.
  * - Os erros sobem como `Error` com `{ status, code }` para
@@ -207,6 +247,9 @@ export function useChangeInitialPassword() {
   >({
     gcTime: 0,
     mutationFn: async ({ password }) => {
+      const { data: currentSession } = await supabase.auth.getSession();
+      const email = currentSession.session?.user.email ?? null;
+
       const { error } = await supabase.functions.invoke("change-password", {
         body: { password },
       });
@@ -223,15 +266,15 @@ export function useChangeInitialPassword() {
         if (!alreadyChanged) {
           throw Object.assign(new Error("change_password_failed"), details);
         }
+
+        // Flag já limpo por outra aba: a senha atual continua valendo, logo a
+        // sessão em mãos segue renovável.
+        return { ok: true, claims: await refreshSessionClaims() };
       }
 
-      // A troca encerra as outras sessões (ADR-04): o token em mãos está
-      // defasado. Renovar é obrigatório para ver o flag limpo nas claims.
-      const { data, error: refreshError } =
-        await supabase.auth.refreshSession();
-      const accessToken = refreshError ? null : data.session?.access_token;
-      const claims = accessToken ? parseAuthClaims(accessToken) : null;
-
+      // 200: senha trocada e sessões revogadas. Relogin com a senha nova cria
+      // a sessão que carrega o flag já limpo nas claims.
+      const claims = email ? await signInClaims(email, password) : null;
       return { ok: true, claims };
     },
     onSuccess: () => {

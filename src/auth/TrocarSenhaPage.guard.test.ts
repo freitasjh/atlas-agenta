@@ -84,6 +84,18 @@ afterEach(() => {
   cleanup();
 });
 
+describe("TrocarSenhaPage — foco inicial", () => {
+  it("foca o primeiro campo de senha ao montar", () => {
+    const { container } = renderPage();
+
+    const [password] = Array.from(
+      container.querySelectorAll("input[type='password']"),
+    ) as HTMLInputElement[];
+
+    expect(document.activeElement).toBe(password);
+  });
+});
+
 describe("TrocarSenhaPage — guard de duplo submit", () => {
   it("dois submits síncronos chamam mutateAsync uma única vez", async () => {
     // Nunca resolve: a tela fica no estado pendente durante a asserção.
