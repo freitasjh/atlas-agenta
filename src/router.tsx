@@ -39,7 +39,7 @@ import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
 
 import { AdminLayout } from "@/admin/AdminLayout";
-import { EmpresasPage } from "@/admin/pages";
+import { AdminDashboardPage, EmpresasPage } from "@/admin/pages";
 
 /**
  * Casca de roteamento (data router). A raiz monta providers + skip-link +
@@ -175,6 +175,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                         element: <Navigate to="/admin/empresas" replace />,
                       },
                       { path: "empresas", element: <EmpresasPage /> },
+                      { path: "dashboard", element: <AdminDashboardPage /> },
                     ],
                   },
                 ],
