@@ -52,6 +52,27 @@ export type PasswordBodyResult =
   | { ok: false; code: PasswordBodyErrorCode };
 
 /**
+ * Payload da ÚNICA chamada `auth.admin.updateUserById`: grava a senha nova e zera
+ * `app_metadata.must_change_password` no mesmo update. As demais chaves de `app_metadata`
+ * (`provider`, `providers`, marcadores internos) são preservadas; a limpeza da flag no Auth é a
+ * contraparte da ADR-05, que liga o flag no bootstrap (ADR-04).
+ *
+ * Nunca logue nem ecoe o retorno: ele contém a senha em claro.
+ */
+export function buildPasswordUpdate(
+  currentAppMetadata: unknown,
+  password: string,
+): { password: string; app_metadata: Record<string, unknown> } {
+  const base =
+    typeof currentAppMetadata === "object" &&
+    currentAppMetadata !== null &&
+    !Array.isArray(currentAppMetadata)
+      ? (currentAppMetadata as Record<string, unknown>)
+      : {};
+  return { password, app_metadata: { ...base, must_change_password: false } };
+}
+
+/**
  * Valida o corpo bruto da requisição e devolve a senha nova ou o código de erro. Não trima a
  * senha: espaços fazem parte dela.
  */

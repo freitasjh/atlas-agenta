@@ -7,9 +7,11 @@
 //   3. a troca é reservada no banco (`claim_password_change`, ADR-08), que devolve um token da
 //      reserva. Sem flag ligado: 409 `password_change_not_required`. Com reserva ativa de outra
 //      requisição: 409 `password_change_in_progress`. Nos dois casos nada é gravado;
-//   4. a senha vai para o Auth ANTES do flag cair. Se o Auth recusar com 4xx, a reserva desta
-//      requisição é liberada. Em timeout, erro de rede ou 5xx a reserva expira sozinha em 60 s.
-//      Em qualquer falha o flag segue ligado;
+//   4. a senha vai para o Auth ANTES do flag cair. A MESMA chamada `updateUserById` zera
+//      `app_metadata.must_change_password` (o flag emitido no token pelo hook, ADR-01), preservando
+//      as demais chaves de `app_metadata`. Se o Auth recusar com 4xx, a reserva desta requisição é
+//      liberada. Em timeout, erro de rede ou 5xx a reserva expira sozinha em 60 s. Em qualquer
+//      falha os dois flags seguem ligados;
 //   5. o flag cai pela RPC `finish_password_change(user, token)`, que só zera o flag se a reserva
 //      ainda for a desta requisição. Se a reserva já não é desta requisição (outra troca tomou a
 //      reserva, ou a reserva foi liberada após falha de outra troca), a resposta é 409
@@ -23,6 +25,7 @@
 // Molde: `supabase/functions/admin-subscription/index.ts` (CORS, service client, JSON).
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
+  buildPasswordUpdate,
   claimRowSchema,
   isDefinitiveAuthRejection,
   parseChangePasswordBody,
@@ -116,7 +119,7 @@ function createServiceClient(): SupabaseClient {
 }
 
 type AuthResult =
-  | { kind: "ok"; userId: string }
+  | { kind: "ok"; userId: string; appMetadata: unknown }
   | { kind: "unauthenticated" }
   | { kind: "error" };
 
@@ -137,12 +140,13 @@ async function resolveUserId(req: Request, service: SupabaseClient): Promise<Aut
     return { kind: "error" };
   }
   if (!data.user) return { kind: "unauthenticated" };
-  return { kind: "ok", userId: data.user.id };
+  return { kind: "ok", userId: data.user.id, appMetadata: data.user.app_metadata };
 }
 
 async function changePassword(
   userId: string,
   password: string,
+  appMetadata: unknown,
   service: SupabaseClient,
 ): Promise<Response> {
   // 3. Reserva a troca no banco, antes de tocar no Auth. Um único UPDATE condicional decide a
@@ -170,9 +174,15 @@ async function changePassword(
   }
   const claimToken = claim.claim_token;
 
-  // 4. Grava a senha no Auth antes de zerar o flag (RQ-08). Se falhar, libera a reserva desta
-  //    requisição e o flag segue ligado, então a troca pode ser repetida.
-  const { error: updateErr } = await service.auth.admin.updateUserById(userId, { password });
+  // 4. Grava a senha no Auth e zera `app_metadata.must_change_password` na MESMA chamada (ADR-04),
+  //    preservando as demais chaves de `app_metadata`. O flag do Auth é o que o hook
+  //    custom_access_token (ADR-01) emite; o flag canônico do banco cai no passo 5. Se o Auth
+  //    falhar, libera a reserva desta requisição e os dois flags seguem ligados, então a troca
+  //    pode ser repetida.
+  const { error: updateErr } = await service.auth.admin.updateUserById(
+    userId,
+    buildPasswordUpdate(appMetadata, password),
+  );
   if (updateErr) {
     console.error("change-password: auth password update failed", updateErr.status ?? "no-status");
     // Só libera a reserva quando o GoTrue recusou com 4xx (a senha não mudou). Em timeout, erro de
@@ -258,7 +268,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return errorResponse(body.code);
     }
 
-    return await changePassword(userId, body.password, service);
+    return await changePassword(userId, body.password, auth.appMetadata, service);
   } catch (err) {
     console.error("handler", err instanceof Error ? err.message : "erro inesperado");
     return errorResponse("internal_error");

@@ -135,6 +135,15 @@ verify_jwt = false
 [functions.whatsapp-inbound]
 verify_jwt = false
 
+# Bootstrap do super admin inicial (ADR-05): superfície PÚBLICA, porque o operador a chama sem
+# sessão. A autenticidade é o segredo `BOOTSTRAP_SECRET` no header `x-bootstrap-secret`, comparado
+# em tempo constante DENTRO da função — não pelo GoTrue. Sem o segredo no ambiente, a função
+# responde 404 (parece não existir); segredo errado, 401. A trava `ATLAS_ENV=local` recusa execução
+# fora do ambiente local com 403, mesmo com o segredo certo. Nunca deixar `verify_jwt = true` aqui:
+# a função não tem usuário para autenticar.
+[functions.bootstrap-super-admin]
+verify_jwt = false
+
 # Drenadora da fila de retentativa (ADR-05, Fatia 2): worker INTERNO do sistema. Mantém o
 # verify_jwt DEFAULT (true) de propósito — não é superfície pública. É invocada pelo cron
 # `atlas_retry_queue` (no hosted, via pg_net com a service role key, que o GoTrue aceita como
