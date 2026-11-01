@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import {
   Layers,
+  Mail,
   MessageCircle,
   MessageSquareText,
   Scissors,
@@ -35,7 +36,7 @@ interface ConfigShortcut {
  * chegam nas ADRs seguintes; o atalho de Profissionais já aponta para o destino.
  */
 export function ConfigHubPage() {
-  const { canManageMessageTemplates, canManageCatalog } = usePermissions();
+  const { canManageMessageTemplates, canManageCatalog, isAdmin } = usePermissions();
   const { combos: combosFeature } = useSegmentFeatures();
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
 
@@ -72,6 +73,13 @@ export function ConfigHubPage() {
       descricao: "Os textos que seus clientes recebem no WhatsApp.",
       icon: MessageSquareText,
       visible: canManageMessageTemplates,
+    },
+    {
+      to: "/app/config/membros",
+      titulo: "Membros",
+      descricao: "Convide pessoas para a sua empresa e gerencie convites.",
+      icon: Mail,
+      visible: isAdmin,
     },
   ];
 
