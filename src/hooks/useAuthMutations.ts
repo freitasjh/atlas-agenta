@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { AuthSession } from "@supabase/supabase-js";
 
 import { supabase } from "@/lib/supabase";
 import { sessionQueryKey } from "@/hooks/useSession";
@@ -39,29 +40,66 @@ export function useSignIn() {
 }
 
 /**
- * Cadastro da empresa. Mapeia `tradeName` (schema zod) → `trade_name` e
- * `segment` → `segment` no `options.data`, exatamente as chaves que o trigger
- * `handle_new_user` lê (`raw_user_meta_data->>'trade_name'` / `->>'segment'`)
- * para nomear o tenant e gravar o ramo. Divergência de chave = dado nascendo
- * nulo silenciosamente. O `segment` é metadado de signup validado no servidor
- * (defesa em profundidade com o `check` do banco); nunca é fronteira de acesso.
- * O cliente NUNCA envia `role` nem `tenant_id` — isso é decidido no servidor.
+ * Resultado do cadastro da empresa (ADR-03).
+ *
+ * `session` é a sessão aberta pelo login automático logo após a criação da
+ * conta. `null` significa "empresa criada, sessão não": a tela manda para
+ * `/login` com um aviso neutro — não há dado órfão, a conta só não está logada.
+ */
+export interface SignUpResult {
+  session: AuthSession | null;
+}
+
+/**
+ * Cadastro da empresa (ADR-03) pela Edge Function `signup-tenant` (ADR-02).
+ *
+ * - O trigger `handle_new_user` não existe mais: o cadastro nativo do Auth no
+ *   cliente criaria usuário SEM empresa/profile. A empresa (tenant + profile
+ *   admin + templates) nasce na RPC transacional do servidor.
+ * - O corpo leva SÓ os campos da ADR-02 (`email`, `password`, `trade_name`,
+ *   `segment`). Nada de `role`, `tenant_id` ou `app_metadata`: o papel é
+ *   decidido no servidor, nunca pelo cliente.
+ * - Em sucesso, o login automático usa o mesmo e-mail e a mesma senha; a
+ *   sessão resultante alimenta o destino pós-login da ADR-08.
+ * - A senha existe só nas variáveis da mutation: `gcTime: 0` descarta o cache
+ *   assim que não há observador (não entra em query key, `localStorage` nem
+ *   log).
+ * - Falha do invoke sobe como `Error` com `{ status, code }` para
+ *   `mapSignUpError` traduzir; a mensagem do servidor não chega à tela.
  */
 export function useSignUp() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ tradeName, segment, email, password }: SignupInput) => {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { trade_name: tradeName, segment },
-        },
+
+  return useMutation<SignUpResult, Error, SignupInput>({
+    gcTime: 0,
+    mutationFn: async ({ tradeName, segment, email, password }) => {
+      const { error } = await supabase.functions.invoke("signup-tenant", {
+        body: { email, password, trade_name: tradeName, segment },
       });
-      if (error) throw error;
-      return data;
+
+      if (error) {
+        const details = await readInvokeError(error);
+        throw Object.assign(new Error("signup_failed"), details);
+      }
+
+      // Conta já criada: falhar o login aqui não desfaz nada e não deve assustar
+      // o usuário com erro de cadastro. A tela pede login na tela própria.
+      // Por isso o `try/catch`: a falha pode vir como `{ error }` (AuthError) ou
+      // como throw (transporte/biblioteca). Os dois caminhos devolvem
+      // `{ session: null }` — nunca erro de cadastro por causa do login.
+      try {
+        const { data } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        return { session: data.session ?? null };
+      } catch {
+        return { session: null };
+      }
     },
-    onSuccess: () => {
+    onSuccess: ({ session }) => {
+      if (!session) return;
       void queryClient.invalidateQueries({ queryKey: sessionQueryKey });
     },
   });

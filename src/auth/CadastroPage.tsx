@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AuthError } from "@supabase/supabase-js";
 import { Loader2 } from "lucide-react";
 
 import {
@@ -33,17 +32,22 @@ import {
 
 import { signupSchema, type SignupInput } from "@/lib/validations/auth";
 import type { BusinessSegment } from "@/types/domain";
-import { mapAuthError } from "@/lib/auth-errors";
+import { mapSignUpError } from "@/lib/auth-errors";
 import { useSignUp } from "@/hooks/useAuthMutations";
+import { usePostLoginRedirect } from "@/auth/usePostLoginRedirect";
 import { getPlan, parsePlanSlug } from "@/lib/plans";
 
-/** Códigos de erro do Supabase que indicam e-mail já cadastrado. */
-const EMAIL_TAKEN_CODES = new Set(["user_already_exists", "email_exists"]);
+/**
+ * Aviso levado ao `/login` quando a conta nasce mas o login automático falha.
+ * Texto neutro: a conta existe, só não há sessão (ADR-03).
+ */
+const SKIP_AUTO_LOGIN_NOTICE = "Conta criada. Entre com seu e-mail e senha.";
 
 /**
  * Rótulos pt-BR dos ramos oferecidos no cadastro. Enum fechado de 3 valores
- * (sem "Outro", sem default silencioso); os literais são a chave-contrato
- * enviada em `options.data.segment` e validada pelo servidor.
+ * (sem "Outro", sem default silencioso); os literais são o mesmo enum do
+ * servidor — a chave enviada em `body.segment` da Edge Function `signup-tenant`
+ * (ADR-02).
  */
 const SEGMENT_LABELS: Record<BusinessSegment, string> = {
   barbearia: "Barbearia",
@@ -52,17 +56,19 @@ const SEGMENT_LABELS: Record<BusinessSegment, string> = {
 };
 
 /**
- * Cadastro da empresa. Cria `auth.user` + (via trigger `handle_new_user`)
- * tenant em `trial` e profile admin. Coleta nome da empresa, ramo
- * (obrigatório), e-mail e senha — CNPJ/plano ficam para uma fase posterior.
+ * Cadastro da empresa. A conta e a empresa (tenant em `trial` + profile admin +
+ * templates) nascem na Edge Function `signup-tenant` (ADR-02), numa transação
+ * só do servidor — o cliente não cria usuário nem escolhe papel.
  *
- * Com confirmação de e-mail desligada (MVP), o `signUp` já abre sessão e
- * seguimos para `/app`. O código permanece tolerante ao ramo "verifique seu
- * e-mail" caso a config do Supabase mude: se não vier sessão, mostramos a
- * instrução neutra em vez de navegar.
+ * Em sucesso o próprio hook faz o login com o mesmo e-mail e senha, e a sessão
+ * resultante segue para o destino pós-login da ADR-08 (flag de troca de senha
+ * primeiro, depois `/admin/empresas` para `super_admin`, senão `/app`).
+ * Se o login automático falhar, a conta já existe: a tela vai para `/login`
+ * com o aviso neutro, sem dado órfão e sem assustar o usuário com erro.
  */
 export function CadastroPage() {
   const signUp = useSignUp();
+  const redirectAfterLogin = usePostLoginRedirect();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   // Intenção de plano vinda de `/precos` (`?plano=`). Entrada não confiável:
@@ -70,7 +76,6 @@ export function CadastroPage() {
   // Puramente apresentacional — não entra em `onSubmit` nem é persistida.
   const plan = parsePlanSlug(params.get("plano"));
   const [serverError, setServerError] = useState<string | null>(null);
-  const [checkEmail, setCheckEmail] = useState(false);
   const feedbackRef = useRef<HTMLParagraphElement>(null);
 
   const form = useForm<SignupInput>({
@@ -89,63 +94,26 @@ export function CadastroPage() {
   });
 
   useEffect(() => {
-    if (serverError || checkEmail) feedbackRef.current?.focus();
-  }, [serverError, checkEmail]);
+    if (serverError) feedbackRef.current?.focus();
+  }, [serverError]);
 
   async function onSubmit(values: SignupInput) {
     setServerError(null);
     try {
-      const result = await signUp.mutateAsync(values);
-      if (result.session) {
-        navigate("/app", { replace: true });
-      } else {
-        // Confirmação de e-mail ligada: sessão só abre após o usuário confirmar.
-        setCheckEmail(true);
-      }
-    } catch (error) {
-      if (error instanceof AuthError && EMAIL_TAKEN_CODES.has(error.code ?? "")) {
-        form.setError("email", {
-          type: "server",
-          message: "Já existe uma conta com esse e-mail.",
-        });
+      const { session } = await signUp.mutateAsync(values);
+      if (session) {
+        redirectAfterLogin(session);
         return;
       }
-      setServerError(mapAuthError(error));
+      // Empresa criada, sessão não: nada de dado órfão — pede login na tela
+      // própria, com aviso neutro (ADR-03).
+      navigate("/login", {
+        replace: true,
+        state: { notice: SKIP_AUTO_LOGIN_NOTICE },
+      });
+    } catch (error) {
+      setServerError(mapSignUpError(error));
     }
-  }
-
-  if (checkEmail) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display text-2xl">
-            Confirme seu e-mail
-          </CardTitle>
-          <CardDescription>
-            Enviamos um link de confirmação para o e-mail informado. Abra-o para
-            ativar sua conta.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p
-            ref={feedbackRef}
-            tabIndex={-1}
-            className="text-sm text-muted-foreground focus-visible:outline-none"
-          >
-            Não recebeu? Confira a caixa de spam ou tente cadastrar novamente em
-            alguns minutos.
-          </p>
-        </CardContent>
-        <CardFooter className="text-sm text-muted-foreground">
-          <Link
-            to="/login"
-            className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            Voltar para o login
-          </Link>
-        </CardFooter>
-      </Card>
-    );
   }
 
   return (
