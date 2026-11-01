@@ -1,0 +1,29 @@
+{
+  "module": "Personalização por ramo de negócio (barbearia/clínica/salão) — Fase 1a: ramo no cadastro, terminologia da UI por ramo, catálogo de serviços e templates de mensagem seedados por ramo no onboarding",
+  "branch": "feat/personalizacao-por-segmento",
+  "baseBranch": "master",
+  "prPublished": true,
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/13",
+  "number": 13,
+  "title": "feat: personalização por ramo (barbearia/clínica/salão) — Fase 1a",
+  "state": "OPEN",
+  "adrsDelivered": [
+    { "id": "adr-01", "title": "check constraint em tenants.segment (enum fechado, nullable)" },
+    { "id": "adr-02", "title": "seed_message_templates com variante por ramo + handle_new_user lendo segment" },
+    { "id": "adr-03", "title": "BUSINESS_SEGMENTS + segment em CurrentTenant/useTenant (fundação TS)" },
+    { "id": "adr-04", "title": "Campo Ramo da empresa obrigatório no cadastro" },
+    { "id": "adr-05", "title": "Terminologia por ramo (segment-presets + useSegmentTerms) nas telas" },
+    { "id": "adr-06", "title": "Catálogo-semente de services por ramo no onboarding (client-side idempotente, sob RLS)" }
+  ],
+  "verification": {
+    "appFilesChanged": "supabase/migrations/20250225090000_tenant_segment_check.sql; supabase/migrations/20250225091000_segment_seed_templates.sql; src/types/domain.ts; src/lib/validations/auth.ts; src/lib/segment-presets.ts (+test); src/hooks/useTenant.ts (+test); src/hooks/useSegmentTerms.ts; src/hooks/useOnboardingSeed.ts; src/hooks/useAuthMutations.ts; src/auth/CadastroPage.tsx; src/app/AppLayout.tsx; src/app/agenda/AgendaPage.tsx; src/app/agenda/AppointmentFormDialog.tsx; src/app/config/ConfigHubPage.tsx; src/app/config/servicos/ServicosPage.tsx; src/app/dashboard/PendingConfirmationTable.tsx; src/lib/validations/auth.test.ts. 19 arquivos, +900/-53.",
+    "static": "npm run typecheck (tsc -b) verde; npm run build (vite) verde; npm run test (vitest) 65/65 passando incluindo segment-presets (12), useTenant (4), validations/auth (6), sem regressão em message-templates (16) e plans.",
+    "dataSqlQa": "VERIFICADO contra Supabase local. supabase db reset exit 0 (migrations novas idempotentes). RF-01: check aceita barbearia/clinica/salao + NULL, rejeita 'outro'. RF-03/04: signup atômico via trigger persiste segment por ramo; segment ausente/inválido ('xpto') normaliza para NULL sem abortar o signup; 1 admin + 5 templates por tenant. RF-05: redação por ramo difere da genérica; NULL e inválido caem na redação genérica idêntica; 0 bodies vazios. RF-06: 0 duplicatas (tenant_id, template_key). Linhas de teste limpas ao final.",
+    "frontendRuntimeQa": "Smoke de runtime: dev server sobe limpo, rotas /, /cadastro e /app servem 200, módulos novos (segment-presets, useSegmentTerms, CadastroPage) transformam sem erro, dev log sem erro. Revisão de código confirma: Select de ramo controlado + zod pt-BR ('Escolha o ramo da sua empresa.'); useSignUp envia segment em options.data; useTenant lê segment sob RLS com z.enum(...).nullable().catch(null); resolveTerms/resolveSeedServices puros com fallback genérico; terminologia aplicada em dashboard/agenda/config/serviços; useOnboardingSeed idempotente sob services_write_admin.",
+    "chromeDevtoolsQa": "NÃO EXECUTADO. As ferramentas do MCP chrome-devtools não estão expostas no runtime desta etapa de entrega (configuradas em mcp.json, mas ausentes do conjunto de ferramentas disponíveis). Critérios de aceite de render cobertos em nível unitário/runtime, não pixel-a-pixel. Recomenda-se passada visual manual antes do merge ou reexecução da etapa de QA com o MCP disponível.",
+    "rls": "Nenhuma tabela nova; nenhuma política RLS afrouxada. segment é metadado de produto/UX validado no servidor (trigger), nunca chave de isolamento. Catálogo-semente roda sob RLS do admin (services_write_admin), tenant_id derivado de current_tenant_id(), sem service role no cliente. Nenhum segredo no SQL nem no bundle.",
+    "secrets": "Nenhum .env, chave Asaas/Evolution ou service role no diff do branch (verificado). Artefatos .agents/ não commitados."
+  },
+  "qaPending": [],
+  "followUp": "QA visual ao vivo (Chrome DevTools MCP) pendente por indisponibilidade da ferramenta neste runtime — ver chromeDevtoolsQa. Fase 1b (recursos de domínio por ramo) e troca de ramo pós-cadastro permanecem fora de escopo, só ganchos documentados."
+}

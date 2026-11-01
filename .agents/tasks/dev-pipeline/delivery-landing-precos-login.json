@@ -1,0 +1,24 @@
+{
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/16",
+  "number": 16,
+  "title": "feat: landing, /precos e painel de auth maduros (marketing)",
+  "branch": "feat/landing-precos-login",
+  "base": "master",
+  "state": "OPEN",
+  "adrs": [
+    "adr-01 price_cents e formatPlanPrice na fonte única de planos",
+    "adr-02 Componente BrandIllustration (SVG/CSS, decorativo)",
+    "adr-03 Componente compartilhado PlanCard (full/preview)",
+    "adr-04 Link Entrar para /login no header de marketing",
+    "adr-05 Reescrita da página /precos",
+    "adr-06 Reescrita da landing (hero, benefícios, prévia de planos, FAQ)",
+    "adr-07 Enriquecer o aside do AuthLayout",
+    "adr-08 Verificação integrada e QA visual (Chrome DevTools MCP)"
+  ],
+  "verification": {
+    "build": "npm run build OK (tsc -b + vite build)",
+    "tests": "npm run test OK (95 testes, 11 arquivos)",
+    "qa": "Chrome DevTools headless em /, /precos, /login — mobile 390px e desktop 1280px, claro e escuro: sem erro no console, valores R$ 59/149/259 consistentes landing↔/precos, ?plano inválido não quebra"
+  },
+  "pending": []
+}

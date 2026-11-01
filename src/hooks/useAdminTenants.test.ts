@@ -93,4 +93,17 @@ describe("normalizeInvokeError → mapSubscriptionError (CA-07, caminho real)", 
       "Não foi possível atualizar a assinatura. Tente novamente.",
     );
   });
+
+  it("403 com code password_change_required (ADR-09): reconhece por status e mapeia", async () => {
+    const raw = functionsHttpError(403, {
+      error: "Troque sua senha antes de operar o painel.",
+      code: "password_change_required",
+      message: "Troque sua senha antes de operar o painel.",
+    });
+    const normalized = await normalizeInvokeError(raw);
+    expect(normalized.status).toBe(403);
+    // O mapeador reconhece 403 como forbidden/permissão. A tela pode inspecionar
+    // o objeto do erro se precisar diferenciar "super_admin bloqueado" de outro 403.
+    expect(mapSubscriptionError(normalized)).toBe("Sem permissão para esta ação.");
+  });
 });

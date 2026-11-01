@@ -1,332 +1,365 @@
-# Design de Frontend: Marketing + Auth mais maduros (landing, /preços, painel de login)
+# Design de frontend: troca de senha com Edge Function e papel no JWT
 
-Status: design doc para o planner e para o gate humano do PRD. Nenhum código de aplicação foi escrito.
+Status: design de frontend. Sem código de aplicação.
+Base: `feat/adr-01-password-gate`.
+Substitui o desenho anterior de senha (ADR-04 a ADR-10). O documento anterior foi preservado em `analysis-frontend.anterior-senha-adr04-10.md`.
 
-Demanda (verbatim do usuário, autoritativa): a landing hoje é simples demais — sem valores, sem botão de login, só cadastro. Melhorar a CTA; a seção de planos precisa ser melhor descrita, com mais informações e **valores**; o painel esquerdo do login pode ter mais informações e uma imagem explicando o que o sistema faz; hoje falta informação básica sobre o que é e quais as funcionalidades do produto.
+## 1. Visão geral
 
-Tipo: melhoria de UI frontend. Escopo 100% público/frontend. **Não toca** dados, Supabase, RLS ou Edge Functions. As CTAs continuam levando a `/cadastro?plano=<slug>` e `/login`. O tenant continua nascendo em `trial`. Billing/checkout é Fase 3.
+A demanda toca tela. Estas telas e comportamentos mudam:
 
-Decisões já travadas com o usuário (mensagens 2–4):
-- Valores mensais: Individual **R$ 59**, Clínica **R$ 149**, Pro **R$ 259**. Armazenar em **centavos inteiros** (`5900`, `14900`, `25900`) em `src/lib/plans.ts`, com helper de formatação BRL curta (`R$ 59`). Clínica é o recomendado (ancoragem de pricing).
-- Objetivo duplo: conversão + aparência mais completa. Seções novas aceitas: benefícios/para-quem-é, prévia de planos na landing, FAQ curto.
-- Ilustração do painel de login e da landing: **gerada via CSS/SVG/componentes**, sem assets externos. Decorativa, `aria-hidden`.
-- Adicionar link/botão **"Entrar"** (para `/login`) no header de marketing.
+- `/login`: após o login, o destino sai das claims do token, sem consulta extra.
+- `/trocar-senha` (nova): o único lugar onde o super admin pode ir enquanto o flag estiver ligado.
+- Guards de `/app` e `/admin`: um guard novo bloqueia a área até a troca.
+- `/admin` (índice): redireciona para `/admin/empresas`.
 
-Premissas verificadas no repositório:
-- `src/lib/plans.ts` é a fonte única apresentacional dos planos (ADR-13). Hoje expõe `PLAN_SLUGS`, `PlanSlug`, `Plan {slug,nome,publico,destaques,recomendado?}`, `PLANS` (ordem Individual→Clínica→Pro, só `clinica` com `recomendado`), `parsePlanSlug`, `getPlan`. **Não tem preço.** `parsePlanSlug` é o único ponto de validação do `?plano` não confiável; o valor cru nunca é interpolado no DOM.
-- `src/marketing/pages.tsx` tem `LandingPage` (hero + 3 `Feature`), `PrecosPage` (grade de 3 planos **sem valor**, com a copy "Valores e contratação chegam em breve") e `TermosPage`. O componente local `Feature` e `StatusBadge` já são reusados.
-- `src/marketing/MarketingLayout.tsx` tem header com `MARKETING_LINKS` (`/precos`, `/termos`) + `ThemeToggle`. **Não tem link de login.**
-- `src/auth/AuthLayout.tsx` tem o `aside` de apresentação (só em `lg:`, ≥1024px) com `Logo`, um `h2` curto e um parágrafo. É o painel a enriquecer. É compartilhado por login, cadastro e recuperar-senha.
-- `src/lib/money.ts` tem `formatCentsToBRL` (ex.: `4500` → `R$ 45,00`) e `parseBRLToCents`. O `formatCentsToBRL` **mostra os centavos** (`R$ 59,00`), e o aceite pede `R$ 59`. Por isso um helper curto é necessário (seção 5.1).
-- Tokens de cor/tipografia em `src/index.css` + `tailwind.config.ts`: app inicia em **dark** (`ThemeProvider`); fontes `Space Grotesk` (display) e `Inter` (sans) auto-hospedadas; `--primary` jade (`160 64% 45%` dark / `160 64% 38%` claro), `--radius: 0.75rem`. `tabular-nums` global no `body`.
-- Pattern de navegação confirmado: `Button asChild` + `Link` renderiza `<a href>` semântico (acessível). Seguir sempre.
+Mudança central: o frontend deixa de ler `profiles` para identidade. Papel, tenant e flag de troca vêm das claims do access token, emitidas pelo custom access token hook. A cadeia de leitura cai de sessão, profile e tenant para sessão e tenant. Sessão e claims são locais, sem rede, então o cold start de `/app` perde uma ida ao servidor (ajuda RNF01).
 
-## 1. Telas, componentes e rotas
+O flag `must_change_password` fica em `app_metadata`, gravado só pelo service role. O cliente lê. O cliente nunca escreve papel, tenant ou flag.
 
-Nenhuma rota nova é criada. Todas as rotas afetadas já existem e são públicas, sem guard de autenticação, RBAC ou status de assinatura. Isto é marketing/auth público. (Os guards de `/app` e `/admin` — auth + RBAC + `subscription_status`, com `bloqueado` redirecionando para quitação — não são tocados aqui e ficam registrados como contexto, não como trabalho.)
+Fora do escopo deste documento: RLS de dados do tenant, `admin-subscription`, `EmpresasPage`, marketing e `AuthLayout` (sem mudança).
 
-| Rota | Componente | Situação |
-|------|------------|----------|
-| `/` | `LandingPage` (`src/marketing/pages.tsx`) | Existente. Hero reforçado + benefícios/para-quem-é + prévia de planos + FAQ curto. |
-| `/precos` | `PrecosPage` (`src/marketing/pages.tsx`) | Existente. Grade com valor em BRL, público-alvo, benefícios ampliados, selo "Recomendado" só na Clínica, nota de contratação sem checkout. |
-| `/termos` | `TermosPage` | Inalterada. |
-| `/login`, `/cadastro`, `/recuperar-senha` | `AuthLayout` + páginas | Só o `aside` do `AuthLayout` muda (ilustração + lista de funcionalidades). As páginas de formulário não mudam. |
-| (layout) | `MarketingLayout` | Ganha o link/botão "Entrar" → `/login` no header. |
+## 2. Contrato de identidade (claims do JWT)
 
-Componentes e onde vivem:
+O custom access token hook emite três claims no nível de topo do access token:
 
-- `src/lib/plans.ts` — estendido: `price_cents` por plano + helper `formatPlanPrice`. Continua a fonte única; landing e `/precos` **consomem** dela (nunca duplicam a lista nem colam o valor).
-- `src/marketing/pages.tsx` — `LandingPage` e `PrecosPage` reescritas para o novo conteúdo. O componente local `Feature` é mantido e reusado. Novos sub-componentes locais de marketing (ver abaixo) ficam neste arquivo ou em `src/marketing/` se crescerem.
-- `src/marketing/MarketingLayout.tsx` — header ganha "Entrar".
-- `src/auth/AuthLayout.tsx` — `aside` enriquecido.
+| Claim | Tipo | Origem no banco |
+|---|---|---|
+| `user_role` | enum `super_admin \| admin \| professional \| receptionist` | `profiles.role` |
+| `tenant_id` | uuid ou `null` (super_admin) | `profiles.tenant_id` |
+| `must_change_password` | boolean, obrigatório | `app_metadata.must_change_password` (default `false`) |
 
-Sub-componentes de marketing (locais, não são primitivos de UI — não vão para `src/components/ui`):
+Nome `user_role` no lugar de `role`: o PostgREST usa a claim `role` para escolher o papel do Postgres. Se o hook sobrescrever `role`, o RLS de todas as tabelas quebra. O hook não emite `role`.
 
-- `PlanCard` — um card de plano, consumindo um `Plan` de `PLANS` + `formatPlanPrice(plan)`. Usado tanto em `/precos` (completo) quanto, em versão compacta, na prévia da landing, via uma prop `variant: "full" | "preview"`. Fonte única de markup do card, evita a divergência visual entre landing e `/precos`.
-- `BrandIllustration` — ilustração SVG/CSS decorativa (`aria-hidden`), reusada pelo hero da landing e pelo `aside` do login. Representa a tese do produto: a transição `pendente → confirmado` + um balão de WhatsApp + um selo de PIX. Sem asset externo.
-- `Faq` — lista curta de perguntas e respostas (3–4) na landing.
+Leitura no cliente:
 
-Decisão sobre a ilustração compartilhada: um único `BrandIllustration` parametrizável (prop de tamanho/densidade) em vez de dois SVGs separados. Motivo: a mesma tese visual ("anel de confirmação" da marca + estado confirmado) aparece nas duas telas; um componente só garante consistência e um ponto único de manutenção. A alternativa (dois SVGs inline distintos) foi descartada por duplicar markup decorativo.
+- `src/lib/auth-claims.ts` expõe `parseAuthClaims(accessToken): AuthClaims | null`. Decodifica o payload (base64url com `atob`) e valida com zod. Retorna `null` para token malformado, claim ausente, enum fora da lista ou `must_change_password` que não seja boolean. Não lança.
+- `src/hooks/useAuthClaims.ts` deriva as claims de `useSession()` com `useMemo`. Não cria query nem chamada de rede.
+- Decodificar no cliente não é fronteira de segurança. A assinatura é verificada pelo GoTrue, e a fronteira real são o RLS e a Edge Function. O cliente usa a claim para rotear e esconder controles.
+- Nunca ler `user_metadata` para papel, tenant ou flag. O usuário altera o próprio `user_metadata` com `updateUser({ data })`. O cadastro já grava `trade_name` e `segment` ali, e isso continua como está.
+- Sessão viva com claims inválidas (token antigo, de antes do hook, ou hook desligado) é erro de identidade. Os guards chamam `DefensiveLogout`, que encerra a sessão e manda para `/login`. Quem tinha sessão antiga entra de novo uma vez. Esse é o comportamento fail-closed.
 
-## 2. Direção visual e design system
+Claim defasada: depois da troca, o access token atual ainda traz `must_change_password: true` até ser renovado. Por isso a tela termina com `supabase.auth.refreshSession()` e decide o destino com as claims do token novo (seção 4.4).
 
-### 2.1 Plano
+Validade: papel revogado pode aparecer na UI até o token expirar (`jwt_expiry = 3600` em `config.toml`). Os dados continuam protegidos pelo RLS. Aceito.
 
-Assunto: um micro-SaaS que tira o dono de serviço (barbearia, clínica, estúdio) do ciclo "lembrar o cliente na unha + correr atrás do PIX". O público da landing é esse dono, quase sempre no **celular**, decidindo em segundos se o produto resolve a dor dele. A única função da landing é: deixar claro o que o produto faz e levar ao cadastro. A função de `/precos` é: dar o preço e o tamanho certo, e levar ao cadastro com o plano escolhido.
+## 3. Rotas e guards
 
-Tese do hero: **o horário que se confirma sozinho e se paga sozinho.** O hero abre com a coisa mais característica do produto — a transição de estado `pendente → confirmado` — já presente hoje como um par de `StatusBadge`. A melhoria mantém essa tese e a amplia numa ilustração que mostra o ciclo completo em miniatura: lembrete no WhatsApp → confirmação → PIX pago. Não é o template "número gigante + label": é o artefato real do produto (badges de status + balão de conversa + selo PIX), que ninguém confunde com outra landing.
-
-Por que isso não é o default genérico: os três clusters de IA (cream + serifa + terracota; preto + verde-ácido; broadsheet com fios) são rejeitados. A paleta já é escolhida pelo projeto (ardósia/azul-noite + jade), a tese vem do domínio (confirmação de agendamento), e a assinatura — a transição de status viva — é específica deste produto, não decorativa. A régua de boldness é gasta num lugar só: a ilustração do ciclo. Todo o resto (tipografia, espaçamento, cards) fica disciplinado e quieto.
-
-Cores: **sem tokens novos.** Tudo sai de `src/index.css`.
-- `background` / `foreground`: base calma (ardósia escuro no dark, neutro claro no claro).
-- `card`: superfície de cada feature, plano e do `aside` de login.
-- `primary` (jade): acento — ícones, régua da ilustração, borda do plano recomendado, foco. Nunca em texto corrido sobre `background` no tema **claro** (reprova contraste, ver 2.4).
-- `muted` / `muted-foreground`: corpo secundário, descrições, notas.
-- `accent`: chip de ícone das features (já é o padrão do `Feature` atual).
-- Badges de status na ilustração: tokens `--status-pendente` / `--status-confirmado` via `StatusBadge` existente.
-
-Tipografia (sem fonte nova): `Space Grotesk` (display) para `h1`/`h2`/`h3` e para o número do preço; `Inter` (sans) para corpo e listas; `tabular-nums` já global alinha os valores R$. Escala:
-- `h1` do hero: `font-display`, `clamp(1.75rem, 5vw, 2.75rem)`, `font-semibold`, `leading-tight`, `tracking-tight` (já é o padrão atual — mantido).
-- `h2` de seção: `font-display text-2xl font-semibold tracking-tight`.
-- Preço do plano: `font-display`, `text-4xl font-semibold`, com `/mês` em `text-sm text-muted-foreground` ao lado.
-- Corpo: `text-base` (hero) / `text-sm` (cards), `text-muted-foreground`.
-- Eyebrow/chip: `text-xs font-medium uppercase tracking-wide text-muted-foreground` (padrão do chip atual do hero — reusado).
-
-Layout: mobile-first. Uma coluna no celular; grades `sm:grid-cols-2` / `sm:grid-cols-3` para features e planos; o container de marketing continua `max-w-5xl`. O `aside` do login só aparece em `lg:`; no mobile o formulário ocupa a tela toda, sem a ilustração (regra do layout atual — preservada).
-
-Assinatura: a ilustração do ciclo `pendente → confirmado → PIX pago`, com o "anel de confirmação" jade da marca ecoado. É o elemento que a pessoa lembra. Aparece no hero e, em escala menor, no `aside` do login.
-
-Esboço — landing (mobile):
+Mapa de rotas:
 
 ```
-[chip] Agenda + cobrança num só lugar
-H1  Confirme cada horário e receba na hora,
-    direto pelo WhatsApp.
-parágrafo de subtítulo
-[ Começar agora ]  (CTA primária, size lg)
-[ Ver planos ]     (CTA secundária, outline)
-prova social curta / linha de confiança (sem métrica inventada)
-
-+-- BrandIllustration (aria-hidden) --------+
-|  WhatsApp  →  [Pendente]→[Confirmado]     |
-|  lembrete D-1        PIX pago ✓           |
-+-------------------------------------------+
-
-## Como o Atlas Agenda trabalha por você
-[Feature] [Feature] [Feature]   (3, já existem)
-
-## Feito para o seu dia a dia   (benefícios / para quem é)
-- Barbearias e estúdios
-- Clínicas e consultórios
-- Autônomos de serviço
-(cada um com 1 linha do ganho concreto)
-
-## Planos                       (prévia)
-[PlanCard preview] x3  (valor em BRL, selo na Clínica)
-[ Ver todos os planos ] → /precos
-
-## Perguntas frequentes
-(3–4 Q&A)
+/login, /cadastro, /recuperar-senha, /redefinir-senha   AuthLayout (público, sem mudança)
+/trocar-senha   (NOVO)   GateLayout → RequireAuth → TrocarSenhaPage
+/admin                    RequireAuth → RequirePasswordChange (NOVO)
+                            → RequireRole(["super_admin"]) → AdminLayout
+                            → índice: <Navigate to="/admin/empresas" replace />
+/admin/empresas           mesma cadeia → EmpresasPage
+/app/*                    RequireAuth → RequirePasswordChange (NOVO)
+                            → RequireActiveSubscription → AppLayout (demais rotas sem mudança)
 ```
 
-Esboço — `/precos` (desktop, 3 colunas):
+Decisões:
+
+- Ordem fixa: sessão, troca de senha, papel, assinatura. A troca vem antes do papel, para que quem tem o flag ligado não veja a tela de acesso negado de outra área.
+- `RequirePasswordChange` entra nas duas árvores. O flag é do usuário, não do papel. Um guard só em `/admin` deixaria uma conta de tenant com o flag ligado entrar no app. Hoje nenhuma conta de tenant tem o flag ligado, então o custo é zero.
+- `/trocar-senha` fica fora do `RequirePasswordChange`. Dentro dele, o guard mandaria a rota para ela mesma em loop.
+- `/admin` índice redireciona para `/admin/empresas`. Nenhum caminho leva ao placeholder `AdminDashboardPage`, nem um `from` preservado no login. O componente fica no arquivo, sem rota.
+- Não preservar `from` depois da troca. A tela volta para o destino do papel. Assim o usuário não cai em uma página antiga com permissão de antes.
+
+Decisão pura do guard, em `src/auth/passwordGate.ts`:
 
 ```
-H1 Planos e preços
-parágrafo: escolha pelo tamanho da equipe (sem "chegam em breve")
-
-+-- Individual --+  +-- Clínica ★ --+  +-- Pro --------+
-| Autônomo       |  | [Recomendado] |  | Multi-prof.   |
-| R$ 59 /mês     |  | Equipe        |  | R$ 259 /mês   |
-| ✓ ...          |  | R$ 149 /mês   |  | ✓ ...         |
-| ✓ ...          |  | ✓ ...         |  | ✓ ...         |
-| [Começar com   |  | [Começar com  |  | [Começar com  |
-|  o Individual] |  |  o Clínica]   |  |  o Pro]       |
-+----------------+  +---------------+  +---------------+
-
-nota discreta: a contratação acontece ao criar a conta; sem cartão agora.
+decidePasswordGate({ isLoadingAuth, isAuthenticated, hasIdentityError, mustChangePassword })
+  → "loading" | "anonymous" | "identity-error" | "change-password" | "allow"
 ```
 
-Esboço — `aside` do login (lg):
+Os componentes de guard só traduzem o resultado em `RouteFallback`, `Navigate`, `DefensiveLogout` ou `Outlet`.
+
+Estados por guard:
+
+| Estado | Resultado |
+|---|---|
+| Carregando identidade ou tenant | `RouteFallback` |
+| Sem sessão | `/login` com `state.from` |
+| Sessão sem claims válidas, ou tenant ilegível | `DefensiveLogout` |
+| `must_change_password = true` | `/trocar-senha` |
+| Papel fora de `roles` (RequireRole) | `AccessDenied` |
+| `bloqueado` | `/app/quitacao` |
+| `cancelado` | `ContaCanceladaPage` |
+
+`from` vira string. Hoje `RequireAuth` grava o objeto `Location` em `state.from`, e `LoginPage` tipa o valor como string. Os guards passam a gravar `pathname + search` como string, e a função `resolvePostLoginDestination` recebe string.
+
+## 4. Tela `/trocar-senha`
+
+### 4.1 Layout
+
+Nova casca `src/auth/GateLayout.tsx`: cabeçalho com `Logo` e `ThemeToggle` (ambos reusados) e um centro com a página. Sem a aside de `AuthLayout`. A aside lista funcionalidades do produto para visitante. Quem cai nesta tela já tem conta e precisa de uma tarefa só. `AuthLayout` continua igual.
+
+Mobile, 390 px:
 
 ```
-[Logo]
-
-BrandIllustration (aria-hidden, menor)
-
-H2  Agenda e cobrança, sem no-show.
-parágrafo curto
-✓ Agenda sem conflito por profissional
-✓ Confirmação automática 24h antes (D-1)
-✓ Cobrança por PIX ao fim do atendimento
-✓ Baixa automática do pagamento
-
-(rodapé do aside: linha discreta de marca)
+┌──────────────────────────────┐
+│ [logo]                 [tema]│
+│                              │
+│ ┃ [🔒 Primeiro acesso]       │  ┃ = trilho âmbar (status-pendente)
+│ ┃ Crie sua nova senha        │
+│ ┃ Sua senha atual é          │
+│ ┃ provisória. Defina uma     │
+│ ┃ senha só sua.              │
+│ ┃ admin@neox.com.br (mono)   │
+│ ┃                            │
+│ ┃ Nova senha                 │
+│ ┃ [••••••••••••••••••]       │
+│ ┃ Use ao menos 8 caracteres. │
+│ ┃ Confirmar nova senha       │
+│ ┃ [••••••••••••••••••]       │
+│ ┃ [   Salvar nova senha    ] │  largura total, 44 px de altura
+│ ┃            Sair            │
+└──────────────────────────────┘
 ```
 
-### 2.2 Componentes
+Desktop, 1280 px: a mesma coluna centralizada, largura máxima 28rem (`max-w-md`), sem aside, sobre o fundo `background`.
 
-Reusados de `src/components` / `src/components/ui`, sem recriar:
-- `Button` (com `asChild` + `Link`), `Card`/`CardHeader`/`CardContent`/`CardFooter` onde o padrão de card ajudar, `Separator`, `Badge`.
-- `StatusBadge` (`src/components/StatusBadge.tsx`) na ilustração do ciclo — reusa os tokens de status, não inventa cor.
-- `Logo` (`src/components/Logo.tsx`) no `aside`.
-- `ThemeToggle` no header (já está).
-- `formatCentsToBRL` **não** serve para o preço de marketing (mostra `,00`); usar o novo `formatPlanPrice` (seção 5.1).
+### 4.2 Conteúdo (pt-BR)
 
-Sem `Accordion`: não existe `accordion` em `src/components/ui`. O FAQ usa `<details>/<summary>` nativos (acessível por padrão, sem dependência nova) estilizados com Tailwind, **ou** uma lista estática de Q&A. Decisão: `<details>/<summary>` nativo — dá expandir/colapsar acessível de teclado sem adicionar Radix Accordion. Alternativa descartada: instalar `@radix-ui/react-accordion` só para 3 perguntas (peso desnecessário no bundle).
+- Selo: "Primeiro acesso".
+- Título: "Crie sua nova senha".
+- Descrição: "Sua senha atual é provisória. Defina uma senha só sua para entrar no painel."
+- Conta: e-mail de `session.user.email`, em JetBrains Mono. Confirma para o usuário qual conta está trocando a senha.
+- Campos: "Nova senha" (ajuda: "Use ao menos 8 caracteres.") e "Confirmar nova senha".
+- Botão: "Salvar nova senha". Durante o envio: "Salvando…".
+- Link de saída: "Sair".
+- Sucesso (toast): "Senha salva. Painel liberado."
 
-Novos (locais de marketing, não primitivos):
-- `PlanCard` (`variant: "full" | "preview"`).
-- `BrandIllustration`.
-- `Faq`.
+Erros:
 
-### 2.3 Estados visuais e badges
+| Origem | Texto | Foco e ação |
+|---|---|---|
+| Validação local | "A senha deve ter ao menos 8 caracteres." / "As senhas não coincidem." | Campo, `aria-invalid` |
+| Validação local | "A senha deve ter no máximo 72 caracteres." (72 bytes UTF-8) | Campo |
+| 400 `password_is_initial` | "Escolha uma senha diferente da atual." | Campo |
+| 400 `invalid_body`, 500, rede | "Não foi possível salvar a nova senha. Tente novamente." | Alerta, botão reativado |
+| 401, de qualquer origem (inclui o 401 do gateway) | "Sua sessão expirou. Entre novamente." | Alerta com link para `/login` |
 
-- Plano recomendado (Clínica): borda `border-primary`, selo "Recomendado" (pílula `border-primary/30 bg-primary/10 text-primary`) — padrão já existente, mantido. No desktop pode receber um leve destaque de elevação (`shadow-sm` + `-translate-y` sutil apenas em `lg:`, respeitando `prefers-reduced-motion`), sem virar outro componente.
-- Planos não recomendados: `border-border bg-card`.
-- CTA primária: `Button` default (jade). CTA secundária/"Ver planos"/"Entrar": `outline` ou `ghost`.
-- Badges de status na ilustração: `StatusBadge status="pendente"` e `status="confirmado"`, com seta `→` decorativa `aria-hidden`.
-- A ilustração inteira é decorativa: `role` nenhum, `aria-hidden="true"` no container; o significado já está no texto ao redor.
+O 409 `password_change_not_required` não mostra erro. A tela trata como sucesso (seção 4.4). Os códigos `password_change_in_progress` e `password_change_superseded` do desenho anterior saem. Com "última escrita vence", não há reserva.
 
-### 2.4 Copy pt-BR
+Mensagem do servidor nunca vai para a tela. A tela só mostra os textos acima.
 
-Toda a copy em pt-BR, voz afirmativa, sem jargão de sistema, sem métrica inventada.
+### 4.3 Botão durante a chamada
 
-| Contexto | Texto |
-|----------|-------|
-| Header — novo item | "Entrar" (leva a `/login`) |
-| Hero — chip | "Agenda + cobrança num só lugar" (mantido) |
-| Hero — H1 | "Confirme cada horário e receba na hora, direto pelo WhatsApp." (mantido) |
-| Hero — subtítulo | mantido do atual |
-| Hero — CTA primária | "Começar agora" → `/cadastro` |
-| Hero — CTA secundária | "Ver planos" → `/precos` |
-| Benefícios — título | "Feito para o seu dia a dia" |
-| Benefício (barbearia/estúdio) | "Barbearias e estúdios: encaixe rápido e lembrete que derruba o buraco na agenda." |
-| Benefício (clínica) | "Clínicas e consultórios: confirmação 24h antes e menos faltas sem ligar para ninguém." |
-| Benefício (autônomo) | "Autônomos: cobre por PIX assim que termina e receba sem cobrar na mão." |
-| Prévia de planos — título | "Escolha o plano do tamanho da sua equipe" |
-| Prévia — link | "Ver todos os planos" → `/precos` |
-| `/precos` — H1 | "Planos e preços" (mantido) |
-| `/precos` — subtítulo | "Escolha pelo tamanho da sua equipe. Comece grátis e só contrate quando criar a conta." (substitui "Valores e contratação chegam em breve") |
-| Preço | "R$ 59" / "R$ 149" / "R$ 259", com "/mês" ao lado em `muted-foreground` |
-| Público-alvo | "Autônomo" / "Equipe" / "Multi-profissionais" (de `plan.publico`) |
-| Selo | "Recomendado" (só Clínica) |
-| CTA do card | "Começar com o {nome}" → `/cadastro?plano={slug}` (mantido) |
-| Nota de contratação | "A contratação acontece ao criar a conta. Nenhum cartão é pedido agora." |
-| FAQ Q1 | "Preciso instalar algo?" / "Não. O Atlas Agenda roda no navegador do celular e do computador." |
-| FAQ Q2 | "Como funciona o WhatsApp?" / "Você conecta o número da empresa uma vez e as mensagens de confirmação e cobrança saem automaticamente." |
-| FAQ Q3 | "Como o cliente paga?" / "Ao fim do atendimento, enviamos um PIX com QR Code e copia e cola. A baixa é automática quando o pagamento cai." |
-| FAQ Q4 | "Posso trocar de plano depois?" / "Pode. Comece pelo plano que couber hoje e ajuste conforme a equipe cresce." |
-| Login `aside` — H2 | "Agenda e cobrança, sem no-show." (mantido) |
-| Login `aside` — funcionalidades | "Agenda sem conflito por profissional" · "Confirmação automática 24h antes" · "Cobrança por PIX ao fim do atendimento" · "Baixa automática do pagamento" |
+- `disabled={mutation.isPending}` no botão "Salvar nova senha".
+- `onSubmit` começa com `if (mutation.isPending) return`. Cobre o Enter dado antes de o React renderizar o estado pendente.
+- Enquanto pendente: ícone de carregamento com `aria-hidden`, rótulo "Salvando…" e um `<span role="status" className="sr-only">Salvando nova senha</span>`.
+- Campos e o link "Sair" continuam ativos. Só o botão de troca é desabilitado, como pedido.
+- Sem reserva e sem lock no banco. Duas abas enviando juntas: ambas recebem 200 e a última senha gravada vale.
 
-Regra de voz: o botão diz o que acontece ("Começar agora", "Entrar"). O FAQ responde em uma frase. A nota de contratação é honesta sobre não haver checkout agora — alinha com a Fase 3 sem prometer o que não existe.
+### 4.4 Fluxo de sucesso e de falha da renovação
 
-### 2.5 O que foi descartado
+1. `mutationFn` chama `supabase.functions.invoke("change-password", { body: { password } })`.
+2. Em 200 ou 409 `password_change_not_required`, a página chama `supabase.auth.refreshSession()`.
+3. Se a renovação der certo e as claims novas tiverem `must_change_password === false`: `form.reset()`, toast de sucesso e `navigate(resolvePostLoginDestination(claims), { replace: true })`. Para super admin, o destino é `/admin/empresas`.
+4. Se a renovação falhar, ou se as claims novas ainda vierem com o flag ligado: `signOut` local e `navigate("/login", { replace: true })` com aviso "Senha salva. Entre com a nova senha.". O estado seguro é sair. A tela nunca libera o painel com token defasado.
 
-- Métrica de prova social com número ("90% menos faltas"): descartada — número inventado sem fonte vira ruído e risco de credibilidade. Se houver dado real no futuro, entra depois.
-- Banner/modal de cookies ou newsletter: fora de escopo.
-- Carrossel/slider no hero: descartado — a ilustração estática do ciclo comunica melhor e é mais acessível.
-- Animação de entrada elaborada: no máximo uma transição discreta de hover/elevação no card recomendado, respeitando `prefers-reduced-motion`. Nada de orquestração de scroll — não acrescenta informação.
-- Radix Accordion para o FAQ: descartado em favor de `<details>` nativo.
+Senha e cache: a senha só existe nas variáveis da mutation. Depois do sucesso, a página chama `mutation.reset()`. `useMutation` usa `gcTime: 0`, então a mutation sai do cache quando a tela desmonta. A senha não entra em query key nem em `localStorage`, e não é logada.
 
-## 3. Acessibilidade
+### 4.5 Acesso direto
 
-Contraste WCAG calculado a partir dos tokens de `src/index.css` (os pares que a melhoria introduz ou destaca). Valores são estimativas de cálculo HSL→luminância; o QA deve medir no DOM renderizado.
+- Sem sessão: `RequireAuth` manda para `/login`.
+- Flag desligado ao montar (outra aba já trocou, por exemplo): `<Navigate>` para o destino do papel.
 
-| Par | Tema | Razão aprox. | Resultado |
-|-----|------|--------------|-----------|
-| `foreground` sobre `background` | Escuro | ~16,7:1 | Passa AA/AAA |
-| `foreground` sobre `card` | Escuro | ~15:1 | Passa |
-| `muted-foreground` sobre `background` | Escuro | ~7:1 | Passa AA texto normal |
-| `muted-foreground` sobre `card` | Escuro | ~6,7:1 | Passa |
-| `foreground` sobre `background` | Claro | ~16,8:1 | Passa |
-| `muted-foreground` sobre `card` | Claro | ~5,6:1 | Passa |
-| `primary-foreground` sobre `primary` (botão/CTA) | Claro | ~3,2:1 | Limítrofe para texto normal; **pré-existente em todo o app**. Ver nota abaixo. |
-| `primary` como texto sobre `background` | Claro | ~3,3:1 | Reprova texto normal. **Não usar `primary` em texto corrido no claro** — só em ícone/borda/preço com peso display grande (≥24px bold conta como "texto grande", AA 3:1). |
-| `ring` (foco) sobre `background` | Claro | ~2,7:1 | Limítrofe 3:1 não-textual; **pré-existente**. |
+## 5. Direção visual e design system
 
-Notas:
-- Os itens limítrofes de `primary`/`ring` no tema claro são pré-existentes e afetam todo o app; esta tarefa não os piora. Recomendo ao planner **não** bloquear a entrega por eles, mas registrar como dívida de token (o ajuste já foi recomendado em design anterior: `--primary` claro → `160 64% 30%`, `--ring` claro → `160 64% 32%`). O preço "R$ 149" em jade só é aceitável se for `display` grande e em peso semibold (texto grande, 3:1); por segurança, **o preço usa `foreground`, não `primary`** — o jade fica na borda/selo do card recomendado. Isso remove o risco sem depender do ajuste de token.
+Direção: o painel de operação calmo já definido em `index.css` (ardósia, azul-noite e acento jade). Esta tela é um portão: uma tarefa só, sem distração.
+
+Plano de tokens (frontend-design, pass 1):
+
+- Paleta: os tokens existentes. Fundo `background` (`222 24% 9%` no escuro), superfície `card` (`222 20% 13%`), texto `foreground` (`210 20% 96%`), acento `primary` (jade) e âmbar `status-pendente` (`38 92% 55%` no escuro, `38 92% 45%` no claro). Não há cor nova.
+- Tipografia: Space Grotesk 600 no título (`font-display`, `text-2xl`). Inter em corpo, labels e ajuda. JetBrains Mono só no e-mail da conta. Ajuda de campo em `text-xs`, o mínimo legível.
+- Inputs no mobile com `text-base sm:text-sm`. Abaixo de 16 px, o iOS amplia a tela ao focar o campo.
+- Layout: coluna única, `max-w-md`, padding horizontal de 16 px no mobile.
+- Assinatura da tela: um trilho vertical de 4 px na borda esquerda do card, na cor `status-pendente`, e o selo "Primeiro acesso" com a mesma cor. Esse é o único toque próprio da tela. O trilho diz que a conta está em estado bloqueante. Ele reusa o token que os badges de status do painel já usam.
+- Descartado: numeração de passos ("1 de 2"), porque a troca é uma ação só. Descartados também: ilustração, gradiente, animação de entrada.
+- Movimento: nenhuma animação de entrada. O spinner e a transição do foco já existem. `prefers-reduced-motion` já está no CSS global.
+
+Tokens alterados (única mudança de cor, validada na seção 6):
+
+| Token | Antes | Depois | Tema |
+|---|---|---|---|
+| `--primary` | `160 64% 38%` | `160 64% 31%` | claro |
+| `--ring` | `160 64% 42%` | `160 64% 36%` | claro |
+| `--input` | `214 20% 86%` | `215 16% 56%` | claro |
+| `--input` | `222 15% 22%` | `222 15% 46%` | escuro |
+
+Os valores de `--destructive` ficam como estão. O alerta de erro usa texto na cor `foreground`, com borda e ícone na cor `destructive`. Assim não é preciso mexer no token de destrutivo, que também pinta botões de exclusão em todo o app.
+
+Componentes reusados de `src/components` e `src/components/ui`, sem recriar:
+
+- `Card` (`CardHeader`, `CardTitle`, `CardDescription`, `CardContent`), `Form`, `FormField`, `FormItem`, `FormLabel`, `FormControl`, `FormDescription`, `FormMessage`, `Input`, `Button`, `Badge` (com `className` de `bg-status-pendente text-status-pendente-foreground`).
+- `Logo`, `ThemeToggle`, `SignOutButton` (variante `ghost`, rótulo "Sair"), `RouteFallback`, `toast` do `sonner`.
+- Alerta de erro: o mesmo padrão de `LoginPage`, um `<p role="alert" tabIndex={-1}>`. Não existe primitivo de alerta em `ui/`, e um primitivo novo só se justifica quando o padrão aparecer em três telas.
+- Novo: só `GateLayout` (composição) e `initialPasswordSchema` (validação).
+
+Estados visuais:
+
+- Padrão, foco (anel `ring` com `ring-offset-2`), erro de campo (`FormMessage` em `destructive`), erro de servidor (alerta com borda e ícone `destructive`), enviando (botão com `opacity-50`, o estado `disabled` padrão do shadcn), sucesso (toast).
+
+Badges de status: o selo "Primeiro acesso" é o único badge novo. Os badges de assinatura de `EmpresasPage` não mudam.
+
+## 6. Acessibilidade (WCAG 2.2 AA)
+
+Razões de contraste calculadas com a fórmula WCAG a partir dos valores HSL de `index.css` e de `tailwind.config.ts`. Os valores "depois" são os da seção 5.
+
+| Par | Tema | Antes | Depois | Mínimo |
+|---|---|---|---|---|
+| Texto `foreground` / `card` | claro | 17,22 | 17,22 | 4,5 |
+| Texto `muted-foreground` / `card` | claro | 5,65 | 5,65 | 4,5 |
+| Texto `primary-foreground` / botão `primary` | claro | 3,23 (falha) | 4,62 | 4,5 |
+| Link `primary` / `card` | claro | 3,34 (falha) | 4,78 | 4,5 |
+| Anel `ring` / `background` | claro | 2,71 (falha) | 3,61 | 3 (não textual) |
+| Borda `input` / `card` | claro | 1,40 (falha) | 3,43 | 3 (1.4.11) |
+| Texto `foreground` sobre fundo do alerta (destructive a 10%) | claro | não medido, texto em `destructive` seria 4,46 | 14,69 | 4,5 |
+| Ícone `destructive` / `card` | claro | 5,24 | 5,24 | 3 |
+| Texto `primary` / `card` | escuro | 6,85 | 6,85 | 4,5 |
+| Anel `ring` / `background` | escuro | 9,91 | 9,91 | 3 |
+| Borda `input` / `card` | escuro | 1,35 (falha) | 3,26 | 3 (1.4.11) |
+| Texto `foreground` sobre fundo do alerta | escuro | não medido, texto em `destructive` seria 3,50 | 14,00 | 4,5 |
+| Ícone `destructive` / `card` | escuro | 3,78 | 3,78 | 3 |
+
+O par "texto destrutivo" do alerta falhava (3,50 no escuro). A solução de texto em `foreground` evita mexer no token. Os pares de `status-pendente` (chip) passam nos dois temas: 5,98 no claro e 7,91 no escuro.
 
 Demais requisitos:
-- Landmarks: `MarketingLayout` já tem `header`/`nav`/`footer`. Hero em `<section>`, cada bloco com `aria-labelledby` ligado ao seu `h2` (padrão atual mantido). FAQ em `<section aria-labelledby>`.
-- "Entrar" no header: é `Button asChild` + `Link`, `<a href="/login">` com `focus-visible:ring-2 ring-ring ring-offset-2` (herdado do `Button`), alcançável por Tab, ativável por Enter. Fica na mesma `nav`, na ordem após os links de conteúdo e antes/junto do `ThemeToggle`.
-- CTAs e cards: cada CTA é `<a>` real (pattern `Button asChild + Link`); nenhum `onClick` em `div`.
-- Ilustração: `aria-hidden="true"`, não é a única fonte de informação — o texto adjacente carrega o significado. Nenhum texto essencial vive só dentro do SVG.
-- FAQ `<details>/<summary>`: expandível por teclado por padrão; `summary` recebe foco visível; o conteúdo é lido por leitores de tela.
-- Preço: número em `tabular-nums` (global), com "/mês" como texto, não como sinal só visual. O valor não depende de cor.
-- `prefers-reduced-motion`: já respeitado pelo CSS global; qualquer hover/elevação do card recomendado precisa respeitar o media query (usar `transition` que o CSS global neutraliza).
-- Mobile: alvos de toque ≥40px (CTAs usam `size="lg"` = `h-11`; links do header `px-3 py-2`).
-- `aside` do login só em `lg:` (sem ilustração no mobile) — nenhuma informação essencial fica escondida no mobile, porque a funcionalidade está no formulário e na landing.
 
-## 4. Arquitetura React
+- Labels: `FormLabel` já associa o `htmlFor` ao campo. A ajuda usa `FormDescription`, ligada por `aria-describedby`. Erro de campo usa `aria-invalid` (`FormControl`).
+- Foco inicial no primeiro campo. A tela tem uma tarefa só, então o foco inicial ajuda.
+- Ordem de tabulação: campo 1, campo 2, "Salvar nova senha", "Sair". Enter envia.
+- Erro de servidor: `role="alert"` e foco no alerta, como em `LoginPage`.
+- Alvo de toque: botão de 44 px de altura no mobile (`h-11 sm:h-10`).
+- Reflow: nenhuma rolagem horizontal em 320 CSS px.
+- Movimento reduzido já é tratado no CSS global.
 
-### 4.1 Camadas
+## 7. Arquitetura React
 
-- **Sem dados de servidor.** Não há `useQuery`/`useMutation` nesta tarefa: landing, `/precos` e o `aside` de login são estáticos, alimentados por `PLANS` (módulo puro). Nenhum `fetch`, nenhum `useEffect` para dados, nenhum cliente Supabase novo. (A regra "dados sempre via TanStack Query" continua valendo quando houver dado de servidor — aqui não há.)
-- Páginas e componentes de marketing são puramente apresentacionais e sem estado, exceto o FAQ (estado de aberto/fechado é do próprio `<details>`, sem React state).
-- A validação do `?plano` continua **exclusivamente** em `parsePlanSlug` (em `/cadastro`, inalterado). Esta tarefa não introduz nova leitura de `?plano`: as CTAs apenas **geram** `/cadastro?plano={slug}` a partir do `slug` já tipado de `PLANS` (nunca interpola valor cru).
+Camadas:
 
-### 4.2 Fonte única de planos
+- Estado de servidor (TanStack Query): sessão (`useSession`, chave `["session"]`, alimentada pelo `AuthListener`), tenant (`["tenant", tenantId]`), mutation de login (existente) e mutation `useChangeInitialPassword`.
+- Derivado, sem estado próprio: `useAuthClaims` (sobre a sessão) e `useCurrentUser` (agregador de claims e tenant). `usePermissions` mantém a mesma API.
+- Funções puras, testáveis sem React: `parseAuthClaims`, `resolvePostLoginDestination`, `decidePasswordGate`, `mapInitialPasswordError`.
+- Componentes: páginas e guards. Nenhum `fetch` solto em `useEffect`.
 
-- `PlanCard` recebe um `Plan` inteiro (de `PLANS.map`) e chama `formatPlanPrice(plan)` para o rótulo BRL. Landing (preview) e `/precos` (full) consomem o **mesmo** `PlanCard` e o **mesmo** `PLANS`. Proibido: colar `59`/`149`/`259` no JSX, duplicar a lista, ou derivar o preço fora de `plans.ts`.
-- O valor consistente entre landing e `/precos` é garantido por construção: ambos leem `plan.price_cents` via `formatPlanPrice`. O QA confere a igualdade visualmente (seção 6).
+Mudanças nos consumidores de `useProfile`, que sai do código:
 
-### 4.3 Sem formulário novo
+- `useTenant`: usa `tenantId` das claims, não de `profiles`. O `select` de `tenants` continua sob RLS.
+- `useEffectiveProfessionalId` e `DashboardPage`: usam `userId` (de `session.user.id`, igual a `auth.uid()`), não `profile.id`.
+- `usePostLoginRedirect`: recebe a sessão devolvida por `signInWithPassword` e decide o destino sem rede. Ordem das regras: flag ligado primeiro, depois `from`, depois papel.
+- `CurrentUser` ganha `userId`, `tenantId` e `mustChangePassword`. `hasProfileError` vira `hasIdentityError` (claims inválidas ou ausentes).
 
-Nenhum formulário é adicionado. As páginas de auth (login/cadastro/recuperar-senha) mantêm `react-hook-form` + `zodResolver` exatamente como estão; só o `aside` compartilhado muda, e ele não tem formulário.
+Supabase no navegador: cliente de `src/lib/supabase.ts` com a anon key e a sessão do usuário. `functions.invoke` anexa o JWT do usuário sozinho. Nenhuma chave de serviço entra no bundle. Nenhum `tenant_id` sai do cliente.
 
-## 5. Mudanças em `src/lib/plans.ts` (fonte única)
+Formulários: `react-hook-form` com `zodResolver`. Na tela de troca, o schema é `initialPasswordSchema`, novo em `src/lib/validations/auth.ts`. Ele valida mínimo de 8 caracteres, máximo de 72 bytes UTF-8 (`TextEncoder`) e confirmação igual. `resetPasswordSchema` fica como está, para a recuperação de senha.
 
-### 5.1 Campo e helper
+Erros: `mapInitialPasswordError(error)` em `src/lib/auth-errors.ts`, sem lançar. Lê o status HTTP. Para 401, retorna sessão expirada, sem depender do corpo. Para os demais casos, lê `code` do corpo quando for JSON válido. Qualquer outra coisa cai no texto genérico.
 
-- Adicionar `price_cents: number` à `interface Plan` e preencher: `individual` → `5900`, `clinica` → `14900`, `pro` → `25900`. Centavos inteiros, consistente com a convenção `*_cents`.
-- Adicionar helper de formatação BRL **curta** (sem centavos), porque `money.ts/formatCentsToBRL` renderiza `R$ 59,00` e o aceite pede `R$ 59`:
+## 8. Segurança no cliente
 
-```ts
-const BRL_WHOLE = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  maximumFractionDigits: 0,
-});
+- O cliente só envia `{ password }` para `change-password`. Não envia `role`, `tenant_id`, flag nem id do usuário.
+- A aplicação não escreve em `profiles` em nenhum caminho. O acceptance verifica com `grep`.
+- `user_metadata` nunca decide papel, tenant nem flag.
+- A senha provisória não aparece no bundle nem em texto da tela. A tela não mostra dica de senha.
+- `updateUser({ password })` continua na recuperação de senha. Esse caminho não limpa o flag. Ver R3.
 
-/** Formata o preço mensal do plano em BRL sem centavos (ex.: `R$ 59`). */
-export function formatPlanPrice(plan: Plan): string {
-  return BRL_WHOLE.format(plan.price_cents / 100);
-}
-```
+## 9. Dependências de dados e backend
 
-Decisão: helper **dedicado em `plans.ts`**, não em `money.ts`. Motivo: `money.ts` é a borda de dinheiro operacional do domínio (sempre 2 casas, para valores de serviço/cobrança); o preço de marketing é "redondo" por decisão de produto e não deve mudar o formatador operacional. Mantém as duas preocupações separadas. Alternativa descartada: passar `maximumFractionDigits` como opção em `formatCentsToBRL` — polui a borda operacional com um caso de marketing.
+A frente de backend entrega estas peças. A tela depende delas para funcionar, e a lista é a única fonte de dependência deste documento.
 
-- `PlanSlug`, `parsePlanSlug`, `getPlan`, `PLAN_SLUGS`, `PLANS` permanecem intactos em assinatura e comportamento. `PlanSlug` continua **fora** de `src/types/domain.ts` (plano não é persistido; Fase 3).
+| # | Peça | Estado na base | Consumidor no frontend |
+|---|---|---|---|
+| D1 | Custom access token hook que emite `user_role`, `tenant_id` e `must_change_password` (copiado de `app_metadata`, default `false`) e não emite `role` | Não existe | Toda a identidade (`useAuthClaims`) |
+| D2 | Edge Function `change-password`: POST, JWT do usuário, corpo `{ password }`. Ordem: gravar a senha no Auth com service role, depois gravar `must_change_password: false` no `app_metadata`, preservando as outras chaves. Respostas: 200; 400 `invalid_body`, `password_too_short`, `password_too_long`, `password_is_initial`; 401 `unauthenticated`; 409 `password_change_not_required`; 500 `internal_error` | Não existe | Tela `/trocar-senha` |
+| D3 | Bootstrap idempotente com service role: cria `admin@neox.com.br` com senha provisória, `app_metadata` com flag ligado e perfil `super_admin` sem tenant. Não tem tela | Não existe | Login inicial (sem tela própria) |
+| D4 | Migração de limpeza: remover `current_must_change_password()`, reverter as policies `tenants_super_admin_select`, `tenants_super_admin_update_cadastro`, `subscription_status_changes_super_admin` e `profiles_super_admin` para a forma sem flag, remover `profiles.must_change_password`, `password_changed_at`, reserva de troca e função de bootstrap antiga. As migrações aplicadas não são editadas. | Pendente | Remove o uso de flag no banco |
 
-### 5.2 Invariantes
+Conflito com desenhos já aplicados: as ADRs 01 a 03 colocam o flag em `profiles` e em policies de RLS. O desenho novo tira o flag de `profiles` e não usa flag em RLS. A frente de dados precisa decidir o que sobra das ADRs 01 a 03 e o que entra na limpeza (D4).
 
-- `price_cents` é dado de marketing, não acopla a billing/checkout e não toca `tenants.plan`. Está em `plans.ts` justamente para que a promoção à Fase 3 (mapear `slug → tenants.plan` + preço de cobrança real) tenha um ponto único.
-- A ilustração e os textos nunca derivam preço de outra fonte.
+Tabelas consultadas pelo frontend e que continuam sob RLS: `tenants` (assinatura, para o guard de assinatura) e as tabelas operacionais. Nenhuma delas muda por causa desta demanda.
 
-## 6. Critério de aceite visual (QA com Chrome DevTools MCP)
+## 10. Riscos e decisões que o usuário precisa aceitar
 
-Todos sem erro no console. Cada item precisa de evidência (snapshot/medição). Rodar em mobile (390px) e desktop (1280px), tema **claro e escuro**.
+R1. Senha provisória fixa e conhecida, mais leitura cross-tenant do super admin pelo banco. Quem souber a senha antes da troca consegue ler as empresas direto pelo PostgREST, porque o bloqueio de `/trocar-senha` é só de UI. Não existe correção pelo frontend. Duas saídas: (a) aceitar até o beta, com troca obrigatória e rotação antes de dados reais; (b) rodar o bootstrap com senha fixa só em ambiente local ou de desenvolvimento. Não é aceitável usar o flag dentro de uma policy de RLS, porque o desenho proíbe policy que muda com o flag. Recomendação: (a) e (b) juntas.
 
-1. `src/lib/plans.ts` expõe `price_cents` (`5900`/`14900`/`25900`) e `formatPlanPrice` retorna `R$ 59` / `R$ 149` / `R$ 259`. `PlanSlug`/`parsePlanSlug`/`getPlan` inalterados (typecheck + testes existentes passam).
-2. `/precos`: os três planos mostram valor mensal em BRL, público-alvo, benefícios ampliados; selo "Recomendado" **só** na Clínica; CTA "Começar com o {nome}" leva a `/cadastro?plano={slug}` (conferir o `href` real). Sem a copy "valores chegam em breve". Nota de contratação sem checkout presente.
-3. Landing: hero com CTA primária + "Ver planos"; seção de benefícios/para-quem-é; seção de prévia de planos com os **mesmos** valores de `/precos` + link "Ver todos os planos" → `/precos`; FAQ presente e expansível por teclado.
-4. Consistência: o valor de cada plano na prévia da landing é idêntico ao de `/precos` (vêm de `PLANS` via `formatPlanPrice`).
-5. Header de marketing tem "Entrar" → `/login`, com foco visível e ativável por teclado (Tab + Enter).
-6. `aside` do login (em ≥1024px): ilustração CSS/SVG decorativa (`aria-hidden`) + lista de 4 funcionalidades. No mobile (<1024px) o `aside` não aparece e o formulário ocupa a tela.
-7. A ilustração é `aria-hidden` e nenhum texto essencial vive só dentro dela.
-8. Mobile-first e dark mode: layout não quebra em 390px nem em 1280px, nos dois temas. Medir contraste no DOM em: subtítulo do hero, descrição de feature, preço do plano, nota de contratação — ≥4,5:1 (texto normal) ou ≥3:1 (texto grande/preço display).
-9. Nenhum valor cru de `?plano` é interpolado no DOM; as CTAs usam `slug` de `PLANS`. (Conferir que `/cadastro?plano=xpto` inválido continua caindo no `parsePlanSlug` → `null`, sem quebrar — comportamento pré-existente, não regredido.)
-10. `npm run build` + typecheck/lint/testes existentes passam.
+R2. A troca não encerra as outras sessões do usuário. Uma sessão aberta com a senha provisória continua válida depois da troca. Recomendação: a Edge `change-password` encerra as outras sessões depois de gravar a senha (`signOut(userId, "others")` com service role). Efeito no frontend: outras abas caem na renovação e vão para `/login`, o que já é o comportamento da seção 4.4.
 
-## 7. Dependências de dados
+R3. Recuperação de senha por `updateUser` não limpa o flag. Quem esquece a senha antes da primeira troca volta para `/trocar-senha` depois de recuperar. Fail-closed, aceito.
 
-Nenhuma. A tarefa não precisa de tabela, política RLS, Edge Function, variável de ambiente nem migration. `price_cents` é constante de marketing em `plans.ts`, não persistido. Não há leitura/escrita de Supabase. Isto é registrado explicitamente para o planner: **não** abrir ADR de schema para esta demanda.
+R4. Claims defasadas por até 1 hora (`jwt_expiry`). Papel revogado aparece na UI até o token expirar. O RLS nega os dados. Aceito.
 
-## 8. Arquivos
+## 11. Impacto nas ADRs de frontend 11 a 15
 
-Modificar:
-- `src/lib/plans.ts` — `price_cents` na interface + nos 3 planos; `formatPlanPrice`.
-- `src/marketing/pages.tsx` — `LandingPage` (hero + benefícios + prévia + FAQ) e `PrecosPage` (preço + benefícios + nota) reescritas; consomem `PLANS`/`formatPlanPrice`/`PlanCard`.
-- `src/marketing/MarketingLayout.tsx` — item "Entrar" → `/login` no header.
-- `src/auth/AuthLayout.tsx` — `aside` com `BrandIllustration` + lista de funcionalidades.
+| ADR | Mudança |
+|---|---|
+| 11 | Remove `useProfile` e `fetchProfile`. Cria `auth-claims.ts` e `useAuthClaims`. `resolvePostLoginDestination({ role, mustChangePassword, from })` mantém as regras, com as entradas vindas das claims. `CurrentUser` ganha os campos da seção 7. |
+| 12 | `usePostLoginRedirect` não lê o banco. Recebe a sessão do login e chama `resolvePostLoginDestination`. A ordem de regras (flag antes de `from`) continua. O teste "não chama `from("profiles")`" sai, porque a chamada deixa de existir. |
+| 13 | A mutation chama `change-password` com `{ password }`. O mapeamento perde `in_progress` e `superseded` e trata 401 de qualquer origem. Sucesso chama `refreshSession`. `gcTime: 0`. |
+| 14 | `TrocarSenhaPage` fica em `GateLayout`, sem aside. Usa `initialPasswordSchema`. Botão desabilitado com guarda no `onSubmit`. O teste de DOM sai (ver seção 12). |
+| 15 | `RequirePasswordChange` entra em `/app` e `/admin`. `/admin` índice redireciona. Ganha o roteiro da seção 13. Guards passam a usar `from` como string. |
 
-Criar (sub-componentes locais de marketing):
-- `PlanCard` (`variant` full/preview) — em `src/marketing/pages.tsx` ou `src/marketing/PlanCard.tsx` se crescer.
-- `BrandIllustration` — em `src/marketing/BrandIllustration.tsx` (reusado por landing e login; por isso componente próprio, não inline em `pages.tsx`).
-- `Faq` — em `src/marketing/pages.tsx` (local da landing).
+## 12. Testabilidade
 
-Não tocar: `src/lib/money.ts` (formatador operacional), `src/auth/*Page.tsx` (formulários), `parsePlanSlug`/`getPlan`/`PlanSlug`, qualquer coisa de `src/app`/`src/admin`, Supabase/migrations/Edge Functions.
+- Unitários (vitest, ambiente `node`, sem DOM), todos sobre funções puras: `parseAuthClaims` (token válido, claim ausente, enum inválido, flag como string `"true"` rejeitado, base64 inválido), `resolvePostLoginDestination` (tabela de casos), `decidePasswordGate` (cada estado da tabela da seção 3), `mapInitialPasswordError` (cada linha da tabela de erros), `initialPasswordSchema` (8 caracteres, 72 bytes com acento, confirmação).
+- Sem jsdom nem testing-library. A stack não os tem, e adicioná-los só para esta tela amplia dependências. Comportamento de DOM (botão desabilitado, foco, navegação, texto na tela) entra no QA visual com Chrome DevTools (seção 13).
+- Integração: claims emitidas pelo hook, flag limpo, respostas 401, 409 e 400 da Edge. Fica na suíte da frente de backend.
 
-## 9. Testabilidade
+## 13. Critério de aceite visual (QA com Chrome DevTools)
 
-- Unitário: `formatPlanPrice` tem saída determinística (`R$ 59`/`R$ 149`/`R$ 259`) — teste direto em `plans.test.ts` se o planner quiser cobrir a regressão de formato (sem `,00`). Barato e vale a pena, porque o aceite trava o formato exato.
-- Integração/visual: landing, `/precos` e `aside` de login são verificados por QA Chrome DevTools (seção 6) — layout, consistência de valores, foco, dark mode, contraste.
-- A consistência landing↔`/precos` é testável por construção (fonte única) e confirmável visualmente; não precisa de mock de servidor porque não há servidor.
+Rodar nos quatro cenários: 390 × 844 e 1280 × 800, tema claro e escuro. Cada cenário gera screenshot e medição.
 
----
+1. Login do super admin com a senha provisória cai em `/trocar-senha`. O `take_snapshot` não mostra itens de `EmpresasPage`. Acesso direto a `/app/agenda` também redireciona para `/trocar-senha`.
+2. Dois cliques rápidos em "Salvar nova senha" geram uma única requisição a `change-password` (`list_network_requests`). Durante a chamada, `button.disabled === true`.
+3. Após 200, a página renova o token (`/auth/v1/token?grant_type=refresh_token`) e navega para `/admin/empresas`. Voltar para `/trocar-senha` redireciona de novo para `/admin/empresas`.
+4. Sair e entrar de novo leva direto a `/admin/empresas`.
+5. Login de admin de tenant leva a `/app` sem passar por `/trocar-senha`.
+6. Senha de 7 caracteres mostra o erro no campo, com `aria-invalid="true"`, e o foco vai para o campo.
+7. Resposta 401 mostra "Sua sessão expirou. Entre novamente." com o link para `/login`.
+8. Rede desligada mostra o texto genérico e reativa o botão.
+9. Contraste: `getComputedStyle` confirma os valores da seção 6, com o mínimo de cada par.
+10. Mobile 390 px: `scrollWidth <= clientWidth`, botão com a largura do card, input com `font-size >= 16px`, altura do botão `>= 44px`.
+11. Teclado: ordem de tabulação da seção 6, Enter envia, anel de foco visível em todos os controles.
+12. Console sem erro nem aviso em todos os passos (`list_console_messages`).
+13. Resposta de `change-password` não contém senha, hash, chave de serviço nem o nome do marcador (`get_network_request`).
+14. `npm run build` gera `dist/`, e `grep` da senha provisória em `dist/` retorna zero resultados.
+15. Cold start de `/app` (tenant de admin): nenhuma requisição a `/rest/v1/profiles` (`list_network_requests`). A tela de agenda carrega em menos de 1,5 s (RNF01), medido com `performance_start_trace`.
+16. `grep -rn 'from("profiles")' src` retorna zero resultados.
+17. `npm run typecheck` e `npm test` passam.
 
-Resumo para o planner: demanda **toca tela**, é frontend público puro, **sem dependência de dados**. Estender `plans.ts` (fonte única) com `price_cents` + `formatPlanPrice`; reescrever landing e `/precos` consumindo `PLANS` via um `PlanCard` compartilhado; adicionar "Entrar" no header de marketing; enriquecer o `aside` do `AuthLayout` com `BrandIllustration` (SVG/CSS, `aria-hidden`) + 4 funcionalidades. Preço tratado como conteúdo de marketing (centavos inteiros, nunca acopla a checkout). Boldness concentrada na ilustração do ciclo `pendente→confirmado→PIX`; resto quieto. Não abrir ADR de schema.
+## 14. Arquivos afetados (frontend)
+
+Criar:
+- `src/lib/auth-claims.ts` e `src/lib/auth-claims.test.ts`
+- `src/hooks/useAuthClaims.ts`
+- `src/auth/resolvePostLoginDestination.ts` e `.test.ts`
+- `src/auth/passwordGate.ts` e `.test.ts`
+- `src/auth/TrocarSenhaPage.tsx`
+- `src/auth/GateLayout.tsx`
+- `src/app/guards/RequirePasswordChange.tsx`
+
+Editar:
+- `src/hooks/useCurrentUser.ts`, `src/hooks/useTenant.ts`, `src/hooks/useEffectiveProfessionalId.ts`, `src/hooks/useAuthMutations.ts` (inclui `useChangeInitialPassword`)
+- `src/app/dashboard/DashboardPage.tsx` (`profile.id` vira `userId`)
+- `src/auth/usePostLoginRedirect.ts`, `src/auth/LoginPage.tsx` (`from` como string, sessão do login)
+- `src/app/guards/RequireAuth.tsx`, `RequireRole.tsx`, `RequireActiveSubscription.tsx`, `DefensiveLogout.tsx` (`hasIdentityError`, `from` como string)
+- `src/router.tsx` (rota `/trocar-senha`, `RequirePasswordChange`, índice de `/admin`)
+- `src/auth/pages.tsx` (exporta `TrocarSenhaPage`)
+- `src/lib/validations/auth.ts` (`initialPasswordSchema`)
+- `src/lib/auth-errors.ts` (`mapInitialPasswordError`)
+- `src/index.css` (quatro valores da seção 5)
+
+Remover:
+- `src/hooks/useProfile.ts`, depois que os consumidores migrarem. Confirmar com `grep` antes de apagar.
+
+Não tocar: `AuthLayout`, `RedefinirSenhaPage` (exceto R3, que é aceito), `EmpresasPage`, `admin-subscription`, marketing.
+
+## 15. Dúvidas abertas
+
+1. Aceita R1 (senha provisória fixa e leitura cross-tenant até o beta), com as salvaguardas (a) e (b)?
+2. Aceita R2 com encerramento das outras sessões depois da troca? Recomendo sim.
+3. Confirma os nomes de claim `user_role`, `tenant_id` e `must_change_password`?
+4. `AdminDashboardPage` fica no código sem rota, ou sai? Este documento deixa no código.

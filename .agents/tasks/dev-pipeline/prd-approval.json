@@ -1,1 +1,4 @@
-{"verdict": "approved"}
+{
+  "verdict": "approved",
+  "feedback": "PRD aprovado pelo humano com as decisões das perguntas abertas. P-01 = sim: o cadastro sai do trigger on_auth_user_created e vira Edge Function signup-tenant, com empresa, profile e templates numa transação; useSignUp muda junto (RQ-19 vale). P-02 = sim: supabase db reset autorizado para esta entrega. P-03 = sim: senha inicial fixa no código, com comentário de provisória, trocada antes do beta; o valor atual já foi exposto no histórico e deve ser trocado antes do beta. P-04 = sim: risco de leitura pelo PostgREST aceito até o beta, com (a) bootstrap só em ambiente local ou de desenvolvimento, (b) troca de senha no primeiro acesso e (c) remover BOOTSTRAP_SECRET depois do uso. P-05 = sim: trava para execução remota (recusa ambiente que não seja local sem variável explícita); nenhuma execução remota nesta entrega. P-06 = manter: escopo inclui troca de senha no servidor, hook de claims, checagem do flag no admin-subscription, telas e suíte de integração. Base: feat/adr-01-password-gate."
+}
