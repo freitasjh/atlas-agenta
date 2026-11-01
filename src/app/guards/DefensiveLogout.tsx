@@ -6,8 +6,9 @@ import { useSignOut } from "@/hooks/useAuthMutations";
 
 /**
  * Logout defensivo dos guards (ADR-08). Disparado quando há sessão viva mas a
- * cadeia de identidade não pôde ser lida (profile/tenant com erro de RLS, linha
- * ausente ou falha de rede): isso é falha de autorização, não acesso anônimo.
+ * identidade não pôde ser lida (claims ausentes/inválidas ou tenant com erro de
+ * RLS, linha ausente ou falha de rede): isso é falha de autorização, não acesso
+ * anônimo.
  *
  * Só redirecionar para `/login` não basta — `useSession` tem `staleTime:
  * Infinity`, então a sessão continua viva no cache, `isAuthenticated` segue

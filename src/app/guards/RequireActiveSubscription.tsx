@@ -13,7 +13,7 @@ import type { SubscriptionStatus } from "@/types/domain";
  * se um status novo não for tratado.
  *
  * - Carregando → fallback.
- * - Sessão com profile ilegível → logout defensivo + `/login`.
+ * - Sessão com identidade ilegível → logout defensivo + `/login`.
  * - Tenant-user com tenant ilegível (`hasTenantError`) → logout defensivo, NUNCA
  *   liberar: senão um tenant `bloqueado`/`cancelado` cuja leitura falhe ganharia
  *   o app (anti "fail-open", CA-08.5).
@@ -30,7 +30,7 @@ export function RequireActiveSubscription() {
   const {
     isLoadingAuth,
     isAuthenticated,
-    hasProfileError,
+    hasIdentityError,
     hasTenantError,
     isSuperAdmin,
     subscriptionStatus,
@@ -40,10 +40,10 @@ export function RequireActiveSubscription() {
     return <RouteFallback />;
   }
 
-  // Identidade ilegível (profile OU tenant): encerrar a sessão e sair. Cobrir o
+  // Identidade ilegível (claims OU tenant): encerrar a sessão e sair. Cobrir o
   // tenant aqui é o que fecha o "fail-open" — sem isto, `hasTenantError` viraria
   // `subscriptionStatus === null` e cairia no ramo de super_admin abaixo.
-  if (isAuthenticated && (hasProfileError || hasTenantError)) {
+  if (isAuthenticated && (hasIdentityError || hasTenantError)) {
     return <DefensiveLogout />;
   }
 

@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Skeleton de rota cheia enquanto a cadeia sessão → profile → tenant resolve.
+ * Skeleton de rota cheia enquanto a cadeia sessão/claims → tenant resolve.
  * Compartilhado pelos guards (`RequireAuth`, `RequireRole`,
  * `RequireActiveSubscription`) para evitar divergência. Evita o "flash de
  * login": sem sessão confirmada, mostramos carregamento, não a tela pública.

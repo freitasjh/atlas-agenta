@@ -67,17 +67,7 @@ export const BUSINESS_SEGMENTS = ["barbearia", "clinica", "salao"] as const;
 export type BusinessSegment = (typeof BUSINESS_SEGMENTS)[number];
 
 /**
- * Projeção do `profiles` do usuário logado lida pelos hooks de identidade.
- * `tenant_id` é `null` para `super_admin` (invariante garantida no banco).
- */
-export interface CurrentProfile {
-  id: string;
-  role: Role;
-  tenant_id: string | null;
-}
-
-/**
- * Projeção do `tenants` do profile lida pelos hooks de identidade.
+ * Projeção do `tenants` do usuário lida pelos hooks de identidade.
  * Só os campos que o chrome/guards consomem nesta fase.
  */
 export interface CurrentTenant {

@@ -1,7 +1,7 @@
 import type { AuthSession } from "@supabase/supabase-js";
 
+import { useAuthClaims } from "@/hooks/useAuthClaims";
 import { useSession } from "@/hooks/useSession";
-import { useProfile } from "@/hooks/useProfile";
 import { useTenant } from "@/hooks/useTenant";
 import type {
   CurrentTenant,
@@ -11,22 +11,29 @@ import type {
 
 /** Estado consolidado de identidade que os guards e o chrome consomem. */
 export interface CurrentUser {
-  /** True enquanto a cadeia sessão → profile → tenant ainda não resolveu. */
+  /** True enquanto a sessão (ou o tenant, quando há um) ainda não resolveu. */
   isLoadingAuth: boolean;
   session: AuthSession | null;
+  /** `session.user.id` — a mesma identidade da claim `sub`. */
+  userId: string | null;
   role: Role | null;
+  /** Empresa da claim `tenant_id`; `null` para `super_admin`. */
+  tenantId: string | null;
+  /** Claim `must_change_password` (ADR-01); `false` sem claims. */
+  mustChangePassword: boolean;
   tenant: CurrentTenant | null;
   subscriptionStatus: SubscriptionStatus | null;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
   /**
-   * True quando há sessão mas o profile não pôde ser lido (RLS nega, linha
-   * ausente ou falha de rede). Sinaliza aos guards (ADR-08) o logout defensivo:
-   * sessão sem profile legível é "não autorizado", nunca acesso liberado.
+   * True quando há sessão mas as claims de identidade estão ausentes ou
+   * inválidas (token emitido antes do hook, claim fora do enum, flag não
+   * booleana). Sinaliza aos guards (ADR-08) o logout defensivo: sessão sem
+   * identidade confiável é "não autorizado", nunca acesso liberado.
    */
-  hasProfileError: boolean;
+  hasIdentityError: boolean;
   /**
-   * True quando o profile tem `tenant_id` mas a leitura do tenant falhou (RLS
+   * True quando as claims têm `tenant_id` mas a leitura do tenant falhou (RLS
    * nega a linha ou falha de rede). Distingue "super_admin legítimo sem tenant"
    * (tenant null por desenho) de "tenant-user cuja assinatura não pôde ser
    * lida". Sem este flag, o segundo caso cairia em `subscriptionStatus === null`
@@ -36,50 +43,52 @@ export interface CurrentUser {
 }
 
 /**
- * Agregador que orquestra sessão → profile → tenant, para os guards (ADR-08) e
- * o chrome não repetirem o encadeamento. Deriva flags prontas de autenticação
- * e papel. Nunca lê nem envia `tenant_id` do cliente — tudo vem do servidor sob
- * RLS.
+ * Agregador de identidade para os guards (ADR-08) e o chrome. A identidade vem
+ * das claims do JWT (ADR-07) — nenhuma leitura de `profiles` no caminho de
+ * carregamento. O dado de negócio do tenant continua vindo do banco sob RLS.
  */
 export function useCurrentUser(): CurrentUser {
   const sessionQuery = useSession();
-  const profileQuery = useProfile();
+  const claims = useAuthClaims();
   const tenantQuery = useTenant();
 
   const session = sessionQuery.data ?? null;
-  const profile = profileQuery.data ?? null;
-  const role = profile?.role ?? null;
+  const userId = session?.user.id ?? null;
+  const role = claims?.role ?? null;
+  const tenantId = claims?.tenantId ?? null;
   const isSuperAdmin = role === "super_admin";
 
   // `super_admin` não tem tenant: o hook de tenant fica desabilitado e nunca
   // entra em `pending` de verdade, então não deve contar como carregando.
   const tenant = tenantQuery.data ?? null;
 
+  // Sessão viva mas sem claims válidas: não é usuário anônimo, é falha de
+  // autorização. Os guards reagem com logout defensivo em vez de liberar
+  // acesso (postura anti "fail-open"). Sessões antigas caem aqui uma vez.
+  const hasIdentityError = !!session && claims === null;
+
   const isLoadingAuth =
     sessionQuery.isLoading ||
-    (!!session && profileQuery.isLoading) ||
-    (!!profile?.tenant_id && tenantQuery.isLoading);
+    (!hasIdentityError && !!tenantId && tenantQuery.isLoading);
 
-  // Sessão viva mas o profile não carregou (RLS nega / linha ausente / rede):
-  // não é usuário anônimo, é falha de autorização. Os guards reagem com logout
-  // defensivo em vez de liberar acesso (postura anti "fail-open").
-  const hasProfileError = !!session && profileQuery.isError;
-
-  // Profile legível COM `tenant_id`, mas o tenant não carregou: a assinatura é
+  // Claims com `tenant_id`, mas o tenant não carregou: a assinatura é
   // ilegível. Não pode virar `subscriptionStatus === null` e liberar acesso —
   // um tenant `bloqueado`/`cancelado` cuja leitura falhe ganharia o app. Os
   // guards tratam como falha de autorização (logout defensivo).
-  const hasTenantError = !!profile?.tenant_id && tenantQuery.isError;
+  const hasTenantError = !!tenantId && tenantQuery.isError;
 
   return {
     isLoadingAuth,
     session,
+    userId,
     role,
+    tenantId,
+    mustChangePassword: claims?.mustChangePassword ?? false,
     tenant,
     subscriptionStatus: tenant?.subscription_status ?? null,
     isAuthenticated: !!session,
     isSuperAdmin,
-    hasProfileError,
+    hasIdentityError,
     hasTenantError,
   };
 }

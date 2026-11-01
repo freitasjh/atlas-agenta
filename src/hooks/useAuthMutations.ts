@@ -17,7 +17,8 @@ import type {
  * Nada de `fetch` solto; nenhum `tenant_id` do cliente; sem segredos.
  */
 
-/** Login por e-mail/senha. Invalida sessão e profile em caso de sucesso. */
+/** Login por e-mail/senha. Invalida a sessão em caso de sucesso (ADR-07: a
+ * identidade vem das claims do novo token — nenhuma leitura de `profiles`). */
 export function useSignIn() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -31,7 +32,6 @@ export function useSignIn() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKey });
-      void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });
 }
@@ -61,7 +61,6 @@ export function useSignUp() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKey });
-      void queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });
 }

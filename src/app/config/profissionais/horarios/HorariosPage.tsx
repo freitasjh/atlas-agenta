@@ -14,8 +14,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { useProfessionals } from "@/hooks/useProfessionals";
-import { useProfile } from "@/hooks/useProfile";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 
 import { WeekScheduleForm } from "@/app/config/profissionais/horarios/WeekScheduleForm";
@@ -74,7 +74,7 @@ export function HorariosPage() {
   const { canEditAnySchedule, canEditOwnSchedule, isAdmin } = usePermissions();
 
   const professionalsQuery = useProfessionals();
-  const profileQuery = useProfile();
+  const { userId } = useCurrentUser();
   const workingHoursQuery = useWorkingHours(profissionalId ?? null);
 
   const professional = professionalsQuery.data?.find(
@@ -82,8 +82,7 @@ export function HorariosPage() {
   );
 
   const isOwnSchedule =
-    !!professional?.profile_id &&
-    professional.profile_id === profileQuery.data?.id;
+    !!professional?.profile_id && professional.profile_id === userId;
 
   // Pode editar: admin (qualquer grade) ou quem edita a própria grade E esta é a
   // sua. Caso contrário, leitura. (A escrita de fato é barrada pelo RLS.)
@@ -91,9 +90,7 @@ export function HorariosPage() {
     canEditAnySchedule || (canEditOwnSchedule && isOwnSchedule);
 
   const isLoading =
-    professionalsQuery.isLoading ||
-    profileQuery.isLoading ||
-    workingHoursQuery.isLoading;
+    professionalsQuery.isLoading || workingHoursQuery.isLoading;
 
   const isError = professionalsQuery.isError || workingHoursQuery.isError;
 
