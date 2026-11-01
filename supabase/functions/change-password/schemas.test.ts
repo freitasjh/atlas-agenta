@@ -2,10 +2,51 @@
 //   deno test supabase/functions/change-password/schemas.test.ts
 import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import {
+  buildPasswordUpdate,
   isDefinitiveAuthRejection,
   parseChangePasswordBody,
 } from "./schemas.ts";
 import { PROVISIONAL_PASSWORD } from "../_shared/super-admin-bootstrap.ts";
+
+Deno.test("update do Auth zera must_change_password preservando o restante", () => {
+  const current = {
+    provider: "email",
+    providers: ["email"],
+    must_change_password: true,
+  };
+  assertEquals(buildPasswordUpdate(current, "Senha@123"), {
+    password: "Senha@123",
+    app_metadata: {
+      provider: "email",
+      providers: ["email"],
+      must_change_password: false,
+    },
+  });
+  // O objeto lido de getUser não é mutado: o update usa uma cópia.
+  assertEquals(current.must_change_password, true);
+});
+
+Deno.test("update do Auth sem app_metadata só define a flag false", () => {
+  assertEquals(buildPasswordUpdate(undefined, "Senha@123"), {
+    password: "Senha@123",
+    app_metadata: { must_change_password: false },
+  });
+  assertEquals(buildPasswordUpdate(null, "Senha@123"), {
+    password: "Senha@123",
+    app_metadata: { must_change_password: false },
+  });
+});
+
+Deno.test("update do Auth ignora app_metadata que não é objeto", () => {
+  assertEquals(buildPasswordUpdate("nao-e-objeto", "Senha@123"), {
+    password: "Senha@123",
+    app_metadata: { must_change_password: false },
+  });
+  assertEquals(buildPasswordUpdate(["provider"], "Senha@123"), {
+    password: "Senha@123",
+    app_metadata: { must_change_password: false },
+  });
+});
 
 Deno.test("libera reserva só para resposta 4xx do Auth", () => {
   assertEquals(isDefinitiveAuthRejection(422), true);
