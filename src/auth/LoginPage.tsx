@@ -27,17 +27,19 @@ import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { mapAuthError } from "@/lib/auth-errors";
 import { useSignIn } from "@/hooks/useAuthMutations";
 import { usePostLoginRedirect } from "@/auth/usePostLoginRedirect";
+import { readFromState } from "@/auth/read-from-state";
 
 /**
  * Tela de login por e-mail/senha. Ao sucesso, decide o destino com
- * `usePostLoginRedirect` (respeita `state.from` e manda `super_admin` para
- * `/admin`). Erro de credencial vira um alerta pt-BR genérico no topo, sem
- * revelar qual campo falhou (anti-enumeração).
+ * `usePostLoginRedirect` a partir da sessão (ADR-08): flag de troca de senha
+ * primeiro, depois `/admin/empresas` para `super_admin`, e `state.from` só para
+ * papéis de tenant. Erro de credencial vira um alerta pt-BR genérico no topo,
+ * sem revelar qual campo falhou (anti-enumeração).
  */
 export function LoginPage() {
   const signIn = useSignIn();
   const redirectAfterLogin = usePostLoginRedirect();
-  const location = useLocation() as { state?: { from?: string } };
+  const location = useLocation();
   const [serverError, setServerError] = useState<string | null>(null);
   const alertRef = useRef<HTMLParagraphElement>(null);
 
@@ -53,8 +55,8 @@ export function LoginPage() {
   async function onSubmit(values: LoginInput) {
     setServerError(null);
     try {
-      await signIn.mutateAsync(values);
-      await redirectAfterLogin(location.state?.from);
+      const { session } = await signIn.mutateAsync(values);
+      redirectAfterLogin(session, readFromState(location.state));
     } catch (error) {
       setServerError(mapAuthError(error));
     }
