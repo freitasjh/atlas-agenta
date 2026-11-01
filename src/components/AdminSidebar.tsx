@@ -1,4 +1,4 @@
-import { Building2, ClipboardList, Mail, ShieldCheck } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, Mail, ShieldCheck } from "lucide-react";
 
 import { Logo } from "@/components/Logo";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -8,6 +8,7 @@ const ADMIN_NAV_ITEMS: SidebarNavItem[] = [
   { to: "/admin", label: "Painel", icon: ShieldCheck, end: true },
   { to: "/admin/empresas", label: "Empresas", icon: Building2 },
   { to: "/admin/convites", label: "Convites", icon: Mail },
+  { to: "/admin/metricas", label: "Métricas", icon: BarChart3 },
   { to: "/admin/auditoria", label: "Auditoria", icon: ClipboardList },
 ];
 

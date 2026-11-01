@@ -40,7 +40,7 @@ import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
 
 import { AdminLayout } from "@/admin/AdminLayout";
-import { AdminDashboardPage, EmpresasPage } from "@/admin/pages";
+import { AdminDashboardPage, EmpresasPage, MetricasPage } from "@/admin/pages";
 import { ConvitesPage } from "@/admin/convites/ConvitesPage";
 import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
 
@@ -180,6 +180,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                       },
                       { path: "empresas", element: <EmpresasPage /> },
                       { path: "dashboard", element: <AdminDashboardPage /> },
+                      { path: "metricas", element: <MetricasPage /> },
                       { path: "convites", element: <ConvitesPage /> },
                       { path: "auditoria", element: <AuditoriaPage /> },
                     ],
