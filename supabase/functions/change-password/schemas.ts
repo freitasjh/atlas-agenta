@@ -1,4 +1,4 @@
-// Schemas e validação do corpo da Edge Function `change-password` — ADR-08 (Super Admin).
+// Schemas e validação do corpo da Edge Function `change-password` — ADR-04 (troca no Auth nativo).
 //
 // O corpo é DADO NÃO CONFIÁVEL. Só `{ password: string }` é aceito: qualquer campo extra
 // (ex.: `user_id`) é recusado pelo `.strict()`. O `userId` vem do JWT validado pelo GoTrue no
@@ -27,26 +27,6 @@ export type PasswordBodyErrorCode =
   | "password_too_long"
   | "password_is_initial";
 
-/**
- * Linha devolvida por `claim_password_change` (dado vindo do banco, validado antes de uso).
- * `claim_token` é a expiração da reserva tomada; nulo quando a troca não foi reservada.
- */
-export const claimRowSchema = z.object({
-  claim_status: z.enum(["claimed", "in_progress", "not_required"]),
-  claim_token: z.string().nullable(),
-});
-
-export type ClaimRow = z.infer<typeof claimRowSchema>;
-
-/**
- * Diz se a falha da escrita no Auth é uma resposta HTTP 4xx do GoTrue. Essa resposta garante que
- * a senha não mudou, então a reserva pode ser liberada. Timeout, erro de rede (sem status) e 5xx
- * podem deixar a escrita em curso no GoTrue: nesses casos a reserva expira sozinha em 60 s.
- */
-export function isDefinitiveAuthRejection(status: unknown): boolean {
-  return typeof status === "number" && status >= 400 && status < 500;
-}
-
 export type PasswordBodyResult =
   | { ok: true; password: string }
   | { ok: false; code: PasswordBodyErrorCode };
@@ -54,8 +34,8 @@ export type PasswordBodyResult =
 /**
  * Payload da ÚNICA chamada `auth.admin.updateUserById`: grava a senha nova e zera
  * `app_metadata.must_change_password` no mesmo update. As demais chaves de `app_metadata`
- * (`provider`, `providers`, marcadores internos) são preservadas; a limpeza da flag no Auth é a
- * contraparte da ADR-05, que liga o flag no bootstrap (ADR-04).
+ * (`provider`, `providers`, marcadores internos) continuam, porque o objeto anterior é lido e
+ * devolvido inteiro. Esta limpeza é a contraparte do bootstrap (ADR-05), que liga o flag.
  *
  * Nunca logue nem ecoe o retorno: ele contém a senha em claro.
  */

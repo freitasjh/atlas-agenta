@@ -1,14 +1,10 @@
-// Testes de schema da Edge Function `change-password` (ADR-08). Rodar com:
+// Testes de schema da Edge Function `change-password` (ADR-04). Rodar com:
 //   deno test supabase/functions/change-password/schemas.test.ts
 import { deepStrictEqual as assertEquals } from "node:assert/strict";
-import {
-  buildPasswordUpdate,
-  isDefinitiveAuthRejection,
-  parseChangePasswordBody,
-} from "./schemas.ts";
+import { buildPasswordUpdate, parseChangePasswordBody } from "./schemas.ts";
 import { PROVISIONAL_PASSWORD } from "../_shared/super-admin-bootstrap.ts";
 
-Deno.test("update do Auth zera must_change_password preservando o restante", () => {
+Deno.test("update do Auth zera must_change_password mantendo o restante", () => {
   const current = {
     provider: "email",
     providers: ["email"],
@@ -48,15 +44,6 @@ Deno.test("update do Auth ignora app_metadata que não é objeto", () => {
   });
 });
 
-Deno.test("libera reserva só para resposta 4xx do Auth", () => {
-  assertEquals(isDefinitiveAuthRejection(422), true);
-  assertEquals(isDefinitiveAuthRejection(401), true);
-  assertEquals(isDefinitiveAuthRejection(500), false);
-  assertEquals(isDefinitiveAuthRejection(503), false);
-  assertEquals(isDefinitiveAuthRejection(0), false);
-  assertEquals(isDefinitiveAuthRejection(undefined), false);
-});
-
 Deno.test("aceita senha válida com 8 caracteres", () => {
   assertEquals(parseChangePasswordBody({ password: "Senha@123" }), {
     ok: true,
@@ -91,7 +78,13 @@ Deno.test("recusa senha de 73 bytes com password_too_long", () => {
 });
 
 Deno.test("conta bytes UTF-8, não caracteres, no limite de 72", () => {
-  // 'é' ocupa 2 bytes: 37 caracteres = 74 bytes, acima do limite.
+  // 'é' ocupa 2 bytes: 36 caracteres = 72 bytes, exatamente o limite (aceito).
+  const atLimit = "é".repeat(36);
+  assertEquals(parseChangePasswordBody({ password: atLimit }), {
+    ok: true,
+    password: atLimit,
+  });
+  // 37 caracteres = 74 bytes, acima do limite.
   assertEquals(parseChangePasswordBody({ password: "é".repeat(37) }), {
     ok: false,
     code: "password_too_long",

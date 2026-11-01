@@ -74,18 +74,17 @@ const INITIAL_PASSWORD_TOO_SHORT_MESSAGE =
   "A senha deve ter ao menos 8 caracteres.";
 const INITIAL_PASSWORD_TOO_LONG_MESSAGE =
   "A senha deve ter no máximo 72 bytes.";
-const INITIAL_PASSWORD_CHANGE_IN_PROGRESS_MESSAGE =
-  "Aguarde e tente novamente.";
 const INITIAL_PASSWORD_GENERIC_MESSAGE =
   "Não foi possível salvar a nova senha. Tente novamente.";
 
-/** Códigos estáveis da Edge Function `change-password` (ADR-04). */
+/**
+ * Códigos estáveis da Edge Function `change-password` (ADR-04). São exatamente os que a
+ * função emite; não há reserva de troca, logo não existem `in_progress` nem `superseded`.
+ */
 const UNAUTHENTICATED_CODE = "unauthenticated";
 const PASSWORD_IS_INITIAL_CODE = "password_is_initial";
 const PASSWORD_TOO_SHORT_CODE = "password_too_short";
 const PASSWORD_TOO_LONG_CODE = "password_too_long";
-const PASSWORD_CHANGE_IN_PROGRESS_CODE = "password_change_in_progress";
-const PASSWORD_CHANGE_SUPERSEDED_CODE = "password_change_superseded";
 
 /**
  * Lê o status HTTP do erro. Cobre os três shapes reais: erro normalizado pelo
@@ -180,8 +179,9 @@ function readValidationIssues(
 
 /**
  * `true` quando o erro da troca significa sessão expirada: 401 (gateway ou
- * própria função), `unauthenticated` sem status, ou `password_change_superseded`
- * (a reserva era de outra requisição e o token desta ficou defasado).
+ * própria função) ou `unauthenticated` sem status. Não há outro código de
+ * sessão: a ADR-04 substituiu a reserva, então `superseded`/`in_progress`
+ * deixaram de existir.
  *
  * Exportado porque a tela precisa da MESMA regra para oferecer o link de login.
  * Duplicar a condição faria o link divergir da mensagem exibida.
@@ -189,10 +189,7 @@ function readValidationIssues(
 export function isInitialSessionExpiredError(error: unknown): boolean {
   if (readErrorStatus(error) === 401) return true;
 
-  const code = readErrorCode(error);
-  return (
-    code === UNAUTHENTICATED_CODE || code === PASSWORD_CHANGE_SUPERSEDED_CODE
-  );
+  return readErrorCode(error) === UNAUTHENTICATED_CODE;
 }
 
 /**
@@ -202,9 +199,6 @@ export function isInitialSessionExpiredError(error: unknown): boolean {
  * só por status/código estável — o corpo da Edge Function é dado não confiável.
  *
  * - 401 (gateway ou função) → sessão expirada;
- * - 409 `password_change_superseded` → sessão expirada: a reserva era de outra
- *   requisição e o token desta ficou defasado;
- * - 409 `password_change_in_progress` → pede para aguardar e repetir;
  * - 400 `password_is_initial` → escolher senha diferente da atual;
  * - 400 `password_too_short` / issue `too_small` → mínimo de 8 code points;
  * - 400 `password_too_long` / issue `too_big` → máximo de 72 bytes;
@@ -216,9 +210,6 @@ export function mapInitialPasswordError(error: unknown): string {
 
   if (isInitialSessionExpiredError(error)) {
     return INITIAL_SESSION_EXPIRED_MESSAGE;
-  }
-  if (code === PASSWORD_CHANGE_IN_PROGRESS_CODE) {
-    return INITIAL_PASSWORD_CHANGE_IN_PROGRESS_MESSAGE;
   }
   if (code === PASSWORD_IS_INITIAL_CODE) {
     return INITIAL_PASSWORD_IS_INITIAL_MESSAGE;
