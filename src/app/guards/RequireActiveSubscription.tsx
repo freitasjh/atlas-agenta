@@ -48,7 +48,13 @@ export function RequireActiveSubscription() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   // super_admin não tem tenant: não há assinatura para avaliar. Só o super_admin

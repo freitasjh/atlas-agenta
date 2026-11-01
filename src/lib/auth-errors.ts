@@ -179,6 +179,23 @@ function readValidationIssues(
 }
 
 /**
+ * `true` quando o erro da troca significa sessão expirada: 401 (gateway ou
+ * própria função), `unauthenticated` sem status, ou `password_change_superseded`
+ * (a reserva era de outra requisição e o token desta ficou defasado).
+ *
+ * Exportado porque a tela precisa da MESMA regra para oferecer o link de login.
+ * Duplicar a condição faria o link divergir da mensagem exibida.
+ */
+export function isInitialSessionExpiredError(error: unknown): boolean {
+  if (readErrorStatus(error) === 401) return true;
+
+  const code = readErrorCode(error);
+  return (
+    code === UNAUTHENTICATED_CODE || code === PASSWORD_CHANGE_SUPERSEDED_CODE
+  );
+}
+
+/**
  * Converte o erro da troca de senha obrigatória em texto pt-BR (ADR-09).
  *
  * Função pura: nunca lança e nunca devolve a mensagem do servidor. Classifica
@@ -195,13 +212,9 @@ function readValidationIssues(
  *   diferente) → genérica de falha ao salvar.
  */
 export function mapInitialPasswordError(error: unknown): string {
-  const status = readErrorStatus(error);
   const code = readErrorCode(error);
 
-  if (status === 401 || code === UNAUTHENTICATED_CODE) {
-    return INITIAL_SESSION_EXPIRED_MESSAGE;
-  }
-  if (code === PASSWORD_CHANGE_SUPERSEDED_CODE) {
+  if (isInitialSessionExpiredError(error)) {
     return INITIAL_SESSION_EXPIRED_MESSAGE;
   }
   if (code === PASSWORD_CHANGE_IN_PROGRESS_CODE) {

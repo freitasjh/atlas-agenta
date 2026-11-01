@@ -45,7 +45,13 @@ export function RequireRole({ roles }: RequireRoleProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   if (!role || !roles.includes(role)) {

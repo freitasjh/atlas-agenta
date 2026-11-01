@@ -12,7 +12,8 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
  * - Sessão com identidade/tenant ilegível (RLS nega / linha ausente / rede) →
  *   logout defensivo: encerra a sessão e manda para `/login` (postura anti
  *   "fail-open"; sem logout a sessão viva prenderia o usuário em loop).
- * - Sem sessão → `/login`, preservando a origem em `state.from`.
+ * - Sem sessão → `/login`, preservando a origem em `state.from` como string
+ *   (`pathname + search`, ADR-11).
  * - Com sessão válida → `<Outlet />`.
  */
 export function RequireAuth() {
@@ -31,7 +32,13 @@ export function RequireAuth() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   return <Outlet />;

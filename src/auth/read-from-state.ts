@@ -1,7 +1,8 @@
 /**
- * Normaliza `state.from` para `pathname + search` (ADR-08). Os guards ainda
- * gravam o objeto `Location`; a decisão de destino consome string. Qualquer
- * formato desconhecido vira `undefined` — o destino cai na regra do papel.
+ * Normaliza `state.from` para `pathname + search` (ADR-08). Os guards gravam
+ * string desde a ADR-11; o formato antigo (objeto `Location`) continua aceito
+ * para estados de navegação legados. Qualquer formato desconhecido vira
+ * `undefined` — o destino cai na regra do papel.
  */
 export function readFromState(state: unknown): string | undefined {
   if (state === null || typeof state !== "object") return undefined;
