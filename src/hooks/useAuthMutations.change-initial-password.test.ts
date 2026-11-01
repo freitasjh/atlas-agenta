@@ -16,26 +16,36 @@ import {
 } from "@/test/fixtures/auth-token";
 
 /**
- * Contrato de `useChangeInitialPassword` (ADR-09).
+ * Contrato de `useChangeInitialPassword` (ADR-09, corrigido no QA da ADR-14).
  *
  * 1. O corpo do `functions.invoke` leva SÓ `password` — o usuário vem do JWT.
- * 2. Sucesso renova o token e devolve as claims do token NOVO.
- * 3. 409 só é sucesso com o código estável `password_change_not_required`
- *    (fail-closed): 409 sem código legível é erro.
- * 4. `refreshSession` falho não derruba a mutation, mas devolve `claims: null`
+ * 2. O e-mail é lido da sessão ANTES do invoke: o GoTrue revoga as sessões ao
+ *    trocar a senha, então depois do 200 o `getSession()` pode voltar vazio.
+ * 3. 200: a sessão nova nasce de `signInWithPassword` com a senha nova (o
+ *    `refreshSession` responderia 400) e as claims devolvidas são do token novo.
+ * 4. 409 só é sucesso com o código estável `password_change_not_required`
+ *    (fail-closed): a senha não mudou, então o caminho é `refreshSession`.
+ * 5. Login/renovação falhos não derrubam a mutation, mas devolvem `claims: null`
  *    (a senha já foi salva; a tela da ADR-10 decide pedir login de novo).
  *
  * Supabase inteiro é mockado: nenhuma rede.
  */
 
-const { invokeMock, refreshSessionMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  refreshSessionMock: vi.fn(),
-}));
+const { invokeMock, refreshSessionMock, getSessionMock, signInMock } =
+  vi.hoisted(() => ({
+    invokeMock: vi.fn(),
+    refreshSessionMock: vi.fn(),
+    getSessionMock: vi.fn(),
+    signInMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    auth: { refreshSession: refreshSessionMock },
+    auth: {
+      refreshSession: refreshSessionMock,
+      getSession: getSessionMock,
+      signInWithPassword: signInMock,
+    },
     functions: { invoke: invokeMock },
   },
 }));
@@ -43,6 +53,7 @@ vi.mock("@/lib/supabase", () => ({
 vi.mock("@/hooks/useSession", () => ({ sessionQueryKey: ["session"] }));
 
 const PASSWORD = "senha-nova-1";
+const EMAIL = "admin@empresa.test";
 
 /** Erro no shape do `FunctionsHttpError`: `context` é a `Response`. */
 function functionsHttpError(status: number, body: string | null) {
@@ -82,6 +93,15 @@ async function runMutation(
 beforeEach(() => {
   invokeMock.mockReset();
   refreshSessionMock.mockReset();
+  getSessionMock.mockReset();
+  signInMock.mockReset();
+
+  getSessionMock.mockResolvedValue({
+    data: { session: { user: { email: EMAIL } } },
+    error: null,
+  });
+  signInMock.mockResolvedValue({ data: { session: null }, error: null });
+  refreshSessionMock.mockResolvedValue({ data: { session: null }, error: null });
 });
 
 afterEach(() => {
@@ -91,10 +111,6 @@ afterEach(() => {
 describe("useChangeInitialPassword — requisição", () => {
   it("envia só { password }: nenhum id, papel ou flag no corpo", async () => {
     invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
-    refreshSessionMock.mockResolvedValue({
-      data: { session: null },
-      error: null,
-    });
 
     const { result } = renderChangeInitialPassword();
     await runMutation(result.current);
@@ -109,13 +125,25 @@ describe("useChangeInitialPassword — requisição", () => {
     expect(Object.keys(options.body)).toEqual(["password"]);
     expect(options.body).toEqual({ password: PASSWORD });
   });
+
+  it("lê o e-mail da sessão antes do invoke", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+
+    const { result } = renderChangeInitialPassword();
+    await runMutation(result.current);
+
+    expect(getSessionMock).toHaveBeenCalledTimes(1);
+    expect(getSessionMock.mock.invocationCallOrder[0]).toBeLessThan(
+      invokeMock.mock.invocationCallOrder[0],
+    );
+  });
 });
 
-describe("useChangeInitialPassword — sucesso", () => {
-  it("200 renova a sessão e devolve as claims do token novo", async () => {
+describe("useChangeInitialPassword — sucesso 200 (sessões revogadas)", () => {
+  it("relogin com a senha nova devolve as claims do token novo", async () => {
     const accessToken = tokenWith(claimsPayload({ user_role: "admin" }));
     invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
-    refreshSessionMock.mockResolvedValue({
+    signInMock.mockResolvedValue({
       data: { session: { access_token: accessToken } },
       error: null,
     });
@@ -123,7 +151,10 @@ describe("useChangeInitialPassword — sucesso", () => {
     const { result } = renderChangeInitialPassword();
     const output = await runMutation(result.current);
 
-    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(signInMock).toHaveBeenCalledTimes(1);
+    expect(signInMock).toHaveBeenCalledWith({ email: EMAIL, password: PASSWORD });
+    // refreshSession responderia 400 com as sessões revogadas.
+    expect(refreshSessionMock).not.toHaveBeenCalled();
     expect(output).toEqual({
       ok: true,
       claims: {
@@ -134,7 +165,55 @@ describe("useChangeInitialPassword — sucesso", () => {
     });
   });
 
-  it("409 password_change_not_required é sucesso: renova e devolve claims", async () => {
+  it("relogin falho: mutation não falha e devolve claims null", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+    signInMock.mockResolvedValue({
+      data: { session: null },
+      error: new Error("invalid_credentials"),
+    });
+
+    const { result } = renderChangeInitialPassword();
+    const output = await runMutation(result.current);
+
+    expect(output.ok).toBe(true);
+    expect(output.claims).toBeNull();
+  });
+
+  it("relogin que lança (transporte): mutation não falha e devolve claims null", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+    signInMock.mockRejectedValue(new Error("network_down"));
+
+    const { result } = renderChangeInitialPassword();
+    const output = await runMutation(result.current);
+
+    expect(output.ok).toBe(true);
+    expect(output.claims).toBeNull();
+  });
+
+  it("relogin sem access_token: claims null (nunca token vazio)", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+    signInMock.mockResolvedValue({ data: { session: null }, error: null });
+
+    const { result } = renderChangeInitialPassword();
+    const output = await runMutation(result.current);
+
+    expect(output.claims).toBeNull();
+  });
+
+  it("sessão sem e-mail: não tenta relogin e devolve claims null", async () => {
+    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+
+    const { result } = renderChangeInitialPassword();
+    const output = await runMutation(result.current);
+
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(output).toEqual({ ok: true, claims: null });
+  });
+});
+
+describe("useChangeInitialPassword — 409 password_change_not_required", () => {
+  it("a senha não mudou: renova a sessão e devolve claims", async () => {
     const accessToken = tokenWith(claimsPayload());
     invokeMock.mockResolvedValue({
       data: null,
@@ -155,6 +234,7 @@ describe("useChangeInitialPassword — sucesso", () => {
     const output = await runMutation(result.current);
 
     expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(signInMock).not.toHaveBeenCalled();
     expect(output.claims).toEqual({
       role: "professional",
       tenantId: TENANT_ID,
@@ -162,8 +242,14 @@ describe("useChangeInitialPassword — sucesso", () => {
     });
   });
 
-  it("refreshSession falho: mutation não falha e devolve claims null", async () => {
-    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+  it("refreshSession falho no 409: mutation não falha e devolve claims null", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: functionsHttpError(
+        409,
+        JSON.stringify({ code: "password_change_not_required" }),
+      ),
+    });
     refreshSessionMock.mockResolvedValue({
       data: { session: null },
       error: new Error("refresh_failed"),
@@ -173,16 +259,6 @@ describe("useChangeInitialPassword — sucesso", () => {
     const output = await runMutation(result.current);
 
     expect(output.ok).toBe(true);
-    expect(output.claims).toBeNull();
-  });
-
-  it("refreshSession sem access_token: claims null (nunca token vazio)", async () => {
-    invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
-    refreshSessionMock.mockResolvedValue({ data: { session: null }, error: null });
-
-    const { result } = renderChangeInitialPassword();
-    const output = await runMutation(result.current);
-
     expect(output.claims).toBeNull();
   });
 });
@@ -202,8 +278,9 @@ describe("useChangeInitialPassword — 409 sem código (fail-closed)", () => {
       ).rejects.toMatchObject({ message: "change_password_failed", status: 409 });
     });
 
-    // Token defasado não é liberado: sem renovação.
+    // Token defasado não é liberado: sem renovação e sem relogin.
     expect(refreshSessionMock).not.toHaveBeenCalled();
+    expect(signInMock).not.toHaveBeenCalled();
 
     const failure = result.current.error;
     expect(failure).toBeInstanceOf(Error);
@@ -231,6 +308,7 @@ describe("useChangeInitialPassword — 409 sem código (fail-closed)", () => {
     });
 
     expect(refreshSessionMock).not.toHaveBeenCalled();
+    expect(signInMock).not.toHaveBeenCalled();
     expect(mapInitialPasswordError(result.current.error)).toBe(
       "Não foi possível salvar a nova senha. Tente novamente.",
     );

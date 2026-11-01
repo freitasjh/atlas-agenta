@@ -84,6 +84,7 @@ export function TrocarSenhaPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
   // Síncrono de propósito: `isPending` só chega ao `onSubmit` na re-renderização
   // seguinte, então um segundo Enter/clique na mesma janela ainda o veria falso.
   const submittingRef = useRef(false);
@@ -97,6 +98,12 @@ export function TrocarSenhaPage() {
   useEffect(() => {
     if (serverError) alertRef.current?.focus();
   }, [serverError]);
+
+  // Foco no primeiro campo ao montar (ADR-14): o usuário cai direto no
+  // formulário, sem precisar tabular a partir do topo da página.
+  useEffect(() => {
+    passwordRef.current?.focus();
+  }, []);
 
   // Acesso direto com a flag já limpa (outra aba concluiu a troca): vai para a
   // casa do papel, sem passar pelo formulário.
@@ -225,6 +232,13 @@ export function TrocarSenhaPage() {
                       autoComplete="new-password"
                       className="text-base sm:text-sm"
                       {...field}
+                      ref={(element) => {
+                        // RHF precisa do ref para registrar o campo e focar no
+                        // erro; a tela, para o foco inicial. Um callback só
+                        // atende os dois (o spread de `field` traria o ref dele).
+                        field.ref(element);
+                        passwordRef.current = element;
+                      }}
                     />
                   </FormControl>
                   <FormDescription>

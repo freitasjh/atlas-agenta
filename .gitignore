@@ -34,3 +34,4 @@ supabase/.temp
 # Artefatos de processo do dev-pipeline: ADRs, reviews e QA (gerados, não versionar).
 # PRD, plan, analysis-*, pr-result e PR_BODY seguem versionados (ficam um nível acima, em dev-pipeline/).
 .agents/tasks/dev-pipeline/adr/
+.agents/tasks/dev-pipeline/qa/
