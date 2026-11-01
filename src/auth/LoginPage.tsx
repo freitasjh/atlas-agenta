@@ -27,7 +27,7 @@ import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { mapAuthError } from "@/lib/auth-errors";
 import { useSignIn } from "@/hooks/useAuthMutations";
 import { usePostLoginRedirect } from "@/auth/usePostLoginRedirect";
-import { readFromState } from "@/auth/read-from-state";
+import { readFromState, readNoticeState } from "@/auth/read-from-state";
 
 /**
  * Tela de login por e-mail/senha. Ao sucesso, decide o destino com
@@ -35,6 +35,10 @@ import { readFromState } from "@/auth/read-from-state";
  * primeiro, depois `/admin/empresas` para `super_admin`, e `state.from` só para
  * papéis de tenant. Erro de credencial vira um alerta pt-BR genérico no topo,
  * sem revelar qual campo falhou (anti-enumeração).
+ *
+ * `state.notice` mostra o aviso neutro de quem chega empurrado por outra tela
+ * (ADR-03: "Conta criada. Entre com seu e-mail e senha."). É feedback, não erro
+ * — por isso `role="status"`.
  */
 export function LoginPage() {
   const signIn = useSignIn();
@@ -42,6 +46,7 @@ export function LoginPage() {
   const location = useLocation();
   const [serverError, setServerError] = useState<string | null>(null);
   const alertRef = useRef<HTMLParagraphElement>(null);
+  const notice = readNoticeState(location.state);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
@@ -69,6 +74,14 @@ export function LoginPage() {
         <CardDescription>Acesse o painel da sua empresa.</CardDescription>
       </CardHeader>
       <CardContent>
+        {notice ? (
+          <p
+            role="status"
+            className="mb-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground"
+          >
+            {notice}
+          </p>
+        ) : null}
         {serverError ? (
           <p
             ref={alertRef}

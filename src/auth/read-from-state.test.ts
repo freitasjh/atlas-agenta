@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readFromState } from "@/auth/read-from-state";
+import { readFromState, readNoticeState } from "@/auth/read-from-state";
 
 /**
  * Contrato de `readFromState` (ADR-08/ADR-11): normaliza `location.state.from`
@@ -37,5 +37,43 @@ describe("readFromState", () => {
 
   it("state numérico ⇒ undefined", () => {
     expect(readFromState(42)).toBeUndefined();
+  });
+});
+
+/**
+ * `readNoticeState` leva o aviso curto de uma tela para outra pelo
+ * `location.state` (ADR-03: conta criada mas login automático falhou → `/login`
+ * mostra "Conta criada. Entre com seu e-mail e senha."). `state` é entrada não
+ * confiável: só string curta e não vazia vira aviso; nada é injetado como HTML.
+ */
+describe("readNoticeState", () => {
+  it("state com notice string ⇒ devolve o texto", () => {
+    expect(
+      readNoticeState({ notice: "Conta criada. Entre com seu e-mail e senha." }),
+    ).toBe("Conta criada. Entre com seu e-mail e senha.");
+  });
+
+  it("notice com espaços nas pontas ⇒ devolve aparado", () => {
+    expect(readNoticeState({ notice: "  Conta criada.  " })).toBe("Conta criada.");
+  });
+
+  it("notice vazio ou só espaços ⇒ null", () => {
+    expect(readNoticeState({ notice: "" })).toBeNull();
+    expect(readNoticeState({ notice: "   " })).toBeNull();
+  });
+
+  it("notice não-string ⇒ null", () => {
+    expect(readNoticeState({ notice: 42 })).toBeNull();
+    expect(readNoticeState({ notice: { text: "x" } })).toBeNull();
+  });
+
+  it("notice acima do limite ⇒ null (state não confiável)", () => {
+    expect(readNoticeState({ notice: "a".repeat(281) })).toBeNull();
+  });
+
+  it("state sem notice, nulo ou primitivo ⇒ null", () => {
+    expect(readNoticeState({ from: "/app" })).toBeNull();
+    expect(readNoticeState(null)).toBeNull();
+    expect(readNoticeState("aviso")).toBeNull();
   });
 });

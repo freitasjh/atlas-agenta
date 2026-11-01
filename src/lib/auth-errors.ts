@@ -60,6 +60,39 @@ function isNetworkError(error: unknown): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Cadastro da empresa (ADR-03)                                               */
+/* -------------------------------------------------------------------------- */
+
+/** Código estável do 409 da Edge Function `signup-tenant` (ADR-02). */
+const EMAIL_JA_CADASTRADO_CODE = "email_ja_cadastrado";
+
+/**
+ * Mensagens da tela de cadastro (ADR-03). São as ÚNICAS strings que chegam ao
+ * alerta da tela — a mensagem do servidor nunca é exibida.
+ */
+const SIGNUP_EMAIL_TAKEN_MESSAGE = "Este e-mail já tem cadastro.";
+const SIGNUP_GENERIC_MESSAGE =
+  "Não foi possível criar sua conta. Tente novamente.";
+
+/**
+ * Converte o erro do cadastro (`functions.invoke("signup-tenant")`) em texto
+ * pt-BR (ADR-03). Função pura: nunca lança e nunca devolve a mensagem do
+ * servidor.
+ *
+ * Só o par status 409 + código estável `email_ja_cadastrado` prova e-mail
+ * repetido. 409 sem corpo legível (gateway/proxy) e todo o resto (400 de
+ * validação, 500, rede) caem na genérica — o mesmo fail-closed da troca de
+ * senha (ADR-09).
+ */
+export function mapSignUpError(error: unknown): string {
+  const isEmailTaken =
+    readErrorStatus(error) === 409 &&
+    readErrorCode(error) === EMAIL_JA_CADASTRADO_CODE;
+
+  return isEmailTaken ? SIGNUP_EMAIL_TAKEN_MESSAGE : SIGNUP_GENERIC_MESSAGE;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Troca de senha obrigatória (ADR-09)                                        */
 /* -------------------------------------------------------------------------- */
 
