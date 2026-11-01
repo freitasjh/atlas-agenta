@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import { readFromState } from "@/auth/read-from-state";
 
 /**
- * Contrato de `readFromState` (ADR-08): traduz `location.state` — que os
- * guards gravam como objeto `Location` — para a string `pathname + search`
- * que `resolvePostLoginDestination` consome. Qualquer formato desconhecido
- * vira `undefined`, e o destino cai na regra do papel.
+ * Contrato de `readFromState` (ADR-08/ADR-11): normaliza `location.state.from`
+ * para a string `pathname + search` que `resolvePostLoginDestination` consome.
+ * Os guards gravam string desde a ADR-11; o formato antigo (objeto `Location`)
+ * continua aceito para estados de navegação legados. Qualquer formato
+ * desconhecido vira `undefined`, e o destino cai na regra do papel.
  */
 
 describe("readFromState", () => {
