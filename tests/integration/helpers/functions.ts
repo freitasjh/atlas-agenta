@@ -14,6 +14,8 @@ export interface CallOptions {
   token?: string;
   body?: unknown;
   rawBody?: string;
+  /** Headers adicionais (ex.: `x-bootstrap-secret`). Sobrepõem os padrões. */
+  headers?: Record<string, string>;
 }
 
 /** Chama uma Edge Function local, com a anon key como apikey (como o cliente real faz). */
@@ -22,6 +24,7 @@ export async function callFunction(name: string, options: CallOptions = {}): Pro
   const headers: Record<string, string> = {
     apikey: env.anonKey,
     "Content-Type": "application/json",
+    ...options.headers,
   };
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
 

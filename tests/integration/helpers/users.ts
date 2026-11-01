@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient, signInWithPassword } from "./clients.ts";
-import { sql } from "./sql.ts";
 
 /** Usuário de teste criado e apagado por um caso. */
 export interface TestUser {
@@ -12,12 +11,18 @@ export interface TestUser {
   accessToken: string;
 }
 
-/** Lista de usuários criados, para a limpeza no afterAll de cada arquivo. */
-const created: string[] = [];
+/** Usuários e empresas criados, para a limpeza no afterAll de cada arquivo. */
+const createdUsers: string[] = [];
+const createdTenants = new Set<string>();
 
-/** Registra um usuário criado fora dos helpers (ex.: signUp do cliente) para a limpeza. */
+/** Registra um usuário criado fora dos helpers (ex.: Edge Function de cadastro) para a limpeza. */
 export function trackUser(userId: string): void {
-  created.push(userId);
+  createdUsers.push(userId);
+}
+
+/** Registra uma empresa criada fora do helper para a limpeza. */
+export function trackTenant(tenantId: string): void {
+  createdTenants.add(tenantId);
 }
 
 /**
@@ -32,65 +37,157 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.invalid`;
 }
 
-/**
- * Cria um usuário comum pelo caminho do GoTrue (Admin API, sem marcador). O trigger
- * `handle_new_user` cria a empresa `trial` com profile `admin` (CA-02).
- */
-export async function createCommonUser(prefix = "common"): Promise<TestUser> {
+function tradeName(): string {
+  return `Empresa Teste ${randomUUID().slice(0, 8)}`;
+}
+
+async function createAuthUser(
+  email: string,
+  password: string,
+  appMetadata?: Record<string, unknown>,
+  track = true,
+): Promise<string> {
   const admin = serviceClient();
-  const email = uniqueEmail(prefix);
-  const password = freshPassword();
   const { data, error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    ...(appMetadata ? { app_metadata: appMetadata } : {}),
   });
   if (error || !data.user) {
-    throw new Error(`Criação de usuário de teste falhou: ${error?.message ?? "sem usuário"}`);
+    throw new Error(`Criação de usuário de teste falhou (status ${error?.status ?? "sem status"}).`);
   }
-  created.push(data.user.id);
-  const session = await signInWithPassword(email, password);
-  return { id: data.user.id, email, password, ...session };
+  if (track) createdUsers.push(data.user.id);
+  return data.user.id;
+}
+
+async function createTenantWithAdmin(userId: string, email: string, track = true): Promise<string> {
+  const { data, error } = await serviceClient().rpc("create_tenant_with_admin", {
+    p_user_id: userId,
+    p_owner_email: email,
+    p_trade_name: tradeName(),
+    p_full_name: null,
+    p_segment: null,
+  });
+  if (error || typeof data !== "string") {
+    throw new Error(`Criação da empresa de teste falhou (código ${error?.code ?? "sem código"}).`);
+  }
+  if (track) createdTenants.add(data);
+  return data;
 }
 
 /**
- * Cria um super admin de teste com o mesmo INSERT que o script de operador usa (ADR-07). O
- * marcador `bootstrap_role` vai em `raw_app_meta_data` dentro do INSERT, então o trigger cria o
- * profile `super_admin` sem tenant e com troca de senha pendente. Não usa a Admin API, porque o
- * GoTrue grava o app_metadata depois do INSERT e o trigger não o veria (ADR-07, P-12).
+ * Cria um admin de empresa pelo mesmo caminho do cadastro (RPC `create_tenant_with_admin`,
+ * ADR-02) e faz login. O trigger de `auth.users` não existe mais, então a empresa, o profile e
+ * os 5 templates nascem na RPC com service role.
+ */
+export async function createCommonUser(prefix = "common"): Promise<TestUser> {
+  const email = uniqueEmail(prefix);
+  const password = freshPassword();
+  const id = await createAuthUser(email, password);
+  try {
+    await createTenantWithAdmin(id, email);
+  } catch (err) {
+    await serviceClient().auth.admin.deleteUser(id);
+    createdUsers.pop();
+    throw err;
+  }
+  const session = await signInWithPassword(email, password);
+  return { id, email, password, ...session };
+}
+
+/** Cria um admin de empresa com e-mail fixo. Usado no caso de 409 do bootstrap. */
+export async function createCommonUserWithEmail(
+  email: string,
+  options: { track?: boolean } = {},
+): Promise<TestUser> {
+  const track = options.track ?? true;
+  const password = freshPassword();
+  const id = await createAuthUser(email, password, undefined, track);
+  try {
+    await createTenantWithAdmin(id, email, track);
+  } catch (err) {
+    await serviceClient().auth.admin.deleteUser(id);
+    if (track) createdUsers.pop();
+    throw err;
+  }
+  const session = await signInWithPassword(email, password);
+  return { id, email, password, ...session };
+}
+
+/**
+ * Cria um super admin de teste pela Admin API: `createUser` com
+ * `app_metadata.must_change_password = true` e `INSERT` do profile `super_admin` sem tenant
+ * (ADR-05, pendência resolvida na ADR-13). Não usa `bootstrap_role` nem o trigger removido.
  */
 export async function createSuperAdminUser(prefix = "superadmin"): Promise<TestUser> {
   const email = uniqueEmail(prefix);
   const password = freshPassword();
-  const id = sql(
-    `with new_user as (
-       insert into auth.users (
-         id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
-         raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous,
-         created_at, updated_at, confirmation_token, recovery_token,
-         email_change_token_new, email_change, phone_change, phone_change_token,
-         email_change_token_current, reauthentication_token
-       ) values (
-         gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-         :'email', extensions.crypt(:'password', extensions.gen_salt('bf')), now(),
-         jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email'),
-                            'bootstrap_role', 'super_admin'),
-         '{}'::jsonb, false, false, now(), now(),
-         '', '', '', '', '', '', '', ''
-       )
-       returning id, email
-     ), ident as (
-       insert into auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
-       select gen_random_uuid(), new_user.id::text, new_user.id,
-              jsonb_build_object('sub', new_user.id::text, 'email', new_user.email, 'email_verified', true),
-              'email', now(), now()
-         from new_user
-       returning user_id
-     )
-     select id from new_user;`,
-    { email, password },
-  );
-  created.push(id);
+  const id = await createAuthUser(email, password, { must_change_password: true });
+
+  const { error } = await serviceClient().from("profiles").insert({
+    id,
+    tenant_id: null,
+    role: "super_admin",
+  });
+  if (error) {
+    await serviceClient().auth.admin.deleteUser(id);
+    createdUsers.pop();
+    throw new Error(`Insert do profile de super admin falhou (código ${error.code ?? "sem código"}).`);
+  }
+
+  const session = await signInWithPassword(email, password);
+  return { id, email, password, ...session };
+}
+
+/**
+ * Cria um usuário Auth com profile de empresa em um papel escolhido (ADR-13, RQ-13).
+ * O dono da empresa nasce pelo cadastro (`createCommonUser`); os demais papéis entram aqui,
+ * com `INSERT` pela service role, como faria um convite server-side.
+ */
+export async function createTenantMember(
+  tenantId: string,
+  role: "admin" | "professional" | "receptionist",
+  prefix: string,
+): Promise<TestUser> {
+  const email = uniqueEmail(prefix);
+  const password = freshPassword();
+  const id = await createAuthUser(email, password);
+
+  const { error } = await serviceClient().from("profiles").insert({
+    id,
+    tenant_id: tenantId,
+    role,
+  });
+  if (error) {
+    await serviceClient().auth.admin.deleteUser(id);
+    createdUsers.pop();
+    throw new Error(`Insert do profile ${role} falhou (código ${error.code ?? "sem código"}).`);
+  }
+
+  const session = await signInWithPassword(email, password);
+  return { id, email, password, ...session };
+}
+
+/** Cria um usuário no Auth sem profile (o trigger não existe mais, então basta o `createUser`). */
+export async function createAuthUserWithoutProfile(prefix = "orphan"): Promise<string> {
+  const session = await createAuthUserWithoutProfileSession(prefix);
+  return session.id;
+}
+
+/** Usuário Auth sem profile com e-mail fixo. Usado no caso 409 `usuario_sem_profile` do bootstrap. */
+export async function createAuthUserWithoutProfileWithEmail(
+  email: string,
+  options: { track?: boolean } = {},
+): Promise<string> {
+  return createAuthUser(email, freshPassword(), undefined, options.track ?? true);
+}
+
+/** Usuário sem profile já com sessão: o hook precisa responder claims nulas no login. */
+export async function createAuthUserWithoutProfileSession(prefix = "orphan"): Promise<TestUser> {
+  const email = uniqueEmail(prefix);
+  const password = freshPassword();
+  const id = await createAuthUser(email, password);
   const session = await signInWithPassword(email, password);
   return { id, email, password, ...session };
 }
@@ -99,86 +196,121 @@ export async function createSuperAdminUser(prefix = "superadmin"): Promise<TestU
 export async function readProfile(userId: string): Promise<{
   role: string;
   tenant_id: string | null;
-  must_change_password: boolean;
-  password_changed_at: string | null;
-  password_change_claimed_until: string | null;
+  full_name: string | null;
 }> {
   const { data, error } = await serviceClient()
     .from("profiles")
-    .select("role, tenant_id, must_change_password, password_changed_at, password_change_claimed_until")
+    .select("role, tenant_id, full_name")
     .eq("id", userId)
     .single();
-  if (error || !data) throw new Error(`Leitura de profile falhou: ${error?.message ?? "vazio"}`);
+  if (error || !data) throw new Error(`Leitura de profile falhou (código ${error?.code ?? "vazio"}).`);
   return data;
 }
 
-/** Liga ou desliga o flag de troca de senha pela service role. Só para preparar cenários. */
+/** Lê `app_metadata` pela Admin API (fonte do flag de troca obrigatória desde a ADR-04). */
+export async function readAuthMetadata(userId: string): Promise<Record<string, unknown>> {
+  const { data, error } = await serviceClient().auth.admin.getUserById(userId);
+  if (error || !data.user) {
+    throw new Error(`Leitura do usuário Auth falhou (status ${error?.status ?? "sem status"}).`);
+  }
+  const metadata = data.user.app_metadata;
+  return typeof metadata === "object" && metadata !== null
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+/** Liga ou desliga o flag de troca de senha preservando o restante de `app_metadata`. */
 export async function setMustChangePassword(userId: string, value: boolean): Promise<void> {
-  const { error } = await serviceClient()
+  const current = await readAuthMetadata(userId);
+  const { error } = await serviceClient().auth.admin.updateUserById(userId, {
+    app_metadata: { ...current, must_change_password: value },
+  });
+  if (error) throw new Error(`Atualização do flag falhou (status ${error.status ?? "sem status"}).`);
+}
+
+/** Limpa o flag, como faria a Edge Function `change-password` após a troca. */
+export async function clearMustChangePassword(userId: string): Promise<void> {
+  await setMustChangePassword(userId, false);
+}
+
+/** Procura um usuário Auth pelo e-mail, paginando a Admin API. `null` quando não existe. */
+export async function findAuthUserByEmail(
+  email: string,
+): Promise<{ id: string } | null> {
+  const admin = serviceClient();
+  const target = email.toLowerCase();
+  for (let page = 1; page <= 100; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 100 });
+    if (error) throw new Error(`Listagem de usuários falhou (status ${error.status ?? "sem status"}).`);
+    const match = data.users.find((user) => (user.email ?? "").toLowerCase() === target);
+    if (match) return { id: match.id };
+    if (data.users.length < 100 || data.nextPage === null) return null;
+  }
+  return null;
+}
+
+/** Apaga um usuário Auth pelo e-mail e a empresa dele se ficar órfã. Usado no bootstrap. */
+export async function deleteAuthUserByEmail(email: string): Promise<void> {
+  const found = await findAuthUserByEmail(email);
+  if (!found) return;
+  const admin = serviceClient();
+  const { data: profile } = await admin
     .from("profiles")
-    .update({ must_change_password: value })
-    .eq("id", userId);
-  if (error) throw new Error(`Atualização de flag falhou: ${error.message}`);
+    .select("tenant_id")
+    .eq("id", found.id)
+    .maybeSingle();
+  const tenantId = profile?.tenant_id ?? null;
+  const { error } = await admin.auth.admin.deleteUser(found.id);
+  if (error) throw new Error(`Limpeza de usuário falhou (status ${error.status ?? "sem status"}).`);
+  if (tenantId) await deleteTenantIfEmpty(tenantId);
 }
 
-/** Conclui a troca pela RPC da ADR-05 (service role), como faria o fluxo de troca. */
-export async function completePasswordChange(userId: string): Promise<void> {
-  const { error } = await serviceClient().rpc("complete_password_change", { p_user_id: userId });
-  if (error) throw new Error(`complete_password_change falhou: ${error.message}`);
+async function deleteTenantIfEmpty(tenantId: string): Promise<void> {
+  const admin = serviceClient();
+  const { count, error } = await admin
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId);
+  if (error) throw new Error(`Contagem de profiles da empresa falhou (código ${error.code ?? "sem código"}).`);
+  if (count === 0) {
+    const { error: tenantError } = await admin.from("tenants").delete().eq("id", tenantId);
+    if (tenantError) {
+      throw new Error(`Limpeza da empresa falhou (código ${tenantError.code ?? "sem código"}).`);
+    }
+  }
 }
 
-/**
- * Apaga o usuário de auth (o profile cai em cascata) e, se nenhum outro profile usar a empresa, a
- * empresa criada pelo trigger para esse usuário. A empresa é lida antes de apagar o usuário, porque
- * depois disso o profile não existe mais.
- */
+/** Apaga os usuários de teste e as empresas que ficarem sem profile. */
 export async function deleteTestUsers(): Promise<void> {
   const admin = serviceClient();
-  while (created.length > 0) {
-    const id = created.pop();
+  const tenants = new Set(createdTenants);
+  createdTenants.clear();
+
+  while (createdUsers.length > 0) {
+    const id = createdUsers.pop();
     if (!id) continue;
     const { data: profile, error: readError } = await admin
       .from("profiles")
       .select("tenant_id")
       .eq("id", id)
       .maybeSingle();
-    if (readError) throw new Error(`Leitura do profile de teste falhou: ${readError.message}`);
-    const tenantId = profile?.tenant_id ?? null;
+    if (readError) {
+      throw new Error(`Leitura do profile de teste falhou (código ${readError.code ?? "sem código"}).`);
+    }
+    if (profile?.tenant_id) tenants.add(profile.tenant_id);
 
     const { error } = await admin.auth.admin.deleteUser(id);
-    if (error) throw new Error(`Limpeza do usuário de teste falhou: ${error.message}`);
-
-    if (tenantId) {
-      const { count, error: countError } = await admin
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId);
-      if (countError) throw new Error(`Contagem de profiles da empresa falhou: ${countError.message}`);
-      if (count === 0) {
-        const { error: tenantError } = await admin.from("tenants").delete().eq("id", tenantId);
-        if (tenantError) throw new Error(`Limpeza da empresa de teste falhou: ${tenantError.message}`);
-      }
+    if (error) {
+      throw new Error(`Limpeza do usuário de teste falhou (status ${error.status ?? "sem status"}).`);
     }
+  }
+
+  for (const tenantId of tenants) {
+    await deleteTenantIfEmpty(tenantId);
   }
 }
 
-/**
- * Cria um auth user sem profile. Cria um usuário comum (o trigger gera profile e empresa), e depois
- * apaga o profile e a empresa pela service role. O usuário de auth fica para a limpeza do afterAll.
- * Serve para montar uma linha de insert que passe na FK para auth.users.
- */
-export async function createAuthUserWithoutProfile(prefix = "orphan"): Promise<string> {
-  const user = await createCommonUser(prefix);
-  const tenantId = await tenantIdOf(user.id);
-  const svc = serviceClient();
-  const { error: profileError } = await svc.from("profiles").delete().eq("id", user.id);
-  if (profileError) throw new Error(`Remoção do profile de teste falhou: ${profileError.message}`);
-  const { error: tenantError } = await svc.from("tenants").delete().eq("id", tenantId);
-  if (tenantError) throw new Error(`Remoção da empresa de teste falhou: ${tenantError.message}`);
-  return user.id;
-}
-
-/** Empresa do usuário comum (tenant criado pelo trigger no cadastro). */
+/** Empresa do usuário (criada pela RPC no cadastro). */
 export async function tenantIdOf(userId: string): Promise<string> {
   const profile = await readProfile(userId);
   if (!profile.tenant_id) throw new Error("Usuário de teste sem tenant.");
