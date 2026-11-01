@@ -1,5 +1,7 @@
-// Variáveis de ambiente da suíte de integração (ADR-10). Chaves e URL do banco vêm do ambiente,
+// Variáveis de ambiente da suíte de integração (ADR-13). Chaves e URL do banco vêm do ambiente,
 // nunca do código. A suíte só aceita stack local (127.0.0.1 ou localhost).
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export interface IntegrationEnv {
   apiUrl: string;
@@ -9,6 +11,11 @@ export interface IntegrationEnv {
 }
 
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost"]);
+
+/** Caminho do `.env` das Edge Functions (ignorado pelo git). Nenhum valor é impresso. */
+export const FUNCTIONS_ENV_PATH = fileURLToPath(
+  new URL("../../../supabase/functions/.env", import.meta.url),
+);
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -48,4 +55,37 @@ export function loadEnv(): IntegrationEnv {
     dbUrl,
   };
   return cached;
+}
+
+/**
+ * Lê o `.env` das Edge Functions como mapa `CHAVE=valor`. Linhas vazias e comentários saem.
+ * O arquivo é ignorado pelo git e nunca deve ser ecoado: os valores são segredos locais.
+ */
+export function readFunctionsEnv(): Record<string, string> {
+  let raw: string;
+  try {
+    raw = readFileSync(FUNCTIONS_ENV_PATH, "utf8");
+  } catch {
+    throw new Error(
+      "Arquivo supabase/functions/.env ausente. Copie o .env.example e preencha os segredos locais.",
+    );
+  }
+
+  const env: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) continue;
+    const key = trimmed.slice(0, separator).trim();
+    let value = trimmed.slice(separator + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
 }
