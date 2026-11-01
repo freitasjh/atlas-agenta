@@ -87,6 +87,17 @@ double_confirm_changes = true
 # caso esta config seja religada no futuro.
 enable_confirmations = false
 
+# Hook de claims do access token (ADR-01): a Edge Function `custom-access-token` adiciona
+# `user_role`, `tenant_id` e `must_change_password` ao JWT. Não emite `role` (papel Postgres).
+# A URI é a da função servida pelo stack local: o GoTrue roda em container e alcança o host por
+# `host.docker.internal`. Em hosted, troque pela URL da função do projeto.
+# `secrets` aponta para a mesma variável que a função lê (`CUSTOM_ACCESS_TOKEN_HOOK_SECRET`), usada
+# para o GoTrue assinar a chamada. O valor vem do ambiente local e nunca é escrito aqui.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "http://host.docker.internal:54321/functions/v1/custom-access-token"
+secrets = "env(CUSTOM_ACCESS_TOKEN_HOOK_SECRET)"
+
 [auth.sms]
 enable_signup = false
 enable_confirmations = false
@@ -105,6 +116,17 @@ enabled = false
 enabled = true
 # Política de inspeção para depuração de Edge Functions.
 inspector_port = 8083
+
+# Hook de claims (ADR-01): chamada pelo GoTrue, não por um usuário. Não tem JWT de usuário. A
+# autenticidade é a assinatura Standard Webhooks do hook, validada dentro da função.
+[functions.custom-access-token]
+verify_jwt = false
+
+# Cadastro de empresa (ADR-02, RQ-19): superfície PÚBLICA, porque é o próprio cadastro e quem chama
+# ainda não tem sessão. A função valida o corpo com zod (`.strict()`) e cria a empresa pela RPC
+# `create_tenant_with_admin`, com service role no servidor. Não há `verify_jwt` de usuário aqui.
+[functions.signup-tenant]
+verify_jwt = false
 
 # Webhook de ENTRADA da Evolution (ADR-03, Fatia 2): superfície PÚBLICA, sem JWT de usuário. A
 # autenticidade é feita pelo segredo compartilhado `WHATSAPP_WEBHOOK_SECRET` (comparação em tempo

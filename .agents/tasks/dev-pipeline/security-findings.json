@@ -1,0 +1,35 @@
+{
+  "findings": [
+    {
+      "id": "sec-profiles-role-escalation",
+      "severity": "critica",
+      "status": "open",
+      "title": "Escalada de papel via UPDATE em profiles",
+      "origin": "policy profiles_update_self_or_admin, criada na migration 20250216091000_profiles_and_helpers.sql e presente na master. Corrigida pela ADR-02 na migration 20250228090000_security_privilege_hardening.sql.",
+      "detail": "A policy profiles_update_self_or_admin permite UPDATE na própria linha (id = auth.uid()). O with check só confere tenant_id = current_tenant_id() ou super_admin, sem restringir colunas. Nenhuma migration faz REVOKE/GRANT de UPDATE em profiles para authenticated. Confirmado por leitura da migration e por probe em transação revertida: um usuário authenticado com o próprio profile passa role para 'admin' e para 'super_admin'.",
+      "impact": "Qualquer usuário autenticado vira admin do tenant (lê e registra fichas clínicas do tenant inteiro), ou super_admin (acesso cross-tenant por profiles_super_admin e tenants_super_admin).",
+      "reported_by": ["revisor-b", "orquestrador (probe no banco local)"],
+      "not_blocking": false,
+      "fix_plan": "Aplicado pela ADR-02 dentro da migration 20250228090000_security_privilege_hardening.sql. A migration foi editada durante a revisão da ADR-05 (commits db71cb4 e 687a76e), antes do merge. authenticated perde UPDATE de tabela, INSERT, DELETE, TRIGGER e REFERENCES em profiles, e recebe UPDATE só em full_name. anon perde INSERT, DELETE, TRIGGER e REFERENCES. A policy profiles_update_self_or_admin é recriada com USING id = auth.uid(), para que um admin altere só a própria linha (decisão B, prd-approval.json item 7). O WITH CHECK barra a promoção a super_admin fora de super_admin. profiles_super_admin passa a SELECT. A troca de papel fica para caminho com service role ou RPC auditada (backlog S-06).",
+      "requires_user_confirmation": false,
+      "note": "Bloqueia a abertura da PR. Reaberto pelo review da ADR-05. Fecha no passo 11 da ADR-05, pelo orquestrador, só depois que os passos 2, 3 e 10 passarem. Nesse momento recebe closed_evidence com o resultado real. A decisão do usuário está em prd-approval.json."
+    },
+    {
+      "id": "sec-tenants-anon-update",
+      "severity": "media",
+      "status": "accepted_residual",
+      "accepted_ref": "S-07",
+      "accepted_by": "usuario",
+      "accepted_decision": "Opção (a): aceite como risco residual, ref. S-07. Sem mudança de código e sem alteração do smoke. anon mantém UPDATE de tabela em tenants, barrado pela RLS (nenhuma policy para anon).",
+      "accepted_condition": "Reabrir se alguma policy permissiva para anon for criada em tenants. A correção (revogar o UPDATE de anon) continua no backlog S-07.",
+      "title": "anon mantém UPDATE de tabela em tenants, sem barreira de coluna",
+      "origin": "grant de tabela herdado de public.tenants (migration 20250216090000_tenants.sql). As policies tenants_update_own_admin e tenants_super_admin (migration 20250216091000_profiles_and_helpers.sql) não têm cláusula TO, então valem para public, inclusive anon. A migration 20250228090000 (ADR-03) não revoga esse UPDATE de anon.",
+      "detail": "A ADR-03 limita o UPDATE de authenticated às colunas cadastrais (trade_name, legal_name, phone, document, timezone). Para anon, o UPDATE de tabela continua aberto, e subscription_status, plan e trial_ends_at ficam graváveis se a RLS deixar. Hoje a RLS nega, mas pelo motivo certo: current_tenant_id() e current_role_name() leem profiles por auth.uid(), que é nulo para anon, então as policies não devolvem linha. A prova está no 00-smoke-anon.test.sql, que faz UPDATE como anon em tenants e confere zero linhas afetadas. Achado reportado pelo revisor-b na ADR-03 e aceito como residual S-07 do PRD.",
+      "impact": "Latente. Se uma policy permissiva para anon surgir em tenants, qualquer visitante anônimo altera o status de assinatura, o plano e o trial da empresa, contornando os controles por status.",
+      "reported_by": ["revisor-b (ADR-03)"],
+      "fix_plan": "Só na reabertura ou na execução de S-07. Migration nova (a 20250228090000 não é editada depois do merge) que revoga UPDATE de tabela em tenants de anon. Reescrever 00-smoke-anon para aceitar 42501 nessa tabela, como já feito para profiles na ADR-02. Nesse momento, incluir no teste de catálogo a checagem de que anon não tem UPDATE em tenants.",
+      "requires_user_confirmation": false,
+      "note": "Decisão do usuário registrada em accepted_decision. Severidade média porque a RLS barra hoje, mas a exposição é direta sobre o controle de assinatura."
+    }
+  ]
+}

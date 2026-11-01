@@ -1,0 +1,23 @@
+{
+  "task": "fix/datetime-merge-duplicado",
+  "branch": "fix/datetime-merge-duplicado",
+  "baseBranch": "master",
+  "commit": "0840c79e7fd80bc7758a3683cb348ad802c6a6de",
+  "prPublished": false,
+  "blocked": true,
+  "blockReason": "QA ao vivo obrigatório (AC-02.5 / AC-7) não pôde ser executado: o agente de ENTREGA não tem a ferramenta chrome-devtools MCP no seu toolset. Abrir o PR sem a verificação de integração in-browser violaria a instrução pré-PR (qaPending com superfície testável não confirmada => NÃO abrir PR).",
+  "adrsDelivered": [
+    { "id": "adr-01", "title": "Consolidar src/lib/datetime.ts e adaptar useDashboardSummary (passo atômico)" },
+    { "id": "adr-02", "title": "Verificação de integração (Semana + dashboard) e QA ao vivo" }
+  ],
+  "verification": {
+    "codeConsolidation": "OK: exatamente UMA tenantRangeUtc (validante, retorna {startUtc,endUtc} ou null para data inválida/faixa invertida) e UMA weekRangeOf (retorna {start,end,days}) em src/lib/datetime.ts. Helpers órfãos shiftIsoDate/weekdayOfIso removidos de datetime.ts (demais shiftIsoDate remanescentes são cópias privadas locais de outros módulos, não órfãos). useDashboardSummary adaptado de {monday,sunday} para {start,end}.",
+    "typecheck": "VERDE — npm run typecheck (tsc -b) sem TS2323/TS2393/TS2339/TS6133.",
+    "test": "VERDE — npm run test (vitest) 43/43, datetime.test.ts (6 testes) passando e sem alteração.",
+    "build": "VERDE — npm run build (tsc -b && vite build) concluído; aviso de chunk >500kB é pré-existente, não erro.",
+    "scope": "OK (AC-02.4) — git diff vs origin/master lista apenas src/hooks/useDashboardSummary.ts e src/lib/datetime.ts; nada em migrations/RLS/Edge Functions/outra UI.",
+    "devServerBoot": "OK — npm run dev sobe (Vite) e serve HTTP 200; módulo datetime.ts transpila servindo 2 exports alvo.",
+    "liveQa": "NÃO EXECUTADO — ferramenta chrome-devtools MCP indisponível neste agente. AC-02.5 (Semana renderiza 7 colunas com agendamentos na coluna certa; dashboard renderiza hero/KPIs/tendência/D-1 sem erro de console/runtime) continua PENDENTE."
+  },
+  "qaPending": ["adr-02"]
+}

@@ -1,0 +1,31 @@
+{
+  "module": "Painel do Super Admin — Fatia 1: Empresas (listar assinantes cross-tenant + operar subscription_status por caminho auditado)",
+  "branch": "feat/super-admin-empresas",
+  "baseBranch": "master",
+  "prPublished": true,
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/17",
+  "number": 17,
+  "title": "Painel Super Admin — Fatia 1: lista de empresas + status auditado",
+  "state": "OPEN",
+  "adrsDelivered": [
+    { "id": "adr-01", "title": "Tabela de auditoria subscription_status_changes + RPC transacional admin_set_subscription_status" },
+    { "id": "adr-02", "title": "Fechar o bypass de escrita de subscription_status/plan/trial_ends_at pelo cliente (Opção A)" },
+    { "id": "adr-03", "title": "Edge Function admin-subscription (service role): autentica super_admin, valida transição, persiste e audita" },
+    { "id": "adr-04", "title": "Contrato de frontend: tipos de domínio, máquina de transições, schemas zod e mapa de erros pt-BR" },
+    { "id": "adr-05", "title": "Hooks TanStack Query: useAdminTenants (leitura cross-tenant) e useChangeSubscriptionStatus (mutation via Edge Function)" },
+    { "id": "adr-06", "title": "UI da EmpresasPage: lista (tabela/cards), busca, filtro por status, signature e estados pt-BR" },
+    { "id": "adr-07", "title": "UI da ação Mudar status: MudarStatusDialog (react-hook-form + zod) consumindo a mutation" }
+  ],
+  "verification": {
+    "appFilesChanged": "supabase/migrations/20250227090000_subscription_status_audit.sql; supabase/migrations/20250227091000_tenants_privileged_columns_guard.sql; supabase/functions/admin-subscription/index.ts; supabase/functions/admin-subscription/schemas.ts; src/types/domain.ts; src/lib/subscription-status.ts (+test); src/lib/subscription-errors.ts (+test); src/lib/validations/admin-subscription.ts (+test); src/hooks/useAdminTenants.ts (+test); src/components/StatusBadge.tsx; src/admin/pages.tsx; src/admin/empresas/EmpresasPage.tsx; EmpresasTable.tsx; EmpresaRow.tsx; EmpresasFilters.tsx; MudarStatusDialog.tsx. 20 arquivos, +1987/-23.",
+    "static": "npm run typecheck (tsc -b) verde; npm run test (vitest) 129/129 em 15 arquivos (inclui admin-subscription 13, subscription-status 7, subscription-errors 7, useAdminTenants 7); npm run build (vite) verde. Nenhuma referência a service_role em src/ nem no bundle dist/.",
+    "dataSqlQa": "VERIFICADO contra Supabase local. supabase db reset exit 0 — 35 migrations aplicam limpas, incluindo as duas novas. Provas em psql contra o DB vivo: (1) subscription_status_changes com RLS on, SELECT só super_admin, ZERO policy de escrita; (2) tenants reduzida de FOR ALL para tenants_super_admin_select (SELECT) + tenants_super_admin_update_cadastro (UPDATE), trigger tenants_guard_privileged_columns_trg presente; (3) RPC admin_set_subscription_status com EXECUTE só postgres/service_role (anon/authenticated revogados); (4) super_admin lê cross-tenant (2 tenants) e edita cadastro (1 linha); (5) super_admin tentando mudar subscription_status pelo cliente é BLOQUEADO pelo trigger (privileged_column_change_denied); (6) sessão não-super_admin vê 0 tenants e 0 linhas de auditoria (isolamento multi-tenant); (7) RPC exige ator existente em profiles (FK em changed_by) e grava a trilha atomicamente. Linhas de teste removidas ao final; stack parado.",
+    "frontendStaticQa": "EmpresasPage real (não placeholder): lista cross-tenant via useAdminTenants (RLS como trava), busca client-side tolerante a acento com debounce + filtro por status combinando por AND, signature de contagem, estados loading/vazio(2 variantes)/erro em pt-BR, MudarStatusDialog fiado por linha. Escrita de status só via supabase.functions.invoke('admin-subscription'); nenhum UPDATE direto de tenants no cliente; tenantId vai como alvo, não credencial. Edge Function resolve role/ator do JWT no servidor, valida transição (409 com from/to), responde pt-BR, sem PII em log.",
+    "chromeDevtoolsQa": "NÃO EXECUTADO. As ferramentas do MCP chrome-devtools não estão expostas ao subagente de entrega (configuradas em ~/.kiro/settings/mcp.json, mas ausentes do conjunto de ferramentas disponíveis nesta etapa). O fluxo E2E visual real exige ainda uma sessão super_admin autenticada contra o stack local com a Edge Function admin-subscription servida. Critérios de aceite de UI/estados cobertos por typecheck + 129 testes + revisão de código; invariantes de segurança provadas diretamente no banco. Recomenda-se rodar o passo visual (390px/1280px, claro/escuro, console limpo, 2 perfis) em ambiente com Supabase + Edge Function antes de promover para produção.",
+    "rls": "RLS inegociável respeitado: leitura cross-tenant de tenants só por policy super_admin; escrita de subscription_status só pelo service role (Edge Function → RPC). Bypass FOR ALL fechado por trigger (Opção A, preserva edição de cadastro). INSERT/DELETE de tenants seguem revogados (fora de escopo desta fatia). Nenhum tenant_id do cliente contorna RLS.",
+    "secrets": "Nenhum .env, chave Asaas/Evolution ou service role no diff do branch (verificado; .gitignore cobre .env* exceto .env.example). Service role só no env das Edge Functions, nunca no bundle. Artefatos .agents/ NÃO commitados."
+  },
+  "qaPending": ["adr-04", "adr-05", "adr-06", "adr-07"],
+  "qaPendingNote": "Pendência é exclusivamente o passo VISUAL ao vivo via Chrome DevTools MCP das ADRs de frontend (04-07); a lógica foi verificada estaticamente e as invariantes de segurança (ADR-01/02/03) foram provadas ao vivo no banco. Não é um defeito que exige voltar ADR ao loop — é indisponibilidade de ferramenta no runtime de entrega.",
+  "followUp": "Fora de escopo da Fatia 1 e documentados como próximos: instâncias de WhatsApp por tenant e indicadores/métricas consolidadas da plataforma. Recomendação não-bloqueante do review: teste de integração de normalizeInvokeError com FunctionsHttpError-like."
+}

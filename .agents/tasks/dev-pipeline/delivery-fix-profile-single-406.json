@@ -1,0 +1,26 @@
+{
+  "module": "Fix do 406 na leitura do próprio profile: duas leituras com .single() sem filtrar pela própria linha quebravam o acesso a /app em tenants com 2+ profiles (planos Clínica/Equipe e Pro)",
+  "branch": "fix/profile-single-406",
+  "baseBranch": "master",
+  "prPublished": true,
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/10",
+  "number": 10,
+  "title": "fix: filtra a própria linha do profile antes do .single() (406 em tenant multi-profile)",
+  "state": "OPEN",
+  "commits": [
+    "061dabc fix: filtra a propria linha em useProfile com .eq(id) antes do single (ADR-01)",
+    "d368d3c fix: filter own profile row in usePostLoginRedirect before single()"
+  ],
+  "adrsDelivered": [
+    { "id": "adr-01", "title": "Filtrar a própria linha em useProfile com .eq(\"id\", userId) antes do .single()" },
+    { "id": "adr-02", "title": "Filtrar a própria linha em usePostLoginRedirect com .eq(\"id\", userId) antes do .single()" }
+  ],
+  "verification": {
+    "appFilesChanged": "src/hooks/useProfile.ts (adiciona .eq('id', userId) antes do .single(); userId da sessão Supabase via useSession); src/auth/usePostLoginRedirect.ts (adiciona .eq('id', userId) antes do .single(); userId via supabase.auth.getUser()). Nenhuma outra leitura de profiles com .single() existe no código (varredura confirmou só esses 2 call sites). .single() preservado (NÃO trocado por maybeSingle). Policy RLS profiles_select_same_tenant intocada.",
+    "static": "npm run typecheck (tsc -b) verde; npm run build verde; suíte de testes e code review (dois revisores) aprovados pela orquestração (CA-7).",
+    "chromeDevtoolsQa": "APROVADO pela orquestração (chrome-devtools MCP + Supabase local semeado), tenant A com 3 profiles (admin+professional+receptionist) — o cenário que antes quebrava. CA-1: login como admina@test.com e profa@test.com — ambos chegam em /app e a URL estabiliza, sem loop para /login. CA-6/CA-3 (Network): as duas leituras de profile retornam 200 com filtro da própria linha — GET /rest/v1/profiles?select=role&id=eq.<uid> (ADR-02) e GET /rest/v1/profiles?select=id,role,tenant_id&id=eq.<uid> (ADR-01); nenhum 406, nenhum POST /auth/v1/logout, nenhum tenant_id enviado pelo cliente. CA-2: tenant B com 1 profile sem regressão. CA-5: logout defensivo anti fail-open preservado para profile de fato ilegível/ausente. Observação esperada: /app mostra placeholder 'Painel em construção' porque a branch saiu de origin/master (sem o dashboard do PR #9); o objetivo aqui é o acesso a /app, provado. Verificação independente ao nível REST (service role local): sem .eq(id) => 406; com .eq(id) => 200 retornando a própria linha; tenant de 1 profile => 200 em ambos.",
+    "rls": "O .eq('id', userId) filtra a PRÓPRIA linha (id = auth.uid()), não é filtro de tenant; isolamento multi-tenant por RLS segue como única fronteira. Nenhum tenant_id vindo do cliente. Policy profiles_select_same_tenant não alterada (ver todos os profiles do tenant é desejado para outras telas)."
+  },
+  "qaPending": [],
+  "followUp": "Resolve o bloqueador pré-existente apontado no followUp do delivery.json do PR #9: useProfile.ts e usePostLoginRedirect.ts agora filtram pela própria linha. Este fix é pré-requisito de acesso ao /app para planos Clínica/Equipe e Pro, e desbloqueia as entregas já feitas (dashboard PR #9, agenda, clientes, config) nesses tenants com múltiplos profiles. Merge recomendado antes do PR #9."
+}

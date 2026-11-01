@@ -1,0 +1,28 @@
+{
+  "module": "Bugfix de gating frontend-only (continuação do PR #15 / Fase 1b salão): adicionar guard por segmento na rota /app/config/combos (CombosPage) para que a gestão de pacotes só renderize quando o tenant é do ramo salão; para os demais ramos, exibir o painel de indisponibilidade, espelhando o padrão da ComissoesPage (useSegmentFeatures().commission + StatePanel). segment continua sendo guard só de UI; isolamento multi-tenant por RLS (tenant_id) intocado.",
+  "branch": "feat/combos-pacotes-salao",
+  "baseBranch": "master",
+  "prPublished": true,
+  "reusedExistingPr": true,
+  "url": "https://github.com/freitasjh/atlas-agenta/pull/15",
+  "number": 15,
+  "title": "feat: pacotes/combos de servicos para salao (Fase 1b)",
+  "state": "OPEN",
+  "pushedRange": "0a832cf..84e55be",
+  "commentUrl": "https://github.com/freitasjh/atlas-agenta/pull/15#issuecomment-6442158866",
+  "adrsDelivered": [
+    { "id": "adr-01", "title": "Trocar o StatePanel local da CombosPage pelo compartilhado", "commit": "9a7fe9b" },
+    { "id": "adr-02", "title": "Guard de segmento (salão) na CombosPage", "commit": "84e55be" }
+  ],
+  "filesChanged": [
+    "src/app/config/combos/CombosPage.tsx (29 inserções / 26 remoções — único arquivo de aplicação alterado)"
+  ],
+  "verification": {
+    "static": "npm run typecheck (tsc -b) exit 0; npm run build (tsc -b && vite build) exit 0 (apenas aviso pré-existente de chunk > 500 kB); npm run test (vitest run) 89/89 em 10 arquivos — segment-features.test.ts cobre resolveFeatures('salao').combos === true e false para os demais ramos (fonte de verdade do guard).",
+    "smoke": "Dev server (vite) sobe limpo; GET / e GET /app/config/combos retornam HTTP 200 (shell SPA pt-BR). Dev server encerrado após o smoke.",
+    "chromeDevtoolsQa": "NAO executável neste subagente de entrega: as ferramentas do servidor MCP chrome-devtools não estão expostas no toolset — mesma limitação documentada em PR #14 e #15. O caminho positivo (salão vê o CRUD) e negativo (barbearia/clínica/legado por URL direta veem o StatePanel 'Os pacotes estão disponíveis apenas para salões de beleza.') é dirigido pelo boolean resolveFeatures(segment).combos, coberto 1:1 pelos testes unitários; a CombosPage espelha 1:1 o padrão já em produção da ComissoesPage (early-return após hooks, StatePanel compartilhado, copy pt-BR).",
+    "escopo": "Somente src/app/config/combos/CombosPage.tsx. Nenhuma migration/schema/RLS tocada; ConfigHubPage e AppointmentFormDialog inalterados; nenhuma ADR de combos reaberta; nenhuma nova dependência."
+  },
+  "qaPending": [],
+  "followUp": "Recomendada uma passada visual manual do gating antes do merge (salão em /app/config/combos vê o CRUD; barbearia/clínica/legado por URL direta veem o painel de indisponibilidade sem CRUD no DOM; sem flash; console limpo), já que o QA visual ao vivo via Chrome DevTools MCP não é executável neste subagente."
+}
