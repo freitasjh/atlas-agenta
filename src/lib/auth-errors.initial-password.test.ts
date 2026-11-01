@@ -19,7 +19,6 @@ const SESSION_EXPIRED = "Sua sessão expirou. Entre novamente.";
 const PASSWORD_IS_INITIAL = "Escolha uma senha diferente da atual.";
 const PASSWORD_TOO_SHORT = "A senha deve ter ao menos 8 caracteres.";
 const PASSWORD_TOO_LONG = "A senha deve ter no máximo 72 bytes.";
-const CHANGE_IN_PROGRESS = "Aguarde e tente novamente.";
 const GENERIC = "Não foi possível salvar a nova senha. Tente novamente.";
 
 function utf8Bytes(value: string): number {
@@ -43,31 +42,19 @@ describe("mapInitialPasswordError", () => {
     );
   });
 
-  it("409 password_change_superseded → sessão expirada (token defasado)", () => {
-    expect(
-      mapInitialPasswordError({
-        status: 409,
-        code: "password_change_superseded",
-        message:
-          "Sua troca de senha não foi concluída, porque outra tentativa a substituiu.",
-      }),
-    ).toBe(SESSION_EXPIRED);
-  });
+  it("409 com código legado de reserva → genérica (o código não existe mais)", () => {
+    // A ADR-04 substituiu a reserva por escrita única: `password_change_superseded` e
+    // `password_change_in_progress` saíram da função. Um 409 com esses códigos agora só
+    // pode vir de proxy/gateway, então cai na genérica — e nunca vira "sessão expirada".
+    for (const code of [
+      "password_change_superseded",
+      "password_change_in_progress",
+    ]) {
+      const message = mapInitialPasswordError({ status: 409, code });
 
-  it("409 password_change_superseded sem status → sessão expirada (só o código basta)", () => {
-    expect(
-      mapInitialPasswordError({ code: "password_change_superseded" }),
-    ).toBe(SESSION_EXPIRED);
-  });
-
-  it("409 password_change_in_progress → pede para aguardar", () => {
-    expect(
-      mapInitialPasswordError({
-        status: 409,
-        code: "password_change_in_progress",
-        message: "Já existe uma troca de senha em andamento.",
-      }),
-    ).toBe(CHANGE_IN_PROGRESS);
+      expect(message).toBe(GENERIC);
+      expect(message).not.toBe(SESSION_EXPIRED);
+    }
   });
 
   it("409 sem código (gateway/proxy) → genérica, nunca sessão expirada", () => {
@@ -211,18 +198,14 @@ describe("isInitialSessionExpiredError", () => {
     ["401 por statusCode", { statusCode: 401 }],
     ["unauthenticated sem status", { code: "unauthenticated" }],
     ["unauthenticated no body", { body: { code: "unauthenticated" } }],
-    [
-      "superseded com status",
-      { status: 409, code: "password_change_superseded" },
-    ],
-    ["superseded sem status", { code: "password_change_superseded" }],
   ])("reconhece sessão expirada: %s", (_case, input) => {
     expect(isInitialSessionExpiredError(input)).toBe(true);
     expect(mapInitialPasswordError(input)).toBe(SESSION_EXPIRED);
   });
 
   it.each([
-    ["409 in_progress", { status: 409, code: "password_change_in_progress" }],
+    ["409 in_progress (código legado)", { status: 409, code: "password_change_in_progress" }],
+    ["409 superseded (código legado)", { status: 409, code: "password_change_superseded" }],
     ["409 sem código", { status: 409 }],
     ["400 password_is_initial", { status: 400, code: "password_is_initial" }],
     ["400 password_too_short", { status: 400, code: "password_too_short" }],
