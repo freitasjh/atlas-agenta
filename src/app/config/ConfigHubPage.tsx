@@ -158,7 +158,7 @@ export function ConfigHubPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {tenants.map((t: any) => (
-                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.id}</SelectItem>
+                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.name || t.id}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
