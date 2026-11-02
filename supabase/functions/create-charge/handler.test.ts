@@ -107,6 +107,41 @@ Deno.test("professional sem vínculo em professionals 403", async () => {
   strictEqual(r.status, 403);
 });
 
+Deno.test("professional com charge existente de agendamento de colega 403", async () => {
+  const h = build({
+    profile: { tenant_id: "t1", role: "professional" },
+    appt: { id: "a1", price_cents: 1000, status: "concluido", customer_id: "c1", professional_id: "p2" },
+    existing: { id: "ex", pix_qr_code: "q", pix_copy_paste: "p", expires_at: "e" },
+  });
+  const r = await call(h);
+  strictEqual(r.status, 403);
+  const body: any = await r.json();
+  strictEqual(body.pix_qr_code, undefined);
+  strictEqual(body.pix_copy_paste, undefined);
+});
+
+Deno.test("professional com charge existente do próprio agendamento 200", async () => {
+  const h = build({
+    profile: { tenant_id: "t1", role: "professional" },
+    existing: { id: "ex", pix_qr_code: "q", pix_copy_paste: "p", expires_at: "e" },
+  });
+  const r = await call(h);
+  strictEqual(r.status, 200);
+  const body: any = await r.json();
+  strictEqual(body.charge_id, "ex");
+  strictEqual(body.pix_qr_code, "q");
+});
+
+Deno.test("professional sem vínculo com charge existente 403", async () => {
+  const h = build({
+    profile: { tenant_id: "t1", role: "professional" },
+    professional: null,
+    existing: { id: "ex", pix_qr_code: "q", pix_copy_paste: "p", expires_at: "e" },
+  });
+  const r = await call(h);
+  strictEqual(r.status, 403);
+});
+
 Deno.test("unknown role 403", async () => {
   const h = build({ profile: { tenant_id: "t1", role: "super_admin" } });
   const r = await call(h);

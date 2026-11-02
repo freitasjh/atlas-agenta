@@ -51,6 +51,19 @@ export function createHandler(options: HandlerOptions) {
     if (!parsed.success) return jsonResponse({ error: "Dados inválidos.", issues: parsed.error.issues.map((i) => i.message) }, 400);
     const appointmentId = parsed.data.appointment_id;
 
+    // appointment + posse do profissional ANTES da idempotência: o caminho de
+    // charge existente devolve o payload PIX e não pode escapar do check.
+    const { data: appt } = await service.from("appointments").select("id, price_cents, status, customer_id, professional_id").eq("tenant_id", identity.tenantId).eq("id", appointmentId).maybeSingle();
+    if (!appt) return jsonResponse({ error: "Agendamento não encontrado." }, 404);
+
+    // Profissional só cobra o próprio atendimento (professionals.profile_id).
+    if (identity.role === "professional") {
+      const { data: professional } = await service.from("professionals").select("id").eq("tenant_id", identity.tenantId).eq("profile_id", identity.userId).maybeSingle();
+      if (!professional || appt.professional_id !== professional.id) {
+        return jsonResponse({ error: "Sem permissão para gerar cobrança deste agendamento." }, 403);
+      }
+    }
+
     // idempotência
     const { data: existing } = await service.from("charges").select("*").eq("tenant_id", identity.tenantId).eq("appointment_id", appointmentId).maybeSingle();
     if (existing) {
@@ -63,18 +76,6 @@ export function createHandler(options: HandlerOptions) {
     let apiKey: string;
     try { apiKey = await decryptText(cfg.asaas_api_key_encrypted); } catch { return jsonResponse({ error: "Falha ao decriptar." }, 500); }
     const baseUrl = asaasBaseUrl(cfg.environment);
-
-    // appointment
-    const { data: appt } = await service.from("appointments").select("id, price_cents, status, customer_id, professional_id").eq("tenant_id", identity.tenantId).eq("id", appointmentId).maybeSingle();
-    if (!appt) return jsonResponse({ error: "Agendamento não encontrado." }, 404);
-
-    // Profissional só cobra o próprio atendimento (professionals.profile_id).
-    if (identity.role === "professional") {
-      const { data: professional } = await service.from("professionals").select("id").eq("tenant_id", identity.tenantId).eq("profile_id", identity.userId).maybeSingle();
-      if (!professional || appt.professional_id !== professional.id) {
-        return jsonResponse({ error: "Sem permissão para gerar cobrança deste agendamento." }, 403);
-      }
-    }
 
     if (appt.status !== "concluido") return jsonResponse({ error: "Agendamento não concluído." }, 400);
 
