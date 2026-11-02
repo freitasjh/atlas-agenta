@@ -8,6 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:up": "bash scripts/dev-up.sh",
+    "dev:down": "bash scripts/dev-down.sh",
+    "dev:seed": "node scripts/dev-seed.mjs",
+    "dev:smoke": "node scripts/dev-smoke.mjs",
     "dev:functions": "bash scripts/dev-functions.sh",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
