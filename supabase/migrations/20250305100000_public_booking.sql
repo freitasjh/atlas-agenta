@@ -53,6 +53,7 @@ declare
   v_day_of_week int;
   v_work_start time;
   v_work_end time;
+  v_timezone text := 'America/Sao_Paulo';
   v_slot_interval interval := interval '30 minutes';
 begin
   -- Valida link
@@ -62,6 +63,11 @@ begin
 
   if v_tenant_id is null or v_link_active is false then
     return;
+  end if;
+
+  select timezone into v_timezone from tenants where id = v_tenant_id;
+  if v_timezone is null then
+    v_timezone := 'America/Sao_Paulo';
   end if;
 
   -- Valida serviço
@@ -104,8 +110,8 @@ begin
   from working_hours
   where tenant_id = v_tenant_id
     and professional_id = v_professional_id
-    and day_of_week = v_day_of_week
-    and active = true;
+    and weekday = v_day_of_week
+    ;
 
   if v_work_start is null then
     return;
@@ -115,9 +121,9 @@ begin
   return query
   with slots as (
     select 
-      (p_date + s.slot_time)::timestamptz as slot_start,
-      (p_date + s.slot_time + (v_duration || ' minutes')::interval)::timestamptz as slot_end
-    from generate_series(v_work_start, v_work_end - (v_duration || ' minutes')::interval, v_slot_interval) as s(slot_time)
+      ((p_date::timestamp + v_work_start + (n * v_slot_interval)) AT TIME ZONE v_timezone) as slot_start,
+      ((p_date::timestamp + v_work_start + (n * v_slot_interval) + (v_duration || ' minutes')::interval) AT TIME ZONE v_timezone) as slot_end
+    from generate_series(0, (extract(epoch from (v_work_end - v_work_start))::int - (v_duration * 60)) / extract(epoch from v_slot_interval)::int) as n
   )
   select sl.slot_start, sl.slot_end
   from slots sl
@@ -204,3 +210,58 @@ $$;
 
 revoke all on function create_public_booking_link() from public;
 grant execute on function create_public_booking_link() to authenticated;
+
+-- RPC para super admin gerar link por tenant
+create or replace function create_public_booking_link(p_tenant_id uuid default null)
+returns table(token uuid, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_tenant_id uuid := p_tenant_id;
+  v_role text;
+  v_uid uuid := auth.uid();
+  v_user_tenant uuid;
+begin
+  begin v_tenant_id := coalesce(v_tenant_id, current_tenant_id()); exception when others then null; end;
+  begin v_role := current_role_name(); exception when others then v_role := null; end;
+
+  if v_uid is not null then
+    select p.tenant_id, lower(p.role)::text
+      into v_user_tenant, v_role
+    from public.profiles p
+    where p.id = v_uid
+    limit 1;
+  end if;
+
+  if v_role is null and v_uid is not null then
+    select lower(coalesce(raw_app_meta_data->>'role','')) into v_role
+    from auth.users where id = v_uid;
+  end if;
+
+  if lower(coalesce(v_role,'')) != 'super_admin' then
+    v_tenant_id := coalesce(v_user_tenant, v_tenant_id);
+  else
+    v_tenant_id := coalesce(p_tenant_id, v_tenant_id, v_user_tenant);
+  end if;
+
+  if v_tenant_id is null then
+    raise exception 'tenant_required';
+  end if;
+
+  if lower(coalesce(v_role,'')) not in ('admin','super_admin') then
+    raise exception 'forbidden_admin_only';
+  end if;
+
+  update public_booking_links set active = false where tenant_id = v_tenant_id;
+
+  return query
+  insert into public_booking_links (tenant_id, active)
+  values (v_tenant_id, true)
+  returning public_booking_links.token, public_booking_links.created_at;
+end;
+$$;
+
+revoke all on function create_public_booking_link(uuid) from public;
+grant execute on function create_public_booking_link(uuid) to authenticated;
