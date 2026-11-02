@@ -14,6 +14,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -36,6 +45,13 @@ export function PagamentosPage() {
     accountId?: string;
     name?: string;
   } | null>(null);
+  /**
+   * Token de webhook recém-gerado. Vive **só** em estado local da sessão da
+   * tela (nunca no cache do React Query, nunca no `select` da config): o
+   * servidor devolve o valor uma única vez, e sair da página o descarta.
+   */
+  const [webhookToken, setWebhookToken] = React.useState<string | null>(null);
+  const [confirmRotate, setConfirmRotate] = React.useState(false);
 
   React.useEffect(() => {
     if (configQuery.data) {
@@ -62,7 +78,7 @@ export function PagamentosPage() {
     }
   }
 
-  async function handleSave() {
+  async function saveNow() {
     if (!apiKey.trim()) {
       toast.error("Informe a chave de API.");
       return;
@@ -74,12 +90,36 @@ export function PagamentosPage() {
       });
       setApiKey("");
       setTested(null);
+      setWebhookToken(res.webhook_token ?? null);
       toast.success("Configuração salva.");
-      if (res.account_id) {
-        // noop
-      }
     } catch (e) {
       toast.error("Não foi possível salvar a configuração.");
+    }
+  }
+
+  /**
+   * Salvar rotaciona o token de webhook. Quando já existe config ativa isso
+   * quebra a configuração vigente no Asaas, então a rotação é confirmada.
+   */
+  function handleSave() {
+    if (!apiKey.trim()) {
+      toast.error("Informe a chave de API.");
+      return;
+    }
+    if (cfg?.active) {
+      setConfirmRotate(true);
+      return;
+    }
+    void saveNow();
+  }
+
+  async function copyToken() {
+    if (!webhookToken) return;
+    try {
+      await navigator.clipboard.writeText(webhookToken);
+      toast.success("Token copiado.");
+    } catch {
+      toast.error("Não foi possível copiar.");
     }
   }
 
@@ -190,6 +230,37 @@ export function PagamentosPage() {
             </Button>
           </div>
 
+          {webhookToken ? (
+            <div className="space-y-2 rounded-md border p-4 text-sm">
+              <p className="font-medium">
+                Token de webhook — exibido uma única vez
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value={webhookToken}
+                  aria-label="Token de webhook"
+                  className="font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => void copyToken()}
+                  aria-label="Copiar token de webhook"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-muted-foreground">
+                Cadastre este valor no painel do Asaas como header{" "}
+                <code>asaas-access-token</code>. Ele não será exibido
+                novamente: salvar de novo gera um novo token e a configuração
+                atual no Asaas deixa de funcionar.
+              </p>
+            </div>
+          ) : null}
+
           {tested ? (
             <p className={tested.ok ? "text-sm text-green-600" : "text-sm text-destructive"}>
               {tested.ok
@@ -208,7 +279,9 @@ export function PagamentosPage() {
           <p>
             Configure no painel do Asaas a URL de webhook apontando para a Edge
             Function <code>asaas-webhook</code> do seu projeto Supabase. A
-            validação de assinatura é feita no servidor.
+            autenticidade é o token compartilhado, enviado no header{" "}
+            <code>asaas-access-token</code> e comparado em tempo constante no
+            servidor.
           </p>
           <p>
             Eventos recomendados: <code>PAYMENT_RECEIVED</code>,{" "}
@@ -216,6 +289,42 @@ export function PagamentosPage() {
           </p>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={confirmRotate}
+        onOpenChange={(next) => {
+          if (!next) setConfirmRotate(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gerar um novo token de webhook?</DialogTitle>
+            <DialogDescription>
+              Isso vai gerar um novo token de webhook; a configuração atual no
+              Asaas deixará de funcionar. Continuar?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmRotate(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirmRotate(false);
+                void saveNow();
+              }}
+              disabled={saveMutation.isPending}
+            >
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

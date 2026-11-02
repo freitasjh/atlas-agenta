@@ -34,23 +34,6 @@ export async function decryptText(cipherB64: string): Promise<string> {
   return new TextDecoder().decode(pt);
 }
 
-export async function hmacVerify(payload: string, signature: string, secret: string): Promise<boolean> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  // timing-safe compare
-  if (hex.length !== signature.length) return false;
-  let diff = 0;
-  for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ signature.charCodeAt(i);
-  return diff === 0;
-}
-
 export async function asaasFetch(
   baseUrl: string,
   apiKey: string,

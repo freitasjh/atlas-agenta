@@ -56,7 +56,9 @@ export function useSubscriptionCharges() {
 export const createSubscriptionChargeInputSchema = z.object({
   tenant_id: z.string().uuid(),
   plan: z.string().min(1),
-  billing_period: z.enum(["monthly", "annual"]).default("monthly"),
+  // Não existe plano anual em `PLANS` (sem regra de desconto definida):
+  // `annual` é recusado aqui e na Edge Function, em vez de inventar `mensal * 10`.
+  billing_period: z.literal("monthly").default("monthly"),
 });
 
 export type CreateSubscriptionChargeInput = z.infer<

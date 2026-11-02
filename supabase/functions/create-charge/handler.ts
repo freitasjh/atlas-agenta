@@ -11,14 +11,29 @@ const corsHeaders: Record<string, string> = {
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
-async function resolveIdentity(req: Request, service: SupabaseClient) {
+/**
+ * Papéis que concluem atendimento e, portanto, podem gerar a cobrança PIX
+ * operacional do agendamento (`admin`, `receptionist`, `professional` — os
+ * mesmos de `canManageAppointments`). Leitura de `charges` continua restrita
+ * por RLS/papel; esta permissão vale só para a escrita da Edge Function.
+ */
+const CHARGE_CREATOR_ROLES = ["admin", "receptionist", "professional"] as const;
+
+type IdentityResult =
+  | { ok: true; userId: string; tenantId: string; role: string }
+  | { ok: false; status: 401 | 403; error: string };
+
+async function resolveIdentity(req: Request, service: SupabaseClient): Promise<IdentityResult> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
+  if (!token) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
   const { data, error } = await service.auth.getUser(token);
-  if (error || !data.user) return null;
+  if (error || !data.user) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
   const { data: profile } = await service.from("profiles").select("tenant_id, role").eq("id", data.user.id).maybeSingle();
-  if (!profile || profile.role !== "admin" || !profile.tenant_id) return null;
-  return { userId: data.user.id, tenantId: profile.tenant_id as string };
+  const role = (profile?.role ?? "") as string;
+  if (!(CHARGE_CREATOR_ROLES as readonly string[]).includes(role) || !profile?.tenant_id) {
+    return { ok: false, status: 403, error: "Sem permissão para gerar cobrança." };
+  }
+  return { ok: true, userId: data.user.id, tenantId: profile.tenant_id as string, role };
 }
 
 export type HandlerOptions = { createService: () => SupabaseClient };
@@ -29,7 +44,7 @@ export function createHandler(options: HandlerOptions) {
     let service: SupabaseClient;
     try { service = options.createService(); } catch { return jsonResponse({ error: "Erro de configuração do servidor." }, 500); }
     const identity = await resolveIdentity(req, service);
-    if (!identity) return jsonResponse({ error: "Sessão inválida ou expirada." }, 401);
+    if (!identity.ok) return jsonResponse({ error: identity.error }, identity.status);
     let raw: unknown;
     try { raw = await req.json(); } catch { return jsonResponse({ error: "Corpo inválido." }, 400); }
     const parsed = requestSchema.safeParse(raw);

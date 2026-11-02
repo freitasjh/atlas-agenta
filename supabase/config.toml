@@ -151,7 +151,8 @@ verify_jwt = false
 # role internamente. Nenhuma entrada [functions.whatsapp-dispatch] com verify_jwt=false — deixar o
 # default fecha a função a chamadas anônimas.
 
-# Webhooks Asaas (ADR-20): superfícies PÚBLICAS, sem JWT; autenticidade por HMAC.
+# Webhooks Asaas (ADR-20): superfícies PÚBLICAS, sem JWT; autenticidade por token
+# compartilhado no header `asaas-access-token`, comparado em tempo constante dentro da função.
 [functions.asaas-webhook]
 verify_jwt = false
 

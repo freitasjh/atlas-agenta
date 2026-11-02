@@ -92,7 +92,11 @@ export function StatusChangeConfirm({
           // não fechar ainda: exibir QR
           return;
         } catch {
-          // cobrança opcional; não bloqueia a conclusão
+          // Cobrança é opcional e não bloqueia a conclusão, mas a falha não é
+          // silenciosa: o atendimento já foi concluído e a cobrança não saiu.
+          toast.warning(
+            "Atendimento concluído, mas a cobrança PIX não foi gerada.",
+          );
         }
       }
       onClose();

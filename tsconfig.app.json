@@ -16,6 +16,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* JSON compartilhado (`shared/plans.json`) é importado por src/lib/plans.ts */
+    "resolveJsonModule": true,
+
     /* Strictness (TS estrito — sem any implícito) */
     "strict": true,
     "noImplicitAny": true,
@@ -29,5 +32,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "shared/**/*.json"]
 }

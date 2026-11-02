@@ -51,18 +51,69 @@ Deno.test("non super_admin 401", async () => {
   const r = await call(h);
   strictEqual(r.status, 401);
 });
-Deno.test("success 200", async () => {
-  const orig=globalThis.fetch;
-  globalThis.fetch = async (url: any) => {
+function stubAsaas() {
+  const orig = globalThis.fetch;
+  const payments: any[] = [];
+  globalThis.fetch = async (url: any, init?: any) => {
     const u=String(url);
     if (u.endsWith("/customers")) return new Response(JSON.stringify({id:"cus1"}),{status:200}) as any;
-    if (u.endsWith("/payments")) return new Response(JSON.stringify({id:"pay1"}),{status:200}) as any;
+    if (u.endsWith("/payments")) { payments.push(JSON.parse(init?.body ?? "{}")); return new Response(JSON.stringify({id:"pay1"}),{status:200}) as any; }
     if (u.includes("/pixQrCode")) return new Response(JSON.stringify({encodedImage:"qr",payload:"copy"}),{status:200}) as any;
     return new Response("{}",{status:200}) as any;
   };
+  return { payments, restore: () => { globalThis.fetch = orig; } };
+}
+
+Deno.test("success 200", async () => {
+  const stub = stubAsaas();
   try {
     const h=build();
     const r=await call(h);
     strictEqual(r.status,200);
-  } finally { globalThis.fetch=orig; }
+  } finally { stub.restore(); }
+});
+
+// Preço vem de `shared/plans.json` (fonte única, ADR-13). Literais aqui travam
+// o valor cobrado ponta a ponta — se o JSON mudar, o teste acompanha por
+// decisão, não por acidente.
+const EXPECTED_CENTS: Record<string, number> = {
+  individual: 5900,
+  clinica: 14900,
+  pro: 25900,
+};
+for (const [plan, cents] of Object.entries(EXPECTED_CENTS)) {
+  Deno.test(`plan ${plan} cobra ${cents} centavos`, async () => {
+    const stub = stubAsaas();
+    try {
+      const h = build();
+      const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan, billing_period: "monthly" } });
+      strictEqual(r.status, 200);
+      strictEqual(stub.payments.length, 1);
+      strictEqual(stub.payments[0]?.value, cents / 100);
+    } finally { stub.restore(); }
+  });
+}
+
+Deno.test("slug de plano inválido 400", async () => {
+  const h = build();
+  const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan: "enterprise", billing_period: "monthly" } });
+  strictEqual(r.status, 400);
+});
+
+Deno.test("período anual não existe em PLANS e é rejeitado 400", async () => {
+  const h = build();
+  const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan: "individual", billing_period: "annual" } });
+  strictEqual(r.status, 400);
+});
+
+Deno.test("ambiente do super admin ausente 500", async () => {
+  const prev = Deno.env.get("ASAAS_SUPER_ADMIN_ENVIRONMENT");
+  Deno.env.delete("ASAAS_SUPER_ADMIN_ENVIRONMENT");
+  try {
+    const h = build();
+    const r = await call(h);
+    strictEqual(r.status, 500);
+  } finally {
+    if (prev !== undefined) Deno.env.set("ASAAS_SUPER_ADMIN_ENVIRONMENT", prev);
+  }
 });

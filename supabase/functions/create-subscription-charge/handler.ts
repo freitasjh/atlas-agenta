@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
 import { asaasBaseUrl, asaasFetch } from "../_shared/asaas.ts";
+import { planPriceCents } from "../_shared/plans.ts";
 import { requestSchema } from "./schemas.ts";
 
 const corsHeaders: Record<string, string> = {
@@ -21,12 +22,6 @@ async function resolveIdentity(req: Request, service: SupabaseClient) {
   return { userId: data.user.id };
 }
 
-const PLAN_AMOUNTS: Record<string, number> = {
-  individual: 9900,
-  clinica: 19900,
-  pro: 39900,
-};
-
 export type HandlerOptions = { createService: () => SupabaseClient };
 export function createHandler(options: HandlerOptions) {
   return async (req: Request): Promise<Response> => {
@@ -44,11 +39,15 @@ export function createHandler(options: HandlerOptions) {
 
     const apiKey = Deno.env.get("ASAAS_SUPER_ADMIN_API_KEY");
     if (!apiKey) return jsonResponse({ error: "Asaas super admin não configurado." }, 500);
-    const env = (Deno.env.get("ASAAS_SUPER_ADMIN_ENVIRONMENT") ?? "production") as "sandbox" | "production";
+    const env = Deno.env.get("ASAAS_SUPER_ADMIN_ENVIRONMENT");
+    if (env !== "sandbox" && env !== "production") {
+      return jsonResponse({ error: "Asaas super admin não configurado." }, 500);
+    }
     const baseUrl = asaasBaseUrl(env);
 
-    const monthly = PLAN_AMOUNTS[input.plan] ?? 9900;
-    const amount = input.billing_period === "annual" ? monthly * 10 : monthly;
+    // Preço vem da fonte única `shared/plans.json`; `plan` já é slug validado
+    // pelo schema, então não há fallback silencioso de valor.
+    const amount = planPriceCents(input.plan);
 
     const { data: tenant } = await service.from("tenants").select("name").eq("id", input.tenant_id).maybeSingle();
     const custRes = await asaasFetch(baseUrl, apiKey, "/customers", "POST", { name: tenant?.name ?? "Tenant" });

@@ -57,9 +57,6 @@ export function AssinaturasPage() {
 
   const [tenantId, setTenantId] = React.useState("");
   const [plan, setPlan] = React.useState("individual");
-  const [billingPeriod, setBillingPeriod] = React.useState<"monthly" | "annual">(
-    "monthly",
-  );
   const [result, setResult] = React.useState<{
     pix_qr_code?: string | null;
     pix_copy_paste?: string | null;
@@ -81,7 +78,7 @@ export function AssinaturasPage() {
       const res = await createMutation.mutateAsync({
         tenant_id: tenantId,
         plan,
-        billing_period: billingPeriod,
+        billing_period: "monthly",
       });
       setResult(res);
       toast.success("Cobrança gerada.");
@@ -146,21 +143,10 @@ export function AssinaturasPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Período</Label>
-            <Select
-              value={billingPeriod}
-              onValueChange={(v) => setBillingPeriod(v as "monthly" | "annual")}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="monthly">Mensal</SelectItem>
-                <SelectItem value="annual">Anual</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            Cobrança mensal. Não há plano anual — o valor é o preço mensal do
+            plano em <code>shared/plans.json</code>.
+          </p>
           <Button
             type="button"
             onClick={() => void handleGenerate()}

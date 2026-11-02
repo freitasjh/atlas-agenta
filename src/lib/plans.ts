@@ -13,7 +13,13 @@
  *
  * Decisão de fronteira: `PlanSlug` não vive em `src/types/domain.ts` (reservado
  * a enums de domínio persistidos); plano não é persistido nesta fase.
+ *
+ * **Preço**: `price_cents` é lido de `shared/plans.json`, a fonte única
+ * consumida também pela Edge Function `create-subscription-charge` (via
+ * `supabase/functions/_shared/plans.ts`). O JSON guarda só slug → centavos;
+ * rótulo, público e destaques continuam apresentacionais e vivem aqui.
  */
+import planPrices from "../../shared/plans.json";
 
 /** Slugs em ASCII usados na URL (`?plano=...`). `clinica` sem acento. */
 export const PLAN_SLUGS = ["individual", "clinica", "pro"] as const;
@@ -53,7 +59,7 @@ export const PLANS: readonly Plan[] = [
       "Até 150 agendamentos por mês",
       "Régua de mensagens padrão",
     ],
-    price_cents: 5900,
+    price_cents: planPrices.individual,
   },
   {
     slug: "clinica",
@@ -65,7 +71,7 @@ export const PLANS: readonly Plan[] = [
       "Mensagens personalizadas e taxa de reserva configurável",
     ],
     recomendado: true,
-    price_cents: 14900,
+    price_cents: planPrices.clinica,
   },
   {
     slug: "pro",
@@ -76,7 +82,7 @@ export const PLANS: readonly Plan[] = [
       "Relatórios",
       "Suporte prioritário",
     ],
-    price_cents: 25900,
+    price_cents: planPrices.pro,
   },
 ] as const;
 
