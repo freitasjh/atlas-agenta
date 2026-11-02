@@ -388,23 +388,10 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
     }
 
     // 2. Conectar / obter QR. Resposta externa NÃO confiável — validar o shape com zod.
-    let connectRes = await evolutionFetch(credentials, {
+    const connectRes = await evolutionFetch(credentials, {
       method: "GET",
       path: `/instance/connect/${encodeURIComponent(instanceName)}`,
     });
-    // Se instância existe no banco mas não existe no Evolution, recriar do zero
-    if (!connectRes.ok && connectRes.status === 404) {
-      console.error(`pair: instância ausente no Evolution, recriando ${instanceName}`);
-      await evolutionFetch(credentials, {
-        method: "POST",
-        path: "/instance/create",
-        body: { instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true },
-      });
-      connectRes = await evolutionFetch(credentials, {
-        method: "GET",
-        path: `/instance/connect/${encodeURIComponent(instanceName)}`,
-      });
-    }
     if (!connectRes.ok) {
       console.error(`pair: conexão da instância falhou (status ${connectRes.status})`);
       throw new Error("Não foi possível conectar o WhatsApp.");
