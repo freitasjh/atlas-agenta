@@ -1,4 +1,6 @@
-import { Loader2 } from "lucide-react";
+import * as React from "react";
+
+import { Loader2, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -10,11 +12,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 import {
   mapSchedulingError,
   useChangeAppointmentStatus,
 } from "@/hooks/useAppointments";
+import { useCreateCharge } from "@/hooks/useCharges";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { getTransitionLabel } from "@/lib/scheduling-status";
@@ -55,8 +59,15 @@ export function StatusChangeConfirm({
   onClose,
 }: StatusChangeConfirmProps) {
   const changeStatus = useChangeAppointmentStatus();
+  const createCharge = useCreateCharge();
   const { canViewCommission } = usePermissions();
   const { commission: commissionFeature } = useSegmentFeatures();
+  const [chargeResult, setChargeResult] = React.useState<{
+    pix_qr_code?: string | null;
+    pix_copy_paste?: string | null;
+    expires_at?: string;
+  } | null>(null);
+
   // Aviso de comissão só ao concluir, e só para quem veria o valor depois
   // (ramo libera + papel pode ler). Honesto: a comissão é apurada e registrada
   // pelo banco ao concluir (trigger da ADR-03) — não promete nada além disso.
@@ -71,8 +82,19 @@ export function StatusChangeConfirm({
         from: change.appointment.status,
         to: change.to,
       });
-      // GANCHO (fase financeira): ao concluir, gerar cobrança PIX via Asaas.
       toast.success("Status atualizado.");
+      if (change.to === "concluido") {
+        try {
+          const res = await createCharge.mutateAsync({
+            appointment_id: change.appointment.id,
+          });
+          setChargeResult(res);
+          // não fechar ainda: exibir QR
+          return;
+        } catch {
+          // cobrança opcional; não bloqueia a conclusão
+        }
+      }
       onClose();
     } catch (error) {
       toast.error(mapSchedulingError(error));
@@ -81,6 +103,7 @@ export function StatusChangeConfirm({
   }
 
   return (
+    <>
     <Dialog
       open={!!change}
       onOpenChange={(next) => {
@@ -129,5 +152,70 @@ export function StatusChangeConfirm({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={!!chargeResult}
+      onOpenChange={(next) => {
+        if (!next) {
+          setChargeResult(null);
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cobrança PIX gerada</DialogTitle>
+          <DialogDescription>
+            Exiba o QR Code ou copie o código para o cliente.
+          </DialogDescription>
+        </DialogHeader>
+        {chargeResult?.pix_qr_code ? (
+          <div className="flex justify-center">
+            <img
+              src={
+                chargeResult.pix_qr_code.startsWith("data:")
+                  ? chargeResult.pix_qr_code
+                  : `data:image/png;base64,${chargeResult.pix_qr_code}`
+              }
+              alt="QR Code PIX"
+              className="h-40 w-40"
+            />
+          </div>
+        ) : null}
+        <div className="flex gap-2">
+          <Input readOnly value={chargeResult?.pix_copy_paste ?? ""} />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={async () => {
+              if (chargeResult?.pix_copy_paste) {
+                try {
+                  await navigator.clipboard.writeText(chargeResult.pix_copy_paste);
+                  toast.success("Código copiado.");
+                } catch {
+                  toast.error("Não foi possível copiar.");
+                }
+              }
+            }}
+            aria-label="Copiar"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            onClick={() => {
+              setChargeResult(null);
+              onClose();
+            }}
+          >
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

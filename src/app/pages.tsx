@@ -1,6 +1,4 @@
 import { BillingGateLayout } from "@/app/BillingGateLayout";
-import { PageHeader } from "@/components/PageHeader";
-import { PlaceholderPanel } from "@/components/PlaceholderPanel";
 import { SignOutButton } from "@/components/SignOutButton";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -14,20 +12,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 
 export { DashboardPage } from "@/app/dashboard/DashboardPage";
 
-export function CobrancasPage() {
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Cobranças"
-        descricao="Cobranças PIX pós-atendimento e baixa automática. Em construção."
-      />
-      <PlaceholderPanel
-        titulo="Cobranças do tenant"
-        descricao="A lista de cobranças PIX e o status de pagamento vêm nas próximas fases."
-      />
-    </div>
-  );
-}
+export { CobrancasPage } from "@/app/cobrancas/CobrancasPage";
 
 /**
  * Tela de quitação (`/app/quitacao`), destino do redirect de tenant
