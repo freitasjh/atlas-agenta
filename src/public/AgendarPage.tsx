@@ -1,12 +1,25 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Clock, User, CheckCircle, ArrowLeft, ArrowRight } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  Check,
+  CheckCircle,
+  Clock,
+  Loader2,
+  Phone,
+  Scissors,
+  User,
+} from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { StatePanel } from "@/components/StatePanel";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { env } from "@/lib/env";
 
@@ -14,6 +27,12 @@ const SUPABASE_URL = env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
 
 type Step = "service" | "professional" | "datetime" | "customer" | "confirm";
+
+interface Tenant {
+  trade_name: string | null;
+  legal_name: string | null;
+  phone: string | null;
+}
 
 interface Service {
   id: string;
@@ -32,9 +51,56 @@ interface Slot {
   slot_end: string;
 }
 
+const STEP_LABELS: string[] = [
+  "Serviço",
+  "Profissional",
+  "Data e horário",
+  "Seus dados",
+  "Confirmação",
+];
+
+function initialsOf(name: string | null | undefined): string {
+  const base = (name ?? "").trim();
+  if (!base) return "A";
+  return base
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function formatPrice(cents: number): string {
+  return `R$ ${(cents / 100).toFixed(2)}`;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+}
+
+function validateName(value: string): string | undefined {
+  if (value.trim().length < 2) return "Informe seu nome (mínimo 2 caracteres).";
+  return undefined;
+}
+
+function validatePhone(value: string): string | undefined {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 10) return "Telefone inválido (mínimo 10 dígitos).";
+  return undefined;
+}
+
 export function AgendarPage() {
   const { token } = useParams<{ token: string }>();
+
   const [step, setStep] = useState<Step>("service");
+  const [tenant, setTenant] = useState<Tenant | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -44,31 +110,40 @@ export function AgendarPage() {
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerTouched, setCustomerTouched] = useState({ name: false, phone: false });
   const [loading, setLoading] = useState(true);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadInitialData();
-  }, [token]);
+  const stepIndex = ["service", "professional", "datetime", "customer", "confirm"].indexOf(step);
+
+  const nameError = customerTouched.name ? validateName(customerName) : undefined;
+  const phoneError = customerTouched.phone ? validatePhone(customerPhone) : undefined;
+  const isCustomerValid = !validateName(customerName) && !validatePhone(customerPhone);
+
+  const tenantName = tenant?.trade_name?.trim() || tenant?.legal_name?.trim() || "Agendamento Online";
+  const tenantInitials = initialsOf(tenant?.trade_name || tenant?.legal_name);
 
   async function loadInitialData() {
     try {
       setLoading(true);
-      const today = new Date().toISOString().split("T")[0];
+      setError(null);
+      const today = new Date().toLocaleDateString("en-CA");
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=00000000-0000-0000-0000-000000000000&date=${today}`,
-        { headers: { apikey: SUPABASE_ANON_KEY } }
+        { headers: { apikey: SUPABASE_ANON_KEY } },
       );
       if (res.ok) {
         const data = await res.json();
+        setTenant(data.tenant ?? null);
         setServices(data.services || []);
         setProfessionals(data.professionals || []);
       } else {
         setError("Link inválido ou expirado");
       }
-    } catch (e) {
+    } catch {
       setError("Erro ao carregar agendamento");
     } finally {
       setLoading(false);
@@ -76,22 +151,26 @@ export function AgendarPage() {
   }
 
   async function loadSlots(date: string) {
-    if (!date) return;
-    if (!selectedService) return;
+    if (!date || !selectedService) return;
     try {
-      setLoading(true);
-      const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=${selectedService.id}&professional_id=${selectedProfessional?.id || ""}&date=${date}`,
-        { headers: { apikey: SUPABASE_ANON_KEY } }
-      );
+      setSlotsLoading(true);
+      const url = new URL(`${SUPABASE_URL}/functions/v1/public-slots`);
+      url.searchParams.set("token", token ?? "");
+      url.searchParams.set("service_id", selectedService.id);
+      if (selectedProfessional?.id) url.searchParams.set("professional_id", selectedProfessional.id);
+      url.searchParams.set("date", date);
+      const res = await fetch(url.toString(), { headers: { apikey: SUPABASE_ANON_KEY } });
       if (res.ok) {
         const data = await res.json();
         setSlots(data.slots || []);
+      } else {
+        setSlots([]);
       }
-    } catch (e) {
+    } catch {
+      setSlots([]);
       setError("Erro ao carregar horários");
     } finally {
-      setLoading(false);
+      setSlotsLoading(false);
     }
   }
 
@@ -99,6 +178,7 @@ export function AgendarPage() {
     if (!selectedService || !selectedProfessional || !selectedSlot) return;
     try {
       setBooking(true);
+      setError(null);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/public-book`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
@@ -107,68 +187,191 @@ export function AgendarPage() {
           service_id: selectedService.id,
           professional_id: selectedProfessional.id,
           starts_at: selectedSlot.slot_start,
-          customer_name: customerName,
-          customer_phone: customerPhone,
+          customer_name: customerName.trim(),
+          customer_phone: customerPhone.trim(),
         }),
       });
       if (res.ok) {
         setSuccess(true);
       } else {
-        const data = await res.json();
-        setError(data.error === "slot_unavailable" ? "Horário indisponível" : "Erro ao agendar");
+        let message = "Erro ao agendar";
+        try {
+          const data = await res.json();
+          if (data?.error === "slot_unavailable") message = "Horário indisponível";
+        } catch {
+          // ignore
+        }
+        setError(message);
       }
-    } catch (e) {
+    } catch {
       setError("Erro ao agendar");
     } finally {
       setBooking(false);
     }
   }
 
-  const formatPrice = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
-  const formatTime = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-  if (loading && step === "service") {
-    return <StatePanel titulo="Carregando..." descricao="Preparando agendamento" />;
+  function resetAll() {
+    setSuccess(false);
+    setError(null);
+    setStep("service");
+    setSelectedService(null);
+    setSelectedProfessional(null);
+    setSelectedDate("");
+    setSlots([]);
+    setSelectedSlot(null);
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerTouched({ name: false, phone: false });
+    loadInitialData();
   }
 
-  if (error && !services.length) {
-    return <StatePanel titulo="Link inválido" descricao={error} />;
+  useEffect(() => {
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const progressValue = ((stepIndex + 1) / 5) * 100;
+  const progressLabel = `Etapa ${stepIndex + 1} de 5 — ${STEP_LABELS[stepIndex]}`;
+
+  if (!loading && error && services.length === 0 && !success) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:ring-2 focus:ring-ring"
+        >
+          Pular para o conteúdo
+        </a>
+        <main id="main" tabIndex={-1} className="w-full max-w-md">
+          <Card className="text-center">
+            <CardHeader>
+              <AlertCircle className="h-16 w-16 text-destructive mx-auto mb-4" aria-hidden="true" />
+              <CardTitle className="text-destructive">Link inválido</CardTitle>
+              <CardDescription>{error}</CardDescription>
+            </CardHeader>
+          </Card>
+        </main>
+      </div>
+    );
   }
 
   if (success) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full text-center">
-          <CardHeader>
-            <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <CardTitle>Agendamento solicitado!</CardTitle>
-            <CardDescription>Seu agendamento foi criado com status pendente. Aguarde confirmação.</CardDescription>
-          </CardHeader>
-        </Card>
+        <main id="main" tabIndex={-1} className="w-full max-w-md">
+          <Card className="text-center">
+            <CardHeader>
+              <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" aria-hidden="true" />
+              <CardTitle>Agendamento solicitado!</CardTitle>
+              <CardDescription>Aguarde confirmação via WhatsApp</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <dl className="text-sm text-left space-y-2">
+                <div className="flex items-center gap-2">
+                  <dt className="font-medium text-muted-foreground">Serviço:</dt>
+                  <dd>{selectedService?.name}</dd>
+                </div>
+                <div className="flex items-center gap-2">
+                  <dt className="font-medium text-muted-foreground">Profissional:</dt>
+                  <dd>{selectedProfessional?.name}</dd>
+                </div>
+                <div className="flex items-center gap-2">
+                  <dt className="font-medium text-muted-foreground">Data/Hora:</dt>
+                  <dd>{selectedSlot ? formatDateTime(selectedSlot.slot_start) : ""}</dd>
+                </div>
+              </dl>
+              <Button variant="ghost" onClick={resetAll} className="w-full min-h-11">
+                Novo agendamento
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold">Agendamento Online</h1>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:ring-2 focus:ring-ring"
+      >
+        Pular para o conteúdo
+      </a>
+
+      <header className="border-b bg-background/95 backdrop-blur">
+        <div className="container mx-auto px-4 py-4 flex items-center gap-3">
+          <Avatar className="h-11 w-11">
+            <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
+              {tenantInitials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold truncate">{tenantName}</h1>
+            <p className="text-sm text-muted-foreground">Agende seu horário online</p>
+            {tenant?.phone && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <Phone className="h-3 w-3" aria-hidden="true" />
+                {tenant.phone}
+              </p>
+            )}
+          </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl">
-        <div className="mb-6 flex items-center justify-between">
-          {["service", "professional", "datetime", "customer", "confirm"].map((s, i) => (
-            <div key={s} className={cn("flex items-center", i < 4 && "flex-1")}>
-              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-sm", 
-                step === s ? "bg-primary text-primary-foreground" : ["service","professional","datetime","customer"].indexOf(step) >= i ? "bg-primary/20" : "bg-muted")}>
-                {i + 1}
-              </div>
-              {i < 4 && <div className="flex-1 h-0.5 mx-2 bg-muted" />}
-            </div>
-          ))}
+      <main id="main" tabIndex={-1} className="container mx-auto px-4 py-6 max-w-2xl">
+        <div className="mb-6" aria-live="polite">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium" role="status">{progressLabel}</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-valuenow={stepIndex + 1}
+            aria-valuemin={1}
+            aria-valuemax={5}
+            aria-label={progressLabel}
+            className="h-2 w-full overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full bg-primary transition-all motion-reduce:transition-none"
+              style={{ width: `${progressValue}%` }}
+            />
+          </div>
+
+          <ol className="mt-3 flex items-center justify-between gap-1" aria-hidden="true">
+            {STEP_LABELS.map((label, i) => {
+              const done = i < stepIndex;
+              const current = i === stepIndex;
+              return (
+                <li key={label} className="flex flex-col items-center gap-1 flex-1 min-w-0">
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium border motion-reduce:transition-none",
+                      done && "bg-primary text-primary-foreground border-primary",
+                      current && "border-primary text-primary bg-primary/10",
+                      !done && !current && "border-muted text-muted-foreground bg-background",
+                    )}
+                  >
+                    {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+                    {label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </div>
+
+        {error && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        )}
 
         {step === "service" && (
           <Card>
@@ -176,21 +379,40 @@ export function AgendarPage() {
               <CardTitle>Escolha o serviço</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {services.map((service) => (
-                <button
-                  key={service.id}
-                  onClick={() => { setSelectedService(service); setStep("professional"); }}
-                  className="w-full p-4 border rounded-lg text-left hover:border-primary transition-colors"
-                >
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="font-medium">{service.name}</p>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> {service.duration_minutes} min</p>
+              {loading ? (
+                <div aria-busy="true" aria-live="polite" className="space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full motion-reduce:animate-none" />
+                  ))}
+                </div>
+              ) : services.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  Nenhum serviço disponível no momento
+                </p>
+              ) : (
+                services.map((service) => (
+                  <Button
+                    key={service.id}
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedService(service);
+                      setStep("professional");
+                    }}
+                    className="w-full h-auto p-4 border rounded-lg text-left justify-start hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="flex justify-between items-center gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{service.name}</p>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                          <Clock className="h-3 w-3" aria-hidden="true" /> {service.duration_minutes} min
+                        </p>
+                      </div>
+                      <Badge variant="secondary">{formatPrice(service.price_cents)}</Badge>
                     </div>
-                    <Badge variant="secondary">{formatPrice(service.price_cents)}</Badge>
-                  </div>
-                </button>
-              ))}
+                  </Button>
+                ))
+              )}
             </CardContent>
           </Card>
         )}
@@ -202,17 +424,34 @@ export function AgendarPage() {
               <CardDescription>{selectedService?.name}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {professionals.map((prof) => (
-                <button
-                  key={prof.id}
-                  onClick={() => { setSelectedProfessional(prof); setStep("datetime"); }}
-                  className="w-full p-4 border rounded-lg text-left hover:border-primary transition-colors flex items-center gap-3"
-                >
-                  <User className="h-5 w-5" />
-                  <span className="font-medium">{prof.name || "Profissional"}</span>
-                </button>
-              ))}
-              <Button variant="ghost" onClick={() => setStep("service")}><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
+              {professionals.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  Nenhum profissional disponível
+                </p>
+              ) : (
+                professionals.map((prof) => (
+                  <Button
+                    key={prof.id}
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedProfessional(prof);
+                      setStep("datetime");
+                    }}
+                    className="w-full h-auto p-4 border rounded-lg text-left hover:border-primary transition-colors flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring justify-start"
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="bg-muted text-foreground">
+                        {initialsOf(prof.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="font-medium">{prof.name || "Profissional"}</span>
+                  </Button>
+                ))
+              )}
+              <Button variant="ghost" className="min-h-11" onClick={() => setStep("service")}>
+                <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> Voltar
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -223,22 +462,80 @@ export function AgendarPage() {
               <CardTitle>Escolha data e horário</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label>Data</Label>
-                <Input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); loadSlots(e.target.value); }} min={new Date().toISOString().split("T")[0]} />
+              <div className="space-y-2">
+                <Label htmlFor="booking-date">Data</Label>
+                <Input
+                  id="booking-date"
+                  type="date"
+                  aria-label="Data do agendamento"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    setSelectedDate(e.target.value);
+                    setSelectedSlot(null);
+                    loadSlots(e.target.value);
+                  }}
+                  min={new Date().toLocaleDateString("en-CA")}
+                  className="h-11"
+                />
               </div>
+
               {selectedDate && (
-                <div className="grid grid-cols-3 gap-2">
-                  {slots.map((slot) => (
-                    <Button key={slot.slot_start} variant={selectedSlot?.slot_start === slot.slot_start ? "default" : "outline"} onClick={() => setSelectedSlot(slot)}>
-                      {formatTime(slot.slot_start)}
-                    </Button>
-                  ))}
-                </div>
+                <>
+                  {slotsLoading ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2" aria-busy="true" aria-live="polite">
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <Skeleton key={i} className="h-11 w-full motion-reduce:animate-none" />
+                      ))}
+                    </div>
+                  ) : slots.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">
+                      Sem horários disponíveis nesta data — tente outra data
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {slots.map((slot) => {
+                        const selected = selectedSlot?.slot_start === slot.slot_start;
+                        return (
+                          <Button
+                            key={slot.slot_start}
+                            type="button"
+                            variant={selected ? "default" : "outline"}
+                            className="min-h-11"
+                            aria-pressed={selected}
+                            aria-label={`Horário ${formatTime(slot.slot_start)}`}
+                            onClick={() => setSelectedSlot(slot)}
+                          >
+                            {formatTime(slot.slot_start)}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="h-3 w-3 rounded-sm border border-input" aria-hidden="true" />
+                      Disponível
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-3 w-3 rounded-sm bg-primary" aria-hidden="true" />
+                      Selecionado
+                    </span>
+                  </div>
+                </>
               )}
+
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep("professional")}><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
-                <Button disabled={!selectedSlot} onClick={() => setStep("customer")} className="ml-auto">Continuar <ArrowRight className="h-4 w-4 ml-2" /></Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setStep("professional")}>
+                  <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> Voltar
+                </Button>
+                <Button
+                  disabled={!selectedSlot}
+                  onClick={() => setStep("customer")}
+                  className="ml-auto min-h-11"
+                >
+                  Continuar <ArrowRight className="h-4 w-4 ml-2" aria-hidden="true" />
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -250,17 +547,64 @@ export function AgendarPage() {
               <CardTitle>Seus dados</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label>Nome completo</Label>
-                <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+              <div className="space-y-2">
+                <Label htmlFor="customer-name">Nome completo</Label>
+                <Input
+                  id="customer-name"
+                  autoComplete="name"
+                  aria-required="true"
+                  aria-invalid={!!nameError}
+                  aria-describedby={nameError ? "customer-name-error" : "customer-name-helper"}
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  onBlur={() => setCustomerTouched((t) => ({ ...t, name: true }))}
+                  className="h-11"
+                />
+                {nameError ? (
+                  <p id="customer-name-error" className="text-xs text-destructive">{nameError}</p>
+                ) : (
+                  <p id="customer-name-helper" className="text-xs text-muted-foreground">
+                    Mínimo de 2 caracteres.
+                  </p>
+                )}
               </div>
-              <div>
-                <Label>Telefone/WhatsApp</Label>
-                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="(00) 00000-0000" />
+
+              <div className="space-y-2">
+                <Label htmlFor="customer-phone">Telefone/WhatsApp</Label>
+                <Input
+                  id="customer-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  aria-required="true"
+                  aria-invalid={!!phoneError}
+                  aria-describedby={phoneError ? "customer-phone-error" : "customer-phone-helper"}
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onBlur={() => setCustomerTouched((t) => ({ ...t, phone: true }))}
+                  placeholder="(00) 00000-0000"
+                  className="h-11"
+                />
+                {phoneError ? (
+                  <p id="customer-phone-error" className="text-xs text-destructive">{phoneError}</p>
+                ) : (
+                  <p id="customer-phone-helper" className="text-xs text-muted-foreground">
+                    DDD + número (mínimo 10 dígitos).
+                  </p>
+                )}
               </div>
+
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep("datetime")}><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
-                <Button disabled={!customerName || !customerPhone} onClick={() => setStep("confirm")} className="ml-auto">Continuar <ArrowRight className="h-4 w-4 ml-2" /></Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setStep("datetime")}>
+                  <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> Voltar
+                </Button>
+                <Button
+                  disabled={!isCustomerValid}
+                  onClick={() => setStep("confirm")}
+                  className="ml-auto min-h-11"
+                >
+                  Continuar <ArrowRight className="h-4 w-4 ml-2" aria-hidden="true" />
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -272,17 +616,61 @@ export function AgendarPage() {
               <CardTitle>Confirmar agendamento</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2 text-sm">
-                <p><strong>Serviço:</strong> {selectedService?.name}</p>
-                <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
-                <p><strong>Data/Hora:</strong> {selectedDate} {selectedSlot && formatTime(selectedSlot.slot_start)}</p>
-                <p><strong>Cliente:</strong> {customerName}</p>
-                <p><strong>Telefone:</strong> {customerPhone}</p>
-                <p><strong>Valor:</strong> {selectedService && formatPrice(selectedService.price_cents)}</p>
-              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex items-start gap-2">
+                  <Scissors className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Serviço</dt>
+                  <dd className="flex-1">{selectedService?.name}</dd>
+                </div>
+                <div className="flex items-start gap-2">
+                  <User className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Profissional</dt>
+                  <dd className="flex-1">{selectedProfessional?.name}</dd>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CalendarDays className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Data/Hora</dt>
+                  <dd className="flex-1">
+                    {selectedDate} {selectedSlot && formatTime(selectedSlot.slot_start)}
+                  </dd>
+                </div>
+                <div className="flex items-start gap-2">
+                  <User className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Cliente</dt>
+                  <dd className="flex-1">{customerName}</dd>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Phone className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Telefone</dt>
+                  <dd className="flex-1">{customerPhone}</dd>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Clock className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
+                  <dt className="font-medium text-muted-foreground w-24">Valor</dt>
+                  <dd className="flex-1">
+                    {selectedService && formatPrice(selectedService.price_cents)}
+                  </dd>
+                </div>
+              </dl>
+
               <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep("customer")}><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
-                <Button disabled={booking} onClick={handleBooking} className="ml-auto">{booking ? "Agendando..." : "Confirmar agendamento"}</Button>
+                <Button variant="ghost" className="min-h-11" onClick={() => setStep("customer")}>
+                  <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> Voltar
+                </Button>
+                <Button
+                  disabled={booking}
+                  onClick={handleBooking}
+                  className="ml-auto min-h-11"
+                >
+                  {booking ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      Agendando...
+                    </>
+                  ) : (
+                    "Confirmar agendamento"
+                  )}
+                </Button>
               </div>
             </CardContent>
           </Card>
