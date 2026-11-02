@@ -43,6 +43,7 @@ import { AdminLayout } from "@/admin/AdminLayout";
 import { AdminDashboardPage, EmpresasPage, MetricasPage } from "@/admin/pages";
 import { ConvitesPage } from "@/admin/convites/ConvitesPage";
 import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
+import { AgendarPage } from "@/public/AgendarPage";
 
 /**
  * Casca de roteamento (data router). A raiz monta providers + skip-link +
@@ -81,6 +82,8 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
           { path: "redefinir-senha", element: <RedefinirSenhaPage /> },
         ],
       },
+      // Autoagendamento público (ADR-19)
+      { path: "agendar/:token", element: <AgendarPage /> },
       // Troca de senha obrigatória (ADR-10). Exige sessão (`RequireAuth`), mas
       // fica FORA do guard de troca (ADR-11): incluir o guard aqui criaria
       // laço, porque é esta tela que limpa a flag.
