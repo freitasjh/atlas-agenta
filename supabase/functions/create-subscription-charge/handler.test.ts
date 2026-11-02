@@ -44,24 +44,29 @@ Deno.test("no token 401", async () => {
   strictEqual(r.status,401);
 });
 Deno.test("invalid body 400", async () => { const h=build(); const r=await call(h,{body:{}}); strictEqual(r.status,400); });
-Deno.test("non super_admin 401", async () => {
+Deno.test("non super_admin 403", async () => {
   const svc: any = baseService();
   svc.from = (t: string) => t === "profiles" ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { tenant_id: "t1", role: "admin" }, error: null }) }) }) } : svc.from(t);
   const h = createHandler({ createService: () => svc });
   const r = await call(h);
-  strictEqual(r.status, 401);
+  strictEqual(r.status, 403);
 });
-function stubAsaas() {
+function stubAsaas(opts: { existingCustomer?: string } = {}) {
   const orig = globalThis.fetch;
   const payments: any[] = [];
+  const created: any[] = [];
   globalThis.fetch = async (url: any, init?: any) => {
     const u=String(url);
-    if (u.endsWith("/customers")) return new Response(JSON.stringify({id:"cus1"}),{status:200}) as any;
+    if (u.includes("/customers?externalReference=")) {
+      const data = opts.existingCustomer ? [{ id: opts.existingCustomer }] : [];
+      return new Response(JSON.stringify({data}),{status:200}) as any;
+    }
+    if (u.endsWith("/customers")) { created.push(JSON.parse(init?.body ?? "{}")); return new Response(JSON.stringify({id:"cus1"}),{status:200}) as any; }
     if (u.endsWith("/payments")) { payments.push(JSON.parse(init?.body ?? "{}")); return new Response(JSON.stringify({id:"pay1"}),{status:200}) as any; }
     if (u.includes("/pixQrCode")) return new Response(JSON.stringify({encodedImage:"qr",payload:"copy"}),{status:200}) as any;
     return new Response("{}",{status:200}) as any;
   };
-  return { payments, restore: () => { globalThis.fetch = orig; } };
+  return { payments, created, restore: () => { globalThis.fetch = orig; } };
 }
 
 Deno.test("success 200", async () => {
@@ -70,10 +75,24 @@ Deno.test("success 200", async () => {
     const h=build();
     const r=await call(h);
     strictEqual(r.status,200);
+    strictEqual(stub.created.length, 1);
+    strictEqual(stub.created[0]?.externalReference, "11111111-1111-4111-8111-111111111111");
   } finally { stub.restore(); }
 });
 
-// Preço vem de `shared/plans.json` (fonte única, ADR-13). Literais aqui travam
+Deno.test("reaproveita customer existente pelo externalReference", async () => {
+  const stub = stubAsaas({ existingCustomer: "cus-salvo" });
+  try {
+    const h = build();
+    const r = await call(h);
+    strictEqual(r.status, 200);
+    strictEqual(stub.created.length, 0);
+    strictEqual(stub.payments.length, 1);
+    strictEqual(stub.payments[0]?.customer, "cus-salvo");
+  } finally { stub.restore(); }
+});
+
+// Preço vem de `_shared/plans.json` (fonte única, ADR-13). Literais aqui travam
 // o valor cobrado ponta a ponta — se o JSON mudar, o teste acompanha por
 // decisão, não por acidente.
 const EXPECTED_CENTS: Record<string, number> = {

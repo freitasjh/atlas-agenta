@@ -12,14 +12,21 @@ const corsHeaders: Record<string, string> = {
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
-async function resolveIdentity(req: Request, service: SupabaseClient) {
+async function resolveIdentity(
+  req: Request,
+  service: SupabaseClient,
+): Promise<
+  | { ok: true; userId: string }
+  | { ok: false; status: 401 | 403; error: string }
+> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
+  if (!token) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
   const { data, error } = await service.auth.getUser(token);
-  if (error || !data.user) return null;
+  if (error || !data.user) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
   const { data: profile } = await service.from("profiles").select("tenant_id, role").eq("id", data.user.id).maybeSingle();
-  if (!profile || profile.role !== "super_admin") return null;
-  return { userId: data.user.id };
+  // Autenticado mas sem o papel exigido é 403 — 401 é reservado a sessão inválida.
+  if (!profile || profile.role !== "super_admin") return { ok: false, status: 403, error: "Sem permissão para gerar cobrança de assinatura." };
+  return { ok: true, userId: data.user.id };
 }
 
 export type HandlerOptions = { createService: () => SupabaseClient };
@@ -30,7 +37,7 @@ export function createHandler(options: HandlerOptions) {
     let service: SupabaseClient;
     try { service = options.createService(); } catch { return jsonResponse({ error: "Erro de configuração do servidor." }, 500); }
     const identity = await resolveIdentity(req, service);
-    if (!identity) return jsonResponse({ error: "Sessão inválida ou expirada." }, 401);
+    if (!identity.ok) return jsonResponse({ error: identity.error }, identity.status);
     let raw: unknown;
     try { raw = await req.json(); } catch { return jsonResponse({ error: "Corpo inválido." }, 400); }
     const parsed = requestSchema.safeParse(raw);
@@ -45,13 +52,25 @@ export function createHandler(options: HandlerOptions) {
     }
     const baseUrl = asaasBaseUrl(env);
 
-    // Preço vem da fonte única `shared/plans.json`; `plan` já é slug validado
+    // Preço vem da fonte única `_shared/plans.json`; `plan` já é slug validado
     // pelo schema, então não há fallback silencioso de valor.
     const amount = planPriceCents(input.plan);
 
     const { data: tenant } = await service.from("tenants").select("name").eq("id", input.tenant_id).maybeSingle();
-    const custRes = await asaasFetch(baseUrl, apiKey, "/customers", "POST", { name: tenant?.name ?? "Tenant" });
-    const asaasCustomerId = custRes.ok ? custRes.data?.id : null;
+    // Um customer por tenant no Asaas: procura pelo `externalReference` antes de
+    // criar, senão cada cobrança de assinatura duplicaria o cliente.
+    let asaasCustomerId: string | null = null;
+    const lookupRes = await asaasFetch(baseUrl, apiKey, `/customers?externalReference=${encodeURIComponent(input.tenant_id)}`);
+    if (lookupRes.ok && Array.isArray(lookupRes.data?.data) && lookupRes.data.data.length > 0) {
+      asaasCustomerId = lookupRes.data.data[0]?.id ?? null;
+    }
+    if (!asaasCustomerId) {
+      const custRes = await asaasFetch(baseUrl, apiKey, "/customers", "POST", {
+        name: tenant?.name ?? "Tenant",
+        externalReference: input.tenant_id,
+      });
+      asaasCustomerId = custRes.ok ? custRes.data?.id : null;
+    }
     if (!asaasCustomerId) return jsonResponse({ error: "Falha ao criar cliente." }, 500);
 
     const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();

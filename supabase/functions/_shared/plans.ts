@@ -1,11 +1,14 @@
 /**
- * Preço de plano — leitura da fonte única `shared/plans.json` (ADR-13/ADR-20).
+ * Preço de plano — leitura da fonte única `_shared/plans.json` (ADR-13/ADR-20).
  *
  * O mesmo JSON alimenta `src/lib/plans.ts` no frontend. Aqui só o que o
  * servidor precisa: slug válido e valor em centavos. Rótulo, público e
  * destaques são apresentacionais e não existem neste lado da fronteira.
+ *
+ * O arquivo vive **dentro** de `supabase/functions/`: o bundle de deploy é só
+ * essa pasta, então um JSON fora dela quebra `deno check`/`functions deploy`.
  */
-import planPrices from "../../../shared/plans.json" with { type: "json" };
+import planPrices from "./plans.json" with { type: "json" };
 
 export type PlanSlug = keyof typeof planPrices;
 

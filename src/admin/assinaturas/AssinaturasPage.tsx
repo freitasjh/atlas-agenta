@@ -145,7 +145,7 @@ export function AssinaturasPage() {
           </div>
           <p className="text-xs text-muted-foreground">
             Cobrança mensal. Não há plano anual — o valor é o preço mensal do
-            plano em <code>shared/plans.json</code>.
+            plano em <code>supabase/functions/_shared/plans.json</code>.
           </p>
           <Button
             type="button"

@@ -33,22 +33,22 @@ export function createHandler(options: HandlerOptions) {
     if (!paymentId) return jsonResponse({ ok: true }, 200);
 
     const globalToken = (Deno.env.get("ASAAS_WEBHOOK_TOKEN") ?? "").trim();
-    if (globalToken) {
-      if (!constantTimeEqual(headerToken, globalToken)) return jsonResponse({ error: "Token inválido." }, 401);
-    }
 
     // lookup charge
     const { data: charge } = await service.from("charges").select("*").eq("asaas_payment_id", paymentId).maybeSingle();
     if (!charge) {
-      if (!globalToken) return jsonResponse({ error: "Token inválido." }, 401);
+      // Sem cobrança não há tenant para resolver token: o global é o único
+      // caminho de autenticação do evento desconhecido.
+      if (!globalToken || !constantTimeEqual(headerToken, globalToken)) return jsonResponse({ error: "Token inválido." }, 401);
       return jsonResponse({ ok: true }, 200);
     }
 
-    if (!globalToken) {
-      const { data: cfg } = await service.from("tenant_asaas_config").select("asaas_webhook_token").eq("tenant_id", charge.tenant_id).maybeSingle();
-      const tenantToken = (cfg?.asaas_webhook_token ?? "").trim();
-      if (!tenantToken || !constantTimeEqual(headerToken, tenantToken)) return jsonResponse({ error: "Token inválido." }, 401);
-    }
+    // Token do próprio tenant vence; o global é só fallback para tenant que
+    // ainda não configurou o seu. Comparação em tempo constante nos dois casos.
+    const { data: cfg } = await service.from("tenant_asaas_config").select("asaas_webhook_token").eq("tenant_id", charge.tenant_id).maybeSingle();
+    const tenantToken = (cfg?.asaas_webhook_token ?? "").trim();
+    const expectedToken = tenantToken || globalToken;
+    if (!expectedToken || !constantTimeEqual(headerToken, expectedToken)) return jsonResponse({ error: "Token inválido." }, 401);
 
     // idempotência via webhook_events
     const eventId = (parsed.data as any)?.id ?? event;

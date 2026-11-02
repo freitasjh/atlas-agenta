@@ -65,8 +65,17 @@ export function createHandler(options: HandlerOptions) {
     const baseUrl = asaasBaseUrl(cfg.environment);
 
     // appointment
-    const { data: appt } = await service.from("appointments").select("id, price_cents, status, customer_id").eq("tenant_id", identity.tenantId).eq("id", appointmentId).maybeSingle();
+    const { data: appt } = await service.from("appointments").select("id, price_cents, status, customer_id, professional_id").eq("tenant_id", identity.tenantId).eq("id", appointmentId).maybeSingle();
     if (!appt) return jsonResponse({ error: "Agendamento não encontrado." }, 404);
+
+    // Profissional só cobra o próprio atendimento (professionals.profile_id).
+    if (identity.role === "professional") {
+      const { data: professional } = await service.from("professionals").select("id").eq("tenant_id", identity.tenantId).eq("profile_id", identity.userId).maybeSingle();
+      if (!professional || appt.professional_id !== professional.id) {
+        return jsonResponse({ error: "Sem permissão para gerar cobrança deste agendamento." }, 403);
+      }
+    }
+
     if (appt.status !== "concluido") return jsonResponse({ error: "Agendamento não concluído." }, 400);
 
     // customer lookup by externalReference before creating

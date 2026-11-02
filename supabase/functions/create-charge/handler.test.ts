@@ -17,7 +17,8 @@ function baseService(overrides: any = {}) {
         insert: () => ({ select: () => ({ single: async () => ({ data: { id: "ch1" }, error: overrides.insErr ?? null }) }) }),
       };
       if (table === "tenant_asaas_config") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("cfg" in overrides) ? overrides.cfg : { active: true, environment: "sandbox", asaas_api_key_encrypted: VALID_ENC }, error: null }) }) }) };
-      if (table === "appointments") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("appt" in overrides) ? overrides.appt : { id: "a1", price_cents: 1000, status: "concluido", customer_id: "c1" }, error: null }) }) }) }) };
+      if (table === "appointments") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("appt" in overrides) ? overrides.appt : { id: "a1", price_cents: 1000, status: "concluido", customer_id: "c1", professional_id: "p1" }, error: null }) }) }) }) };
+      if (table === "professionals") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("professional" in overrides) ? overrides.professional : { id: "p1" }, error: null }) }) }) }) };
       if (table === "customers") return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("cust" in overrides) ? overrides.cust : { name: "Cli", email: null, phone: null }, error: null }) }) }) }) };
       if (table === "audit_log") return { insert: async (row: any) => { (overrides.auditRows ??= []).push(row); return { error: overrides.auditErr ?? null }; } };
       return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), insert: async () => ({ error: null }) };
@@ -93,6 +94,18 @@ for (const role of ["admin", "receptionist", "professional"]) {
     } finally { stub.restore(); }
   });
 }
+
+Deno.test("professional cobra agendamento de outro profissional 403", async () => {
+  const h = build({ profile: { tenant_id: "t1", role: "professional" }, appt: { id: "a1", price_cents: 1000, status: "concluido", customer_id: "c1", professional_id: "p2" } });
+  const r = await call(h);
+  strictEqual(r.status, 403);
+});
+
+Deno.test("professional sem vínculo em professionals 403", async () => {
+  const h = build({ profile: { tenant_id: "t1", role: "professional" }, professional: null });
+  const r = await call(h);
+  strictEqual(r.status, 403);
+});
 
 Deno.test("unknown role 403", async () => {
   const h = build({ profile: { tenant_id: "t1", role: "super_admin" } });

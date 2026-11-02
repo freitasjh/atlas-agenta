@@ -2,18 +2,20 @@ import { strictEqual } from "node:assert/strict";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { createHandler } from "./handler.ts";
 
-Deno.env.set("ASAAS_WEBHOOK_TOKEN","segredo-token");
+Deno.env.set("ASAAS_WEBHOOK_TOKEN","segredo-global");
 
-const TOKEN = "segredo-token";
+const GLOBAL_TOKEN = "segredo-global";
+const TENANT_TOKEN = "token-do-tenant";
+const TOKEN = TENANT_TOKEN;
 function baseService(overrides: any = {}) {
   const svc: any = {
     auth: { getUser: async () => ({ data: { user: null }, error: null }) },
     from: (table: string) => {
       if (table === "charges") return {
-        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: overrides.charge ?? { id: "ch1", tenant_id: "t1", status: "pendente" }, error: null }) }) }),
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("charge" in overrides) ? overrides.charge : { id: "ch1", tenant_id: "t1", status: "pendente" }, error: null }) }) }),
         update: () => ({ eq: async () => ({ error: overrides.updErr ?? null }) }),
       };
-      if (table === "tenant_asaas_config") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { asaas_webhook_token: "tenant-token" }, error: null }) }) }) };
+      if (table === "tenant_asaas_config") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: ("tenantToken" in overrides) ? (overrides.tenantToken === null ? null : { asaas_webhook_token: overrides.tenantToken }) : { asaas_webhook_token: TENANT_TOKEN }, error: null }) }) }) };
       if (table === "webhook_events") return {
         select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: overrides.existingEvent ?? null, error: null }) }) }) }),
         insert: async () => ({ error: overrides.insEvErr ?? null }),
@@ -48,6 +50,18 @@ Deno.test("throws 500", async () => { const h=build({},true); const r=await call
 Deno.test("no token 401", async () => { const h=build(); const r=await call(h,{token:null}); strictEqual(r.status,401); });
 Deno.test("invalid token 401", async () => { const h=build(); const r=await call(h,{token:"wrong"}); strictEqual(r.status,401); });
 Deno.test("invalid body 400", async () => { const h=build(); const r=await call(h,{body:{}}); strictEqual(r.status,400); });
-Deno.test("unknown payment 200", async () => { const h=build({charge:null}); const r=await call(h); strictEqual(r.status,200); });
+Deno.test("unknown payment 200 (token global)", async () => { const h=build({charge:null}); const r=await call(h,{token:GLOBAL_TOKEN}); strictEqual(r.status,200); });
+Deno.test("unknown payment com token de tenant 401", async () => { const h=build({charge:null}); const r=await call(h); strictEqual(r.status,401); });
 Deno.test("duplicate event 200", async () => { const h=build({existingEvent:{id:"e"}}); const r=await call(h); strictEqual(r.status,200); });
-Deno.test("success 200", async () => { const h=build(); const r=await call(h); strictEqual(r.status,200); });
+Deno.test("success 200 com token do tenant (global setado)", async () => { const h=build(); const r=await call(h); strictEqual(r.status,200); });
+Deno.test("token global não substitui o token do tenant 401", async () => { const h=build(); const r=await call(h,{token:GLOBAL_TOKEN}); strictEqual(r.status,401); });
+Deno.test("token global vale como fallback quando o tenant não tem token", async () => { const h=build({tenantToken:null}); const r=await call(h,{token:GLOBAL_TOKEN}); strictEqual(r.status,200); });
+Deno.test("sem token do tenant e sem global 401", async () => {
+  const prev = Deno.env.get("ASAAS_WEBHOOK_TOKEN");
+  Deno.env.delete("ASAAS_WEBHOOK_TOKEN");
+  try {
+    const h = build({ tenantToken: null });
+    const r = await call(h, { token: GLOBAL_TOKEN });
+    strictEqual(r.status, 401);
+  } finally { if (prev !== undefined) Deno.env.set("ASAAS_WEBHOOK_TOKEN", prev); }
+});
