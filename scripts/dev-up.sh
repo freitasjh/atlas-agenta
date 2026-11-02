@@ -26,6 +26,10 @@
 
 set -euo pipefail
 
+# Nada que este script criar (PID files, logs, configs de curl) deve ser legível
+# por outros usuários do host.
+umask 077
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
@@ -55,6 +59,7 @@ for arg in "$@"; do
 done
 
 mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR" 2>/dev/null || true
 
 info()  { printf '  %s\n' "$*"; }
 ok()    { printf '  ✔ %s\n' "$*"; }
@@ -65,6 +70,31 @@ die() {
   printf '\n✖ %s\n' "$*" >&2
   exit 1
 }
+
+# Nada aqui encerra processos: "deixar de pé para diagnóstico" é intencional.
+cleanup_transient() {
+  rm -f "$STATE_DIR/.http-body" "$STATE_DIR/.curl-auth"
+}
+
+on_exit() {
+  local status=$?
+  cleanup_transient
+  (( status == 130 )) && return 0
+  printf '  STATE_DIR: %s\n' "$STATE_DIR"
+  printf '  logs:      %s · %s\n' "$FUNCS_LOG" "$FRONT_LOG"
+  printf '  encerrar:  bash scripts/dev-down.sh\n'
+}
+
+on_signal() {
+  printf '\n  Interrompido. O ambiente pode estar parcialmente de pé.\n' >&2
+  printf '  STATE_DIR: %s\n' "$STATE_DIR" >&2
+  printf '  logs:      %s · %s\n' "$FUNCS_LOG" "$FRONT_LOG" >&2
+  printf '  encerrar:  bash scripts/dev-down.sh\n\n' >&2
+  exit 130
+}
+
+trap on_exit EXIT
+trap on_signal INT TERM
 
 # ---------------------------------------------------------------------------
 # Utilitários
@@ -90,10 +120,27 @@ mask_url() {
   printf '%s' "$url" | sed -E 's#^(https?://[^/]+).*#\1#'
 }
 
+# Corpo da última resposta vai para um arquivo 0600 e é truncado assim que
+# deixa de ser necessário (nunca fica persistido com e-mail/chaves da conta).
 http_code() {
   local timeout="$1"; shift
   local out
   out="$(curl -sS -o "$STATE_DIR/.http-body" -w '%{http_code}' --max-time "$timeout" "$@" 2>/dev/null || true)"
+  printf '%s' "${out:-000}"
+}
+
+# Igual a http_code, mas o header secreto vai por `curl --config` (arquivo 0600),
+# NUNCA em argv — segredo em argv fica visível em /proc/<pid>/cmdline.
+http_code_auth() {
+  local timeout="$1" header="$2" url="$3"
+  local cfg="$STATE_DIR/.curl-auth"
+  : >"$cfg"
+  chmod 600 "$cfg" 2>/dev/null || true
+  printf 'header = "%s"\n' "$header" >"$cfg"
+  local out
+  out="$(curl -sS -o "$STATE_DIR/.http-body" -w '%{http_code}' --max-time "$timeout" \
+    --config "$cfg" "$url" 2>/dev/null || true)"
+  rm -f "$cfg"
   printf '%s' "${out:-000}"
 }
 
@@ -232,6 +279,12 @@ if ! git check-ignore -q "$ENV_FILE"; then
 fi
 ok "$ENV_FILE presente e ignorado pelo git"
 
+ENV_MODE="$(stat -c %a "$ENV_FILE" 2>/dev/null || echo '?')"
+if [[ "$ENV_MODE" != "600" ]]; then
+  warn "$ENV_FILE está com permissão $ENV_MODE (recomendado 600)."
+  hint "chmod 600 $ENV_FILE"
+fi
+
 REQUIRED_KEYS=(
   ASAAS_MASTER_KEY
   ASAAS_SUPER_ADMIN_API_KEY
@@ -261,7 +314,7 @@ if [[ "$EVOLUTION_MODE_VALUE" == "real" ]]; then
   EVOLUTION_URL="$(env_get "$ENV_FILE" EVOLUTION_API_URL)"
   EVOLUTION_KEY="$(env_get "$ENV_FILE" EVOLUTION_API_KEY)"
   EVOLUTION_URL="${EVOLUTION_URL%/}"
-  EVO_CODE="$(http_code 10 -H "apikey: $EVOLUTION_KEY" "$EVOLUTION_URL/instance/fetchInstances")"
+  EVO_CODE="$(http_code_auth 10 "apikey: $EVOLUTION_KEY" "$EVOLUTION_URL/instance/fetchInstances")"
   if [[ "$EVO_CODE" != "200" ]]; then
     printf '' >&2
     die "Evolution não respondeu 200 em %s/instance/fetchInstances (status %s).
@@ -282,7 +335,7 @@ case "$ASAAS_ENV" in
   *) die "ASAAS_SUPER_ADMIN_ENVIRONMENT inválido. Use 'sandbox' ou 'production'." ;;
 esac
 
-ASAAS_CODE="$(http_code 20 -H "access_token: $ASAAS_KEY" "$ASAAS_BASE/myAccount")"
+ASAAS_CODE="$(http_code_auth 20 "access_token: $ASAAS_KEY" "$ASAAS_BASE/myAccount")"
 if [[ "$ASAAS_CODE" != "200" ]]; then
   die "Asaas recusou a credencial (status $ASAAS_CODE) em $ASAAS_ENV.
     Confira ASAAS_SUPER_ADMIN_API_KEY em $ENV_FILE.
@@ -290,10 +343,15 @@ if [[ "$ASAAS_CODE" != "200" ]]; then
     Nenhum valor de chave foi impresso."
 fi
 ok "credencial Asaas válida ($ASAAS_ENV)"
+# /myAccount devolve e-mail/nome da conta: não deixa o corpo no disco.
+: >"$STATE_DIR/.http-body"
 
-PIX_CODE="$(http_code 15 -H "access_token: $ASAAS_KEY" "$ASAAS_BASE/pix/addressKeys")"
+PIX_CODE="$(http_code_auth 15 "access_token: $ASAAS_KEY" "$ASAAS_BASE/pix/addressKeys")"
+# O corpo de /pix/addressKeys pode conter chaves Pix; lê e descarta na hora.
+PIX_BODY="$(cat "$STATE_DIR/.http-body" 2>/dev/null || true)"
+: >"$STATE_DIR/.http-body"
 if [[ "$PIX_CODE" == "200" ]]; then
-  if grep -q '"status"[[:space:]]*:[[:space:]]*"ACTIVE"' "$STATE_DIR/.http-body" 2>/dev/null; then
+  if printf '%s' "$PIX_BODY" | grep -q '"status"[[:space:]]*:[[:space:]]*"ACTIVE"'; then
     ok "conta Asaas tem chave Pix ativa"
   else
     warn "nenhuma chave Pix ATIVA na conta Asaas — o smoke (PIX) vai falhar.

@@ -6,9 +6,14 @@
  *   1. POST /functions/v1/signup-tenant (e-mail único)  → 201
  *   2. login do usuário recém-criado                     → 200 (token só em memória)
  *   3. agenda: cria appointment 'concluido' do tenant demo
- *   4. PIX: garante tenant_asaas_config ativo (via Edge Function) e chama
+ *   4. PIX (PARCIAL): garante tenant_asaas_config ativo (via Edge Function),
+ *      pré-registra o cliente no Asaas (bypass do gap de cpfCnpj) e chama
  *      /functions/v1/create-charge                       → 200 + payload PIX
  *   5. autoagendamento: public-slots + public-book        → 200 / 201
+ *
+ * O passo 4 NÃO prova o aceite PIX do ADR-20: o caminho real (create-charge
+ * criando o cliente sem CPF/CNPJ) falha com 400 no Asaas. O bypass está
+ * registrado em .spec/tech-debts/asaas-cpf-cnpj-obrigatorio/TASKS.md.
  *
  * Não imprime token, telefone nem e-mail completo. Em falha, mostra status,
  * `error` do corpo e a última linha do log das functions.
@@ -36,9 +41,10 @@ const DEMO = {
 
 const steps = [];
 
-function mark(name, ok, detail = "") {
-  steps.push({ name, ok, detail });
-  const icon = ok === true ? "✅" : ok === "skip" ? "⚠️ " : "❌";
+function mark(name, ok, detail = "", opts = {}) {
+  const partial = opts.partial === true;
+  steps.push({ name, ok, detail, partial });
+  const icon = ok === true ? (partial ? "⚠️ " : "✅") : ok === "skip" ? "⚠️ " : "❌";
   console.log(`  ${icon} ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
@@ -454,9 +460,11 @@ async function main() {
       functionsEnv.ASAAS_MASTER_KEY || "",
     ) || asaasKey;
 
-  // O create-charge cria o cliente no Asaas sem CPF/CNPJ; o sandbox exige o
-  // documento. Pré-aquecemos o customer com o externalReference local para que
-  // a Edge Function o reutilize (este smoke não altera o schema do app).
+  // DÍVIDA CONHECIDA (bypass explícito, NÃO é prova de aceite): o create-charge
+  // cria o cliente no Asaas sem CPF/CNPJ e o sandbox exige o documento. Aqui o
+  // cliente é pré-registrado com o externalReference local para que a Edge
+  // Function o reutilize — caminho que o usuário real NÃO percorre.
+  // Ver .spec/tech-debts/asaas-cpf-cnpj-obrigatorio/TASKS.md.
   const lookup = await asaasFetch(
     asaasBase,
     tenantApiKey,
@@ -479,11 +487,17 @@ async function main() {
         "PIX: preparar cliente no Asaas sandbox",
         false,
         serverError(created),
+        { partial: true },
       );
       fail("sandbox do Asaas recusou o cliente de teste (CPF/chave/chave Pix).");
     }
   }
-  mark("PIX: cliente sincronizado no Asaas sandbox", true);
+  mark(
+    "PIX: cliente Asaas pré-registrado (bypass do gap cpfCnpj)",
+    "skip",
+    "não conta como prova do aceite #3 do ADR-20",
+    { partial: true },
+  );
 
   const charge = await request(`${apiUrl}/functions/v1/create-charge`, {
     method: "POST",
@@ -496,11 +510,12 @@ async function main() {
     Boolean(charge.body?.pix_qr_code) &&
     Boolean(charge.body?.pix_copy_paste);
   mark(
-    "PIX: create-charge → 200 com QR + copia-e-cola",
+    "PIX: create-charge → 200 com QR + copia-e-cola (parcial — cpfCnpj pendente)",
     pixOk,
     pixOk
       ? `charge ${charge.body.charge_id}`
       : `${serverError(charge)} · log: ${lastLogLine() || "(vazio)"}`,
+    { partial: true },
   );
 
   if (pixOk) {
@@ -511,13 +526,21 @@ async function main() {
         .eq("id", charge.body.charge_id)
         .limit(1),
     );
+    const persistedOk =
+      Boolean(stored?.asaas_payment_id) &&
+      stored?.status === "pendente" &&
+      stored?.amount_cents === appointment.price_cents;
     mark(
-      "PIX: cobrança persistida com asaas_payment_id",
-      Boolean(stored?.asaas_payment_id),
+      "PIX: cobrança persistida (asaas_payment_id, status pendente, valor do agendamento)",
+      persistedOk,
       stored
-        ? `status=${stored.status} · ${stored.amount_cents} cents`
+        ? `status=${stored.status} · ${stored.amount_cents} cents (esperado ${appointment.price_cents})`
         : "linha não encontrada em charges",
+      { partial: true },
     );
+    if (!persistedOk) {
+      fail("cobrança persistida divergiu do esperado (status/valor/asaas_payment_id).");
+    }
   } else {
     fail("fluxo PIX falhou.");
   }
@@ -566,15 +589,24 @@ async function main() {
       }
     }
 
+    const slotsOk = slotsStatus === 200 && available.length > 0;
     mark(
-      "autoagendamento: public-slots → 200",
-      slotsStatus === 200,
-      slotsStatus === 200
-        ? `${available.length} slot(s)${chosenDate ? ` em ${chosenDate}` : ""}`
-        : slotsError,
+      "autoagendamento: public-slots → 200 com slot livre",
+      slotsOk,
+      slotsStatus !== 200
+        ? slotsError
+        : slotsOk
+          ? `${available.length} slot(s) em ${chosenDate}`
+          : "0 slots em 5 dias úteis (o seed garante grade seg-sex 09:00–18:00)",
     );
 
-    if (slotsStatus === 200 && available.length > 0) {
+    // Com o seed aplicado, 0 slots em dia útil é defeito de produto — não um
+    // "ambiente sem disponibilidade" que possa virar skip.
+    if (slotsStatus === 200 && available.length === 0) {
+      fail("public-slots devolveu 0 slots em dias úteis com o seed aplicado.");
+    }
+
+    if (slotsOk) {
       const slot = available[0];
       const book = await request(`${apiUrl}/functions/v1/public-book`, {
         method: "POST",
@@ -595,8 +627,6 @@ async function main() {
           ? `appointment ${book.body?.appointment_id}`
           : serverError(book),
       );
-    } else if (slotsStatus === 200) {
-      mark("autoagendamento: public-book", "skip", "sem slot livre nos próximos dias úteis");
     }
   }
 
@@ -606,20 +636,45 @@ async function main() {
   const failed = steps.filter((step) => step.ok === false);
   const skipped = steps.filter((step) => step.ok === "skip");
 
+  const partial = steps.filter((step) => step.partial);
+
   console.log("\n  ── resumo ──");
   for (const step of steps) {
-    const icon = step.ok === true ? "✅" : step.ok === "skip" ? "⚠️ " : "❌";
+    const icon =
+      step.ok === true
+        ? step.partial
+          ? "⚠️ "
+          : "✅"
+        : step.ok === "skip"
+          ? "⚠️ "
+          : "❌";
     console.log(`  ${icon} ${step.name}`);
   }
   console.log(
     `\n  ${steps.length - failed.length - skipped.length} ok · ${skipped.length} pulado(s) · ${failed.length} falha(s)`,
   );
 
+  if (partial.length > 0) {
+    console.log(`
+  ── PIX (parcial — cpfCnpj pendente) ──
+  O Asaas foi configurado e o cliente foi PRÉ-REGISTRADO no sandbox com um CPF
+  fixo (bypass). O caminho que o usuário real percorre — create-charge criando o
+  cliente sem CPF/CNPJ — NÃO foi exercitado e o Asaas responde 400.
+  Logo, a prova do aceite #3 do ADR-20 (PIX ponta a ponta) NÃO foi feita.
+  Débito: .spec/tech-debts/asaas-cpf-cnpj-obrigatorio/TASKS.md`);
+  }
+
   if (failed.length > 0) {
     console.error("\n✖ Smoke test FALHOU\n");
     process.exit(1);
   }
-  console.log("\n✔ Smoke test passou\n");
+  if (partial.length > 0) {
+    console.log(
+      "\n✔ Smoke test passou (PIX PARCIAL — aceite #3 do ADR-20 não provado; ver débito cpfCnpj)\n",
+    );
+  } else {
+    console.log("\n✔ Smoke test passou\n");
+  }
 }
 
 main().catch((error) => fail("smoke test abortou.", error));

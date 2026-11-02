@@ -18,9 +18,14 @@ npm run dev:down        # só functions + frontend
 npm run dev:down -- --all  # também a stack Supabase
 ```
 
-> O ambiente é **real**: Evolution via ngrok e Asaas **sandbox**. Não há mock no
-> caminho padrão. Se o ngrok ou o Asaas estiverem fora, o `dev:up` falha no
-> preflight com a causa — não sobe um ambiente mentiroso.
+> O Asaas é **sandbox real** e o preflight falha se a credencial não responder.
+> O Evolution tem dois modos: o `.env.example` versionado traz
+> `EVOLUTION_MODE=mock` (default histórico da fase), então o `dev:up` **avisa**
+> quando encontra `mock` — o esperado para o fluxo completo é `real` via ngrok.
+> Com `real`, se o ngrok/Evolution estiverem fora, o preflight falha com a causa.
+
+> **Só Linux.** Os scripts dependem de `/proc/<pid>/{cwd,cmdline}`, `setsid`,
+> `lsof`, `ss` e `stat -c`. macOS/Windows precisam de adaptação (não suportado).
 
 ## Pré-requisitos
 
@@ -57,7 +62,7 @@ O arquivo é ignorado pelo git (`.env*`); o `dev:up` confere com
 |--------|-------|
 | `scripts/dev-up.sh` | preflight → stack → migrations → functions → Vite → seed → smoke |
 | `scripts/dev-seed.mjs` | tenant demo idempotente (`admin@demo.local`, 2 serviços, profissional, grade seg-sex, link público) |
-| `scripts/dev-smoke.mjs` | cadastro (201), login (200), agenda, `create-charge` (200 com QR + copia-e-cola), `public-slots`/`public-book` |
+| `scripts/dev-smoke.mjs` | cadastro (201), login (200), agenda, `create-charge` (200 com QR + copia-e-cola, **parcial** — bypass de `cpfCnpj`), `public-slots`/`public-book` |
 | `scripts/dev-down.sh` | encerra só o que o `dev-up` subiu, por PID + dono; `--all` para a stack |
 
 ### Seed
@@ -81,13 +86,23 @@ linha de `/tmp/atlas-dev/functions.log`.
 
 Passos: cadastro de empresa → login do usuário novo → appointment `concluido`
 no tenant demo → `create-charge` (200 + `charge_id`, `pix_qr_code`,
-`pix_copy_paste` e `asaas_payment_id` no banco) → `public-slots`/`public-book`.
+`pix_copy_paste`, e `charges.status='pendente'` com `amount_cents` igual ao
+preço do agendamento) → `public-slots`/`public-book`.
 
-> **CPF de teste:** o schema atual de `customers` não guarda CPF/CNPJ, mas o
-> sandbox do Asaas exige documento para criar cobrança. O smoke pré-aquece o
-> cliente no Asaas com um CPF válido de teste (`39053344705`) e o
-> `externalReference` do cliente local. É uma muleta explícita do ambiente de
-> teste, não uma correção de produto.
+> **PIX é PARCIAL — `cpfCnpj` pendente.** O schema de `customers` não guarda
+> CPF/CNPJ e o `create-charge` cria o cliente no Asaas sem documento, o que o
+> Asaas recusa com 400 (→ 500). Para o smoke rodar hoje, ele pré-registra o
+> cliente no sandbox com um CPF fixo de teste (`39053344705`) — um **bypass**
+> explícito, marcado como `⚠️` no resumo, que **não** prova o aceite #3 do
+> ADR-20 (PIX ponta a ponta). O débito e o escopo do fix estão em
+> `.spec/tech-debts/asaas-cpf-cnpj-obrigatorio/TASKS.md`.
+>
+> **Não exercitado pelo smoke:** webhook do Asaas / baixa da cobrança
+> (`charges.status='pago'` + comprovante) e disparo real de WhatsApp. O smoke
+> cobre cadastro, login, agenda, criação de cobrança e autoagendamento.
+>
+> `public-slots` devolvendo **0 slots** em dia útil, com o seed aplicado, é
+> **falha** (não skip): o seed garante grade seg–sex 09:00–18:00.
 
 ## Troubleshooting dos erros históricos
 
@@ -149,7 +164,16 @@ conta sandbox (Pix → Chaves). A propagação pode levar alguns minutos.
 ## Notas de segurança
 
 - `supabase/functions/.env` e `.env` são ignorados pelo git; o preflight falha
-  se o arquivo de functions não estiver ignorado.
+  se o arquivo de functions não estiver ignorado e **avisa** (sem falhar) se a
+  permissão não for `600` (`chmod 600 supabase/functions/.env`).
+- Segredos nunca vão em argv: as chamadas autenticadas de preflight (Evolution e
+  Asaas) usam `curl --config` com arquivo `0600` criado em `$STATE_DIR` e
+  removido logo após o uso — nada aparece em `/proc/<pid>/cmdline`.
+- `$STATE_DIR` (`/tmp/atlas-dev`) é criado com `umask 077` e `chmod 700`; o
+  corpo de respostas com e-mail/chaves é truncado na hora e removido no exit.
 - Nenhum script faz `pkill -f`. Portas e processos são identificados por
   PID/dono; processo de outro projeto nunca é encerrado.
 - Tokens de sessão do smoke ficam só em memória; a saída não os imprime.
+- Em falha/interrupção o `dev:up` imprime `STATE_DIR`, caminhos de log e
+  `bash scripts/dev-down.sh`, mas **não** encerra nada — deixar de pé para
+  diagnóstico é intencional.

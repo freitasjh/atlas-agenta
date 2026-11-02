@@ -99,7 +99,7 @@ printf '\n▶ Encerrando ambiente local\n'
 
 # 1) Frontend e functions, por PID file + dono.
 stop_from_pidfile "$FRONT_PID_FILE" "vite" "npm run dev"
-stop_from_pidfile "$FUNCS_PID_FILE" "functions serve" "supabase"
+stop_from_pidfile "$FUNCS_PID_FILE" "functions serve"
 
 # 2) Container do edge runtime DESTE projeto (o CLI pode deixá-lo de pé).
 CONTAINER="supabase_edge_runtime_atlas-agenda"
@@ -120,7 +120,7 @@ if (( STOP_ALL == 1 )); then
   if npx supabase stop >/dev/null 2>&1; then
     ok "stack Supabase parada"
   else
-    warn "`supabase stop` retornou erro (já estava parada?)"
+    warn "supabase stop retornou erro (já estava parada?)"
   fi
 fi
 

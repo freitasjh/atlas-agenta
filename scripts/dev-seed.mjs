@@ -101,9 +101,25 @@ async function findAuthUserByEmail(admin, email) {
   return null;
 }
 
+/**
+ * Reafirma a senha demo de um usuário já existente. Sem isso, uma senha trocada
+ * antes (pelo app ou por um seed antigo) deixa o smoke falhando no login e o
+ * conselho "rode o seed de novo" não consertava nada.
+ */
+async function confirmDemoPassword(admin, user) {
+  const { data, error } = await admin.updateUserById(user.id, {
+    password: DEMO.password,
+    email_confirm: true,
+  });
+  if (error) throw error;
+  return data?.user ?? user;
+}
+
 async function ensureAdminUser(admin) {
   const existing = await findAuthUserByEmail(admin, DEMO.email);
-  if (existing) return { user: existing, created: false };
+  if (existing) {
+    return { user: await confirmDemoPassword(admin, existing), created: false };
+  }
 
   const { data, error } = await admin.createUser({
     email: DEMO.email,
@@ -115,7 +131,9 @@ async function ensureAdminUser(admin) {
     // Corrida: outra execução criou entre a busca e o create.
     if (error.code === "email_exists" || /already/i.test(error.message ?? "")) {
       const raced = await findAuthUserByEmail(admin, DEMO.email);
-      if (raced) return { user: raced, created: false };
+      if (raced) {
+        return { user: await confirmDemoPassword(admin, raced), created: false };
+      }
     }
     throw error;
   }
