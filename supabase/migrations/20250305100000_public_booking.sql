@@ -115,9 +115,9 @@ begin
   return query
   with slots as (
     select 
-      (p_date + s.slot_time)::timestamptz as slot_start,
-      (p_date + s.slot_time + (v_duration || ' minutes')::interval)::timestamptz as slot_end
-    from generate_series(v_work_start::timestamp, v_work_end::timestamp - (v_duration || ' minutes')::interval, v_slot_interval) as s(slot_time)
+      (p_date::timestamp + v_work_start + (n * v_slot_interval))::timestamptz as slot_start,
+      (p_date::timestamp + v_work_start + (n * v_slot_interval) + (v_duration || ' minutes')::interval)::timestamptz as slot_end
+    from generate_series(0, (extract(epoch from (v_work_end - v_work_start))::int - (v_duration * 60)) / extract(epoch from v_slot_interval)::int) as n
   )
   select sl.slot_start, sl.slot_end
   from slots sl
