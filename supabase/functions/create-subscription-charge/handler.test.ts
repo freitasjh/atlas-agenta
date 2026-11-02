@@ -1,0 +1,138 @@
+import { strictEqual } from "node:assert/strict";
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { createHandler } from "./handler.ts";
+
+Deno.env.set("ASAAS_SUPER_ADMIN_API_KEY","key");
+Deno.env.set("ASAAS_SUPER_ADMIN_ENVIRONMENT","sandbox");
+
+const TOKEN = "jwt-teste";
+function baseService(overrides: any = {}) {
+  const svc: any = {
+    auth: { getUser: async () => ({ data: { user: { id: "u1" } }, error: null }) },
+    from: (table: string) => {
+      if (table === "profiles") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { tenant_id: null, role: "super_admin" }, error: null }) }) }) };
+      if (table === "tenants") return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { name: "Tenant" }, error: null }) }) }) };
+      if (table === "subscription_charges") return { insert: () => ({ select: () => ({ single: async () => ({ data: { id: "sc1" }, error: overrides.insErr ?? null }) }) }) };
+      if (table === "audit_log") return { insert: async () => ({ error: overrides.auditErr ?? null }) };
+      return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }), insert: async () => ({ error: null }) };
+    },
+  };
+  return svc as SupabaseClient;
+}
+function build(overrides: any = {}, throws = false) {
+  const svc = baseService(overrides);
+  return createHandler({ createService: () => { if (throws) throw new Error("cfg"); return svc; } });
+}
+function call(handler: any, init: any = {}) {
+  return handler(new Request("http://localhost/functions/v1/create-subscription-charge", {
+    method: init.method ?? "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${init.token ?? TOKEN}` },
+    body: (init.method ?? "POST") === "GET" ? undefined : JSON.stringify(init.body ?? { tenant_id: "11111111-1111-4111-8111-111111111111", plan: "individual", billing_period: "monthly" }),
+  }));
+}
+
+Deno.test("OPTIONS", async () => {
+  let c=0; const h=createHandler({createService:()=>{c++;return baseService();}});
+  const r=await (h as any)(new Request("http://x",{method:"OPTIONS"}));
+  strictEqual(r.status,200); strictEqual(c,0);
+});
+Deno.test("GET 405", async () => { const h=build(); const r=await call(h,{method:"GET"}); strictEqual(r.status,405); });
+Deno.test("throws 500", async () => { const h=build({},true); const r=await call(h); strictEqual(r.status,500); });
+Deno.test("no token 401", async () => {
+  const h=build();
+  const r=await (h as any)(new Request("http://x",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenant_id:"11111111-1111-4111-8111-111111111111",plan:"individual"})}));
+  strictEqual(r.status,401);
+});
+Deno.test("invalid body 400", async () => { const h=build(); const r=await call(h,{body:{}}); strictEqual(r.status,400); });
+Deno.test("non super_admin 403", async () => {
+  const svc: any = baseService();
+  svc.from = (t: string) => t === "profiles" ? { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { tenant_id: "t1", role: "admin" }, error: null }) }) }) } : svc.from(t);
+  const h = createHandler({ createService: () => svc });
+  const r = await call(h);
+  strictEqual(r.status, 403);
+});
+function stubAsaas(opts: { existingCustomer?: string } = {}) {
+  const orig = globalThis.fetch;
+  const payments: any[] = [];
+  const created: any[] = [];
+  globalThis.fetch = async (url: any, init?: any) => {
+    const u=String(url);
+    if (u.includes("/customers?externalReference=")) {
+      const data = opts.existingCustomer ? [{ id: opts.existingCustomer }] : [];
+      return new Response(JSON.stringify({data}),{status:200}) as any;
+    }
+    if (u.endsWith("/customers")) { created.push(JSON.parse(init?.body ?? "{}")); return new Response(JSON.stringify({id:"cus1"}),{status:200}) as any; }
+    if (u.endsWith("/payments")) { payments.push(JSON.parse(init?.body ?? "{}")); return new Response(JSON.stringify({id:"pay1"}),{status:200}) as any; }
+    if (u.includes("/pixQrCode")) return new Response(JSON.stringify({encodedImage:"qr",payload:"copy"}),{status:200}) as any;
+    return new Response("{}",{status:200}) as any;
+  };
+  return { payments, created, restore: () => { globalThis.fetch = orig; } };
+}
+
+Deno.test("success 200", async () => {
+  const stub = stubAsaas();
+  try {
+    const h=build();
+    const r=await call(h);
+    strictEqual(r.status,200);
+    strictEqual(stub.created.length, 1);
+    strictEqual(stub.created[0]?.externalReference, "11111111-1111-4111-8111-111111111111");
+  } finally { stub.restore(); }
+});
+
+Deno.test("reaproveita customer existente pelo externalReference", async () => {
+  const stub = stubAsaas({ existingCustomer: "cus-salvo" });
+  try {
+    const h = build();
+    const r = await call(h);
+    strictEqual(r.status, 200);
+    strictEqual(stub.created.length, 0);
+    strictEqual(stub.payments.length, 1);
+    strictEqual(stub.payments[0]?.customer, "cus-salvo");
+  } finally { stub.restore(); }
+});
+
+// Preço vem de `_shared/plans.json` (fonte única, ADR-13). Literais aqui travam
+// o valor cobrado ponta a ponta — se o JSON mudar, o teste acompanha por
+// decisão, não por acidente.
+const EXPECTED_CENTS: Record<string, number> = {
+  individual: 5900,
+  clinica: 14900,
+  pro: 25900,
+};
+for (const [plan, cents] of Object.entries(EXPECTED_CENTS)) {
+  Deno.test(`plan ${plan} cobra ${cents} centavos`, async () => {
+    const stub = stubAsaas();
+    try {
+      const h = build();
+      const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan, billing_period: "monthly" } });
+      strictEqual(r.status, 200);
+      strictEqual(stub.payments.length, 1);
+      strictEqual(stub.payments[0]?.value, cents / 100);
+    } finally { stub.restore(); }
+  });
+}
+
+Deno.test("slug de plano inválido 400", async () => {
+  const h = build();
+  const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan: "enterprise", billing_period: "monthly" } });
+  strictEqual(r.status, 400);
+});
+
+Deno.test("período anual não existe em PLANS e é rejeitado 400", async () => {
+  const h = build();
+  const r = await call(h, { body: { tenant_id: "11111111-1111-4111-8111-111111111111", plan: "individual", billing_period: "annual" } });
+  strictEqual(r.status, 400);
+});
+
+Deno.test("ambiente do super admin ausente 500", async () => {
+  const prev = Deno.env.get("ASAAS_SUPER_ADMIN_ENVIRONMENT");
+  Deno.env.delete("ASAAS_SUPER_ADMIN_ENVIRONMENT");
+  try {
+    const h = build();
+    const r = await call(h);
+    strictEqual(r.status, 500);
+  } finally {
+    if (prev !== undefined) Deno.env.set("ASAAS_SUPER_ADMIN_ENVIRONMENT", prev);
+  }
+});

@@ -23,6 +23,7 @@ import {
 import { AppLayout } from "@/app/AppLayout";
 import { CobrancasPage, DashboardPage, QuitacaoPage } from "@/app/pages";
 import { AgendaPage } from "@/app/agenda/AgendaPage";
+import { PagamentosPage } from "@/app/config/pagamentos/PagamentosPage";
 import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
 import { MembrosPage } from "@/app/config/membros/MembrosPage";
@@ -40,7 +41,7 @@ import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
 
 import { AdminLayout } from "@/admin/AdminLayout";
-import { AdminDashboardPage, EmpresasPage, MetricasPage } from "@/admin/pages";
+import { AdminDashboardPage, AssinaturasPage, EmpresasPage, MetricasPage } from "@/admin/pages";
 import { ConvitesPage } from "@/admin/convites/ConvitesPage";
 import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
 import { AgendarPage } from "@/public/AgendarPage";
@@ -138,6 +139,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                             ],
                           },
                           { path: "whatsapp", element: <WhatsAppPage /> },
+                          { path: "pagamentos", element: <PagamentosPage /> },
                           {
                             path: "mensagens",
                             element: <TemplatesMensagemPage />,
@@ -187,6 +189,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                       { path: "metricas", element: <MetricasPage /> },
                       { path: "convites", element: <ConvitesPage /> },
                       { path: "auditoria", element: <AuditoriaPage /> },
+                      { path: "assinaturas", element: <AssinaturasPage /> },
                     ],
                   },
                 ],

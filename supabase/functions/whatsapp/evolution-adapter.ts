@@ -393,6 +393,18 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
       path: `/instance/connect/${encodeURIComponent(instanceName)}`,
     });
     if (!connectRes.ok) {
+      // 404 = a instância NÃO existe no Evolution (contrato v2.3.7, confirmado ao vivo:
+      // `GET /instance/connect/{name}` responde {"The \"X\" instance does not exist"}).
+      // Falha ESPECÍFICA e pt-BR — distinguir do timeout/erro de rede. NÃO recriar
+      // silenciosamente (decisão de arquitetura: recriação automática rejeitada);
+      // o `parear` naturalmente recria via create idempotente quando a instância
+      // de fato não existe e o usuário clique novamente.
+      if (connectRes.status === 404) {
+        console.error(`pair: instância ausente no Evolution — ${instanceName}`);
+        throw new Error(
+          "A instância do WhatsApp não existe no servidor de WhatsApp.",
+        );
+      }
       console.error(`pair: conexão da instância falhou (status ${connectRes.status})`);
       throw new Error("Não foi possível conectar o WhatsApp.");
     }

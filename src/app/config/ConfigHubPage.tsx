@@ -8,6 +8,7 @@ import {
   Users,
   Copy,
   Link as LinkIcon,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { usePublicBookingLink, useCreatePublicBookingLink } from "@/hooks/usePublicBookingLink";
@@ -105,6 +106,13 @@ export function ConfigHubPage() {
       titulo: "Membros",
       descricao: "Convide pessoas para a sua empresa e gerencie convites.",
       icon: Mail,
+      visible: isAdmin,
+    },
+    {
+      to: "/app/config/pagamentos",
+      titulo: "Pagamentos",
+      descricao: "Configure sua conta Asaas para cobranças PIX.",
+      icon: CreditCard,
       visible: isAdmin,
     },
   ];

@@ -181,8 +181,14 @@ async function handlePair(
     const pairResult = await adapter.pair(instanceName);
     qrCodeBase64 = pairResult.qrCodeBase64;
   } catch (err) {
-    console.error("pair: adapter falhou", err instanceof Error ? err.message : "erro");
-    return errorResponse("Falha ao gerar o QR Code da conexão.", 502);
+    const adapterMessage = err instanceof Error ? err.message : null;
+    console.error("pair: adapter falhou", adapterMessage ?? "erro");
+    // A mensagem do adapter é string pt-BR controlada (não corpo cru do provedor)
+    // e segue no canal de erro para diagnóstico/truthful UI.
+    return errorResponse(
+      adapterMessage ?? "Falha ao gerar o QR Code da conexão.",
+      502,
+    );
   }
 
   // `pair` PARA em `aguardando_qr`: a conclusão da conexão passa a ser reconciliada por `check`

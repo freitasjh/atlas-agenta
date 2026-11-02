@@ -150,3 +150,11 @@ verify_jwt = false
 # bearer) ou manualmente pelo QA com um JWT válido. Não resolve identidade de usuário; usa service
 # role internamente. Nenhuma entrada [functions.whatsapp-dispatch] com verify_jwt=false — deixar o
 # default fecha a função a chamadas anônimas.
+
+# Webhooks Asaas (ADR-20): superfícies PÚBLICAS, sem JWT; autenticidade por token
+# compartilhado no header `asaas-access-token`, comparado em tempo constante dentro da função.
+[functions.asaas-webhook]
+verify_jwt = false
+
+[functions.asaas-subscription-webhook]
+verify_jwt = false
