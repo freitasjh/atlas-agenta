@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { env } from "@/lib/env";
 
 const SUPABASE_URL = env.VITE_SUPABASE_URL;
@@ -94,6 +95,44 @@ function validatePhone(value: string): string | undefined {
   const digits = value.replace(/\D/g, "");
   if (digits.length < 10) return "Telefone inválido (mínimo 10 dígitos).";
   return undefined;
+}
+
+function maskPhone(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length === 0) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  const area = digits.slice(0, 2);
+  const rest = digits.slice(2);
+  if (rest.length <= 4) return `(${area}) ${rest}`;
+  if (rest.length <= 8) return `(${area}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  return `(${area}) ${rest.slice(0, 5)}-${rest.slice(5, 9)}`;
+}
+
+function dateOffset(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString("en-CA");
+}
+
+function buildIcs(service: Service | null, professional: Professional | null, slot: Slot | null, customerName: string): string {
+  if (!service || !professional || !slot) return "";
+  const start = new Date(slot.slot_start);
+  const end = new Date(slot.slot_end);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  return [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Atlas Agenda//PT",
+    "BEGIN:VEVENT",
+    `UID:${slot.slot_start}@atlas`,
+    `DTSTAMP:${fmt(new Date())}`,
+    `DTSTART:${fmt(start)}`,
+    `DTEND:${fmt(end)}`,
+    `SUMMARY:${service.name} - ${professional.name}`,
+    `DESCRIPTION:Agendamento de ${customerName}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 }
 
 export function AgendarPage() {
@@ -230,6 +269,11 @@ export function AgendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    const el = document.getElementById("main");
+    el?.focus();
+  }, [step]);
+
   const progressValue = ((stepIndex + 1) / 5) * 100;
   const progressLabel = `Etapa ${stepIndex + 1} de 5 — ${STEP_LABELS[stepIndex]}`;
 
@@ -243,12 +287,17 @@ export function AgendarPage() {
           Pular para o conteúdo
         </a>
         <main id="main" tabIndex={-1} className="w-full max-w-md">
-          <Card className="text-center">
+          <Card className="text-center" role="alert">
             <CardHeader>
               <AlertCircle className="h-16 w-16 text-destructive mx-auto mb-4" aria-hidden="true" />
-              <CardTitle className="text-destructive">Link inválido</CardTitle>
+              <CardTitle className="font-display text-destructive">Link inválido</CardTitle>
               <CardDescription>{error}</CardDescription>
             </CardHeader>
+            <CardContent>
+              <Button onClick={() => loadInitialData()} className="min-h-11">
+                Tentar novamente
+              </Button>
+            </CardContent>
           </Card>
         </main>
       </div>
@@ -259,30 +308,50 @@ export function AgendarPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <main id="main" tabIndex={-1} className="w-full max-w-md">
-          <Card className="text-center">
+          <Card className="text-center" role="status">
             <CardHeader>
-              <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" aria-hidden="true" />
-              <CardTitle>Agendamento solicitado!</CardTitle>
+              <CheckCircle className="h-16 w-16 text-status-concluido mx-auto mb-4" aria-hidden="true" />
+              <CardTitle className="font-display">Agendamento solicitado!</CardTitle>
               <CardDescription>Aguarde confirmação via WhatsApp</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <dl className="text-sm text-left space-y-2">
-                <div className="flex items-center gap-2">
-                  <dt className="font-medium text-muted-foreground">Serviço:</dt>
-                  <dd>{selectedService?.name}</dd>
-                </div>
-                <div className="flex items-center gap-2">
-                  <dt className="font-medium text-muted-foreground">Profissional:</dt>
-                  <dd>{selectedProfessional?.name}</dd>
-                </div>
-                <div className="flex items-center gap-2">
-                  <dt className="font-medium text-muted-foreground">Data/Hora:</dt>
-                  <dd>{selectedSlot ? formatDateTime(selectedSlot.slot_start) : ""}</dd>
-                </div>
-              </dl>
-              <Button variant="ghost" onClick={resetAll} className="w-full min-h-11">
-                Novo agendamento
-              </Button>
+              <Card className="text-left">
+                <CardContent className="pt-4 space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <dt className="font-medium text-muted-foreground">Serviço:</dt>
+                    <dd>{selectedService?.name}</dd>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <dt className="font-medium text-muted-foreground">Profissional:</dt>
+                    <dd>{selectedProfessional?.name}</dd>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <dt className="font-medium text-muted-foreground">Data/Hora:</dt>
+                    <dd>{selectedSlot ? formatDateTime(selectedSlot.slot_start) : ""}</dd>
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const ics = buildIcs(selectedService, selectedProfessional, selectedSlot, customerName);
+                    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "agendamento.ics";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex-1 min-h-11"
+                >
+                  Adicionar ao calendário
+                </Button>
+                <Button variant="ghost" onClick={resetAll} className="flex-1 min-h-11">
+                  Novo agendamento
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </main>
@@ -299,15 +368,15 @@ export function AgendarPage() {
         Pular para o conteúdo
       </a>
 
-      <header className="border-b bg-background/95 backdrop-blur">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-3">
+      <header className="border-b border-border/60 bg-background/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 py-4">
           <Avatar className="h-11 w-11">
             <AvatarFallback className="bg-primary text-primary-foreground font-semibold">
               {tenantInitials}
             </AvatarFallback>
           </Avatar>
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold truncate">{tenantName}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-xl font-bold truncate">{tenantName}</h1>
             <p className="text-sm text-muted-foreground">Agende seu horário online</p>
             {tenant?.phone && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -316,10 +385,11 @@ export function AgendarPage() {
               </p>
             )}
           </div>
+          <ThemeToggle />
         </div>
       </header>
 
-      <main id="main" tabIndex={-1} className="container mx-auto px-4 py-6 max-w-2xl">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-2xl px-4 py-6">
         <div className="mb-6" aria-live="polite">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium" role="status">{progressLabel}</span>
@@ -354,7 +424,7 @@ export function AgendarPage() {
                   >
                     {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
                   </span>
-                  <span className="text-[10px] text-muted-foreground truncate w-full text-center">
+                  <span className="hidden sm:block text-[10px] text-muted-foreground truncate w-full text-center">
                     {label}
                   </span>
                 </li>
@@ -373,22 +443,41 @@ export function AgendarPage() {
           </div>
         )}
 
+        <div key={step} className="animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none">
         {step === "service" && (
           <Card>
             <CardHeader>
-              <CardTitle>Escolha o serviço</CardTitle>
+              <CardTitle className="font-display">Escolha o serviço</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {loading ? (
                 <div aria-busy="true" aria-live="polite" className="space-y-3">
                   {[0, 1, 2].map((i) => (
-                    <Skeleton key={i} className="h-20 w-full motion-reduce:animate-none" />
+                    <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+                      <Skeleton className="h-10 w-10 rounded-full motion-reduce:animate-none" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-2/3 motion-reduce:animate-none" />
+                        <Skeleton className="h-3 w-1/3 motion-reduce:animate-none" />
+                      </div>
+                      <Skeleton className="h-6 w-16 rounded-full motion-reduce:animate-none" />
+                    </div>
                   ))}
                 </div>
               ) : services.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  Nenhum serviço disponível no momento
-                </p>
+                <div className="py-8 text-center space-y-3">
+                  <Scissors className="h-12 w-12 mx-auto text-muted-foreground" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum serviço disponível no momento
+                  </p>
+                  {tenant?.phone && (
+                    <Button variant="outline" asChild className="min-h-11">
+                      <a href={`tel:${tenant.phone.replace(/\D/g, "")}`}>
+                        <Phone className="h-4 w-4 mr-2" aria-hidden="true" />
+                        Contatar {tenant.phone}
+                      </a>
+                    </Button>
+                  )}
+                </div>
               ) : (
                 services.map((service) => (
                   <Button
@@ -399,7 +488,7 @@ export function AgendarPage() {
                       setSelectedService(service);
                       setStep("professional");
                     }}
-                    className="w-full h-auto p-4 border rounded-lg text-left justify-start hover:border-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full min-h-11 h-auto p-4 border rounded-lg text-left justify-start hover:border-primary active:scale-[0.98] motion-reduce:active:scale-100 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex justify-between items-center gap-3">
                       <div className="min-w-0">
@@ -420,14 +509,20 @@ export function AgendarPage() {
         {step === "professional" && (
           <Card>
             <CardHeader>
-              <CardTitle>Escolha o profissional</CardTitle>
+              <CardTitle className="font-display">Escolha o profissional</CardTitle>
               <CardDescription>{selectedService?.name}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {professionals.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  Nenhum profissional disponível
-                </p>
+                <div className="py-8 text-center space-y-3">
+                  <User className="h-12 w-12 mx-auto text-muted-foreground" aria-hidden="true" />
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum profissional disponível
+                  </p>
+                  <Button variant="ghost" className="min-h-11" onClick={() => setStep("service")}>
+                    <ArrowLeft className="h-4 w-4 mr-2" aria-hidden="true" /> Voltar
+                  </Button>
+                </div>
               ) : (
                 professionals.map((prof) => (
                   <Button
@@ -438,7 +533,7 @@ export function AgendarPage() {
                       setSelectedProfessional(prof);
                       setStep("datetime");
                     }}
-                    className="w-full h-auto p-4 border rounded-lg text-left hover:border-primary transition-colors flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring justify-start"
+                    className="w-full min-h-11 h-auto p-4 border rounded-lg text-left hover:border-primary active:scale-[0.98] motion-reduce:active:scale-100 transition-all duration-150 flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring justify-start"
                   >
                     <Avatar className="h-9 w-9">
                       <AvatarFallback className="bg-muted text-foreground">
@@ -459,11 +554,37 @@ export function AgendarPage() {
         {step === "datetime" && (
           <Card>
             <CardHeader>
-              <CardTitle>Escolha data e horário</CardTitle>
+              <CardTitle className="font-display">Escolha data e horário</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="booking-date">Data</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { label: "Hoje", days: 0 },
+                    { label: "Amanhã", days: 1 },
+                    { label: "+7 dias", days: 7 },
+                  ].map((chip) => {
+                    const d = dateOffset(chip.days);
+                    const active = selectedDate === d;
+                    return (
+                      <Button
+                        key={chip.label}
+                        type="button"
+                        variant={active ? "default" : "outline"}
+                        size="sm"
+                        className="min-h-11"
+                        onClick={() => {
+                          setSelectedDate(d);
+                          setSelectedSlot(null);
+                          loadSlots(d);
+                        }}
+                      >
+                        {chip.label}
+                      </Button>
+                    );
+                  })}
+                </div>
                 <Input
                   id="booking-date"
                   type="date"
@@ -488,9 +609,20 @@ export function AgendarPage() {
                       ))}
                     </div>
                   ) : slots.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
-                      Sem horários disponíveis nesta data — tente outra data
-                    </p>
+                    <div className="py-6 text-center space-y-3">
+                      <CalendarDays className="h-10 w-10 mx-auto text-muted-foreground" aria-hidden="true" />
+                      <p className="text-sm text-muted-foreground">
+                        Sem horários disponíveis nesta data — tente outra data
+                      </p>
+                      {tenant?.phone && (
+                        <Button variant="outline" size="sm" asChild className="min-h-11">
+                          <a href={`tel:${tenant.phone.replace(/\D/g, "")}`}>
+                            <Phone className="h-4 w-4 mr-2" aria-hidden="true" />
+                            Falar com a empresa
+                          </a>
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {slots.map((slot) => {
@@ -500,11 +632,12 @@ export function AgendarPage() {
                             key={slot.slot_start}
                             type="button"
                             variant={selected ? "default" : "outline"}
-                            className="min-h-11"
+                            className={cn("min-h-11 active:scale-[0.98] motion-reduce:active:scale-100 transition-all", selected && "ring-2 ring-primary")}
                             aria-pressed={selected}
                             aria-label={`Horário ${formatTime(slot.slot_start)}`}
                             onClick={() => setSelectedSlot(slot)}
                           >
+                            {selected && <Check className="h-3 w-3 mr-1 inline" aria-hidden="true" />}
                             {formatTime(slot.slot_start)}
                           </Button>
                         );
@@ -544,7 +677,7 @@ export function AgendarPage() {
         {step === "customer" && (
           <Card>
             <CardHeader>
-              <CardTitle>Seus dados</CardTitle>
+              <CardTitle className="font-display">Seus dados</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -563,7 +696,8 @@ export function AgendarPage() {
                 {nameError ? (
                   <p id="customer-name-error" className="text-xs text-destructive">{nameError}</p>
                 ) : (
-                  <p id="customer-name-helper" className="text-xs text-muted-foreground">
+                  <p id="customer-name-helper" className="text-xs text-muted-foreground flex items-center gap-1">
+                    {customerName.trim().length >= 2 && <Check className="h-3 w-3 text-status-concluido" aria-hidden="true" />}
                     Mínimo de 2 caracteres.
                   </p>
                 )}
@@ -580,7 +714,7 @@ export function AgendarPage() {
                   aria-invalid={!!phoneError}
                   aria-describedby={phoneError ? "customer-phone-error" : "customer-phone-helper"}
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) => setCustomerPhone(maskPhone(e.target.value))}
                   onBlur={() => setCustomerTouched((t) => ({ ...t, phone: true }))}
                   placeholder="(00) 00000-0000"
                   className="h-11"
@@ -588,7 +722,8 @@ export function AgendarPage() {
                 {phoneError ? (
                   <p id="customer-phone-error" className="text-xs text-destructive">{phoneError}</p>
                 ) : (
-                  <p id="customer-phone-helper" className="text-xs text-muted-foreground">
+                  <p id="customer-phone-helper" className="text-xs text-muted-foreground flex items-center gap-1">
+                    {customerPhone.replace(/\D/g, "").length >= 10 && <Check className="h-3 w-3 text-status-concluido" aria-hidden="true" />}
                     DDD + número (mínimo 10 dígitos).
                   </p>
                 )}
@@ -613,7 +748,7 @@ export function AgendarPage() {
         {step === "confirm" && (
           <Card>
             <CardHeader>
-              <CardTitle>Confirmar agendamento</CardTitle>
+              <CardTitle className="font-display">Confirmar agendamento</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <dl className="space-y-2 text-sm">
@@ -621,11 +756,13 @@ export function AgendarPage() {
                   <Scissors className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
                   <dt className="font-medium text-muted-foreground w-24">Serviço</dt>
                   <dd className="flex-1">{selectedService?.name}</dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("service")}>Editar</Button>
                 </div>
                 <div className="flex items-start gap-2">
                   <User className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
                   <dt className="font-medium text-muted-foreground w-24">Profissional</dt>
                   <dd className="flex-1">{selectedProfessional?.name}</dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("professional")}>Editar</Button>
                 </div>
                 <div className="flex items-start gap-2">
                   <CalendarDays className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
@@ -633,16 +770,19 @@ export function AgendarPage() {
                   <dd className="flex-1">
                     {selectedDate} {selectedSlot && formatTime(selectedSlot.slot_start)}
                   </dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("datetime")}>Editar</Button>
                 </div>
                 <div className="flex items-start gap-2">
                   <User className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
                   <dt className="font-medium text-muted-foreground w-24">Cliente</dt>
                   <dd className="flex-1">{customerName}</dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("customer")}>Editar</Button>
                 </div>
                 <div className="flex items-start gap-2">
                   <Phone className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
                   <dt className="font-medium text-muted-foreground w-24">Telefone</dt>
                   <dd className="flex-1">{customerPhone}</dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("customer")}>Editar</Button>
                 </div>
                 <div className="flex items-start gap-2">
                   <Clock className="h-4 w-4 mt-0.5 text-muted-foreground" aria-hidden="true" />
@@ -650,6 +790,7 @@ export function AgendarPage() {
                   <dd className="flex-1">
                     {selectedService && formatPrice(selectedService.price_cents)}
                   </dd>
+                  <Button variant="ghost" size="sm" className="min-h-11 px-2 text-xs" onClick={() => setStep("service")}>Editar</Button>
                 </div>
               </dl>
 
@@ -675,6 +816,7 @@ export function AgendarPage() {
             </CardContent>
           </Card>
         )}
+        </div>
       </main>
     </div>
   );
