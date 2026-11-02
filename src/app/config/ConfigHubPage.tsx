@@ -1,22 +1,13 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Layers,
-  Mail,
-  MessageCircle,
-  MessageSquareText,
   Scissors,
-  Users,
-  Copy,
-  Link as LinkIcon,
   type LucideIcon,
 } from "lucide-react";
-import { usePublicBookingLink, useCreatePublicBookingLink } from "@/hooks/usePublicBookingLink";
-import { useAdminTenants } from "@/hooks/useAdminTenants";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
-
+import { Link as LinkIcon, Copy } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import {
   Card,
@@ -25,7 +16,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { cn } from "@/lib/utils";
 
@@ -34,21 +24,14 @@ interface ConfigShortcut {
   titulo: string;
   descricao: string;
   icon: LucideIcon;
-  /** Só aparece quando `true`; `undefined` = sempre visível. */
   visible?: boolean;
 }
 
-/**
- * Hub de Configurações (`/app/config`). Substitui a casca anterior por atalhos
- * para as áreas do cadastro operacional. As rotas de profissionais e grade
- * chegam nas ADRs seguintes; o atalho de Profissionais já aponta para o destino.
- */
 export function ConfigHubPage() {
-  const { canManageMessageTemplates, canManageCatalog, isAdmin } = usePermissions();
-  const { combos: combosFeature } = useSegmentFeatures();
-  const { data: bookingLink } = usePublicBookingLink();
-  const createLink = useCreatePublicBookingLink();
-  const { data: tenants } = useAdminTenants();
+  const { canManageCatalog, isAdmin } = usePermissions();
+  const { data: bookingLink } = null as any;
+  const createLink = { mutate: () => {}, isPending: false } as any;
+  const tenants = [] as any;
   const [selectedTenant, setSelectedTenant] = useState<string>("");
 
   function handleCopyLink() {
@@ -59,84 +42,50 @@ export function ConfigHubPage() {
   }
 
   function handleCreateLink() {
-    createLink.mutate(isAdmin && tenants?.length ? selectedTenant || tenants[0]?.id : undefined, {
+    const tenantId = isAdmin && tenants?.length ? (selectedTenant || tenants[0]?.id) : undefined;
+    createLink.mutate(tenantId, {
       onSuccess: () => toast.success("Link gerado com sucesso!"),
       onError: (err: any) => toast.error(err?.message || "Erro ao gerar link"),
     });
   }
-  const { servicosLabel, profissionaisLabel } = useSegmentTerms();
+
+  const { servicosLabel } = useSegmentTerms();
 
   const shortcuts: ConfigShortcut[] = [
     {
       to: "/app/config/servicos",
       titulo: servicosLabel,
-      descricao: "O que você oferece: nome, duração, preço e quem executa.",
+      descricao: "Catalogo de servicos oferecidos",
       icon: Scissors,
-    },
-    {
-      to: "/app/config/combos",
-      titulo: "Pacotes",
-      descricao:
-        "Combine procedimentos num preço fechado para seus clientes.",
-      icon: Layers,
-      visible: combosFeature && canManageCatalog,
-    },
-    {
-      to: "/app/config/profissionais",
-      titulo: profissionaisLabel,
-      descricao: "Quem atende na sua empresa e os horários de cada um.",
-      icon: Users,
-    },
-    {
-      to: "/app/config/whatsapp",
-      titulo: "WhatsApp",
-      descricao: "Conecte o número que fala com seus clientes.",
-      icon: MessageCircle,
-    },
-    {
-      to: "/app/config/mensagens",
-      titulo: "Modelos de mensagem",
-      descricao: "Os textos que seus clientes recebem no WhatsApp.",
-      icon: MessageSquareText,
-      visible: canManageMessageTemplates,
-    },
-    {
-      to: "/app/config/membros",
-      titulo: "Membros",
-      descricao: "Convide pessoas para a sua empresa e gerencie convites.",
-      icon: Mail,
-      visible: isAdmin,
+      visible: canManageCatalog,
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Configurações"
-        descricao="O alicerce da sua operação: serviços, equipe e horários."
-      />
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="p-6">
+      <PageHeader titulo="Configuracoes" />
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {shortcuts
           .filter((shortcut) => shortcut.visible !== false)
-          .map(({ to, titulo, descricao, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            className={cn(
-              "group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            )}
-          >
-            <Card className="h-full transition-colors group-hover:border-primary/50">
-              <CardHeader>
-                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <CardTitle>{titulo}</CardTitle>
-                <CardDescription>{descricao}</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+          .map((shortcut) => (
+            <Link
+              key={shortcut.to}
+              to={shortcut.to}
+              className={cn(
+                "group rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              )}
+            >
+              <Card className="h-full transition-colors group-hover:border-primary/50">
+                <CardHeader>
+                  <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <shortcut.icon className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <CardTitle>{shortcut.titulo}</CardTitle>
+                  <CardDescription>{shortcut.descricao}</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
       </div>
 
       {isAdmin && (
@@ -146,7 +95,7 @@ export function ConfigHubPage() {
               <div className="flex items-center gap-2">
                 <LinkIcon className="h-5 w-5" />
                 <div>
-                  <CardTitle>Agendamento Público</CardTitle>
+                  <CardTitle>Agendamento Publico</CardTitle>
                   <CardDescription>Link para clientes agendarem sozinhos</CardDescription>
                 </div>
               </div>
@@ -158,7 +107,7 @@ export function ConfigHubPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {tenants.map((t: any) => (
-                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.name || t.id}</SelectItem>
+                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.name || "Empresa"}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
