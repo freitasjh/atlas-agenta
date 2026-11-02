@@ -6,8 +6,16 @@ import {
   MessageSquareText,
   Scissors,
   Users,
+  Copy,
+  Link as LinkIcon,
   type LucideIcon,
 } from "lucide-react";
+import { usePublicBookingLink, useCreatePublicBookingLink } from "@/hooks/usePublicBookingLink";
+import { useAdminTenants } from "@/hooks/useAdminTenants";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -38,6 +46,24 @@ interface ConfigShortcut {
 export function ConfigHubPage() {
   const { canManageMessageTemplates, canManageCatalog, isAdmin } = usePermissions();
   const { combos: combosFeature } = useSegmentFeatures();
+  const { data: bookingLink } = usePublicBookingLink();
+  const createLink = useCreatePublicBookingLink();
+  const { data: tenants } = useAdminTenants();
+  const [selectedTenant, setSelectedTenant] = useState<string>("");
+
+  function handleCopyLink() {
+    if (!bookingLink?.token) return;
+    const url = `${window.location.origin}/agendar/${bookingLink.token}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Link copiado!");
+  }
+
+  function handleCreateLink() {
+    createLink.mutate(isAdmin && tenants?.length ? selectedTenant || tenants[0]?.id : undefined, {
+      onSuccess: () => toast.success("Link gerado com sucesso!"),
+      onError: (err: any) => toast.error(err?.message || "Erro ao gerar link"),
+    });
+  }
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
 
   const shortcuts: ConfigShortcut[] = [
@@ -112,6 +138,50 @@ export function ConfigHubPage() {
           </Link>
         ))}
       </div>
+
+      {isAdmin && (
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="h-5 w-5" />
+                <div>
+                  <CardTitle>Agendamento Público</CardTitle>
+                  <CardDescription>Link para clientes agendarem sozinhos</CardDescription>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {isAdmin && tenants && tenants.length > 0 && (
+                  <Select value={selectedTenant || tenants[0]?.id} onValueChange={setSelectedTenant}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Selecione empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tenants.map((t: any) => (
+                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.name || t.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {bookingLink && (
+                  <Button variant="outline" size="sm" onClick={handleCopyLink}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar link
+                  </Button>
+                )}
+                <Button size="sm" onClick={handleCreateLink} disabled={createLink.isPending}>
+                  {createLink.isPending ? "Gerando..." : bookingLink ? "Gerar novo link" : "Gerar link"}
+                </Button>
+              </div>
+            </div>
+            {bookingLink && (
+              <div className="mt-2 p-2 bg-muted rounded text-sm break-all">
+                {window.location.origin}/agendar/{bookingLink.token}
+              </div>
+            )}
+          </CardHeader>
+        </Card>
+      )}
     </div>
   );
 }
