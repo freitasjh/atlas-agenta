@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { StatePanel } from "@/components/StatePanel";
 import { cn } from "@/lib/utils";
+import { env } from "@/lib/env";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
+const SUPABASE_URL = env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
 
 type Step = "service" | "professional" | "datetime" | "customer" | "confirm";
 
@@ -75,6 +76,7 @@ export function AgendarPage() {
   }
 
   async function loadSlots(date: string) {
+    if (!date) return;
     if (!selectedService) return;
     try {
       setLoading(true);
