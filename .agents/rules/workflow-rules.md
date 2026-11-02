@@ -5,7 +5,10 @@ Estas regras definem o fluxo de desenvolvimento obrigatório. Devem ser seguidas
 > **Fusão DOC-02:** este arquivo absorveu `harness-continuous.md` (H0–H7 + anexos,
 > agora §5). Referências ao arquivo antigo re-apontam para cá (mapa em
 > `.spec/governance/harness-v7/back-refs-DOC-02.md`). Comandos/portas abaixo vêm de
-> `harness.config.json` (nunca de literal copiado — SPEC ADR-003).
+> `harness.config.json` (nunca de literal copiado — SPEC ADR-003). Onde este arquivo
+> cita `scripts/static-checks.mjs` ou o CI `harness-integrity.yml`: **nenhum dos dois
+> existe neste repo** (`scripts/` só tem `dev-functions.sh`; `.github/workflows/` só
+> tem `release-please.yml`) — essas linhas estão marcadas 🟡 processo, sem mecanismo.
 
 ---
 
@@ -319,9 +322,12 @@ O **estado canônico** é o de `sdd-workflow-standard.md` (é o que vive em
 
 Fluxo: PRD aprovado → RESEARCH → ADR-INDEX → ADR (unidade/branch) → SDD scoped.
 Contrato completo, limiar de isenção e níveis de garantia: `.agents/rules/prd-adr-pipeline.md`.
-Nível: `PRD-01`/`ADR-01`/`ADR-02` em `.agents/skills/prd-adr-pipeline/checks.mjs`,
-via `scripts/static-checks.mjs` no `suiteFull` (🟢 neste repo; 🟡 processo em repo-destino
-até F3). Bug fora do funil (§4). Limiar de isenção: mudança sem comportamento observável
+Nível: `PRD-01`/`ADR-01`/`ADR-02` vivem em `.agents/skills/prd-adr-pipeline/checks.mjs`,
+mas **não rodam neste repo**: `scripts/static-checks.mjs` não existe e nenhum
+workflow de `.github/workflows/` os invoca — 🟡 processo, sem mecanismo; a recusa é
+humana (idem no repo-destino, até F3). O `commands.suiteFull` daqui só prova a classe
+"comando canônico resolvível" (`suite-command.spec.mjs`), que **não** cobre
+`PRD-01`/`ADR-01`/`ADR-02`. Bug fora do funil (§4). Limiar de isenção: mudança sem comportamento observável
 não gera PRD/ADR. Os rótulos `PRD`/`RESEARCH`/`ADR-INDEX`/`ADR` mapeiam para o canônico
 (tabela V17 acima) — **não** são valores novos de `current_phase`.
 
@@ -420,7 +426,7 @@ Build+testes (suite completa 0 falhas; front test+build 0 erros) · H3 quando ap
 Suite por task/bug/feature (`developer-engineer`) · E2E por sub-fase/sprint/release (`qa-engineer`/`developer-engineer`, ~30–60min) · H4 por entrega UI · Brain por achado (2–5min) · saneamento quando débito > 0 · auditoria mensal (`architect`+`qa-engineer`).
 
 ### Anexo A — Comandos
-Resolver sempre de `harness.config.json`: `commands.suiteFull` (referência absoluta), `commands.unit`, e por stack `integration`/`frontendTest`/`frontendBuild`/`backendRun`/`frontendRun` (ausente com justificativa `N/A` quando a stack não existe). Infra: `infra.composeFile` + `infra.ports`. Neste repo: `node --test ".opencode/plugins/__tests__/*.spec.mjs" && node scripts/static-checks.mjs`.
+Resolver sempre de `harness.config.json`: `commands.suiteFull` (referência absoluta), `commands.unit`, e por stack `integration`/`frontendTest`/`frontendBuild`/`backendRun`/`frontendRun` (ausente com justificativa `N/A` quando a stack não existe). Infra: `infra.composeFile` + `infra.ports`. Neste repo `commands.suiteFull` é `npm test && node --test ".opencode/plugins/__tests__/*.spec.mjs"` — **não** há `node scripts/static-checks.mjs` aqui (o arquivo não existe).
 
 ### Anexo B — Template de Relatório de Harness
 Retorno de developer/qa que executou H1/H3/H4 **DEVE** conter: H1 (comando, ✅/❌, counts unit/IT, falhas classe:linha); H2 (débito antes do dev + ação); H3 (wipe, UPs, 12 passos, Network/Console, screenshots, processos finalizados); H4 (telas/regras/lógica/perf); H5 (brain_store paths); conclusão + bloqueios.

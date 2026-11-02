@@ -3,7 +3,10 @@
 `harness.config.json` is the single source of project data: commands,
 paths, ports, risk surfaces, gate modes. Gates read it; rules and
 plugins never hardcode its values (SPEC ADR-003). Enforcement lives in
-`gate.js` (Batch 4) and the CI job (step 0); this file only describes.
+`.opencode/plugins/gate.js`, if the host loads it; this file only describes.
+**Neste repo não existe o "CI job (step 0)"**: `.github/workflows/` só tem
+`release-please.yml`, e `scripts/static-checks.mjs` não existe — nenhum check
+estático desta página roda aqui (🟡 processo, DOC-01).
 
 ## Key map (every key exists in SPEC §5.1; values reflect the origin repo)
 
@@ -31,7 +34,9 @@ plugins never hardcode its values (SPEC ADR-003). Enforcement lives in
 
 Missing or invalid config ⇒ every gate fails closed with a clear
 message (never a crash). Canonical commands resolve from the config,
-never from prose. Covered by `config-loader.spec.mjs`.
+never from prose. Covered in this repo by the fail-closed test in
+`.opencode/plugins/__tests__/suite-command.spec.mjs`
+(`loadHarnessConfig fails closed on a missing command key`).
 
 ## Kill-switch (ADR-009)
 
@@ -49,16 +54,25 @@ and compares it at runtime against the value read from the config;
 divergence ⇒ `DenyError sealed-command-mismatch`; **seal absent ⇒ fail-closed**
 (`cause: "empty-seal"`) — never allow. Regenerate with `sealCommands(commands)`
 whenever `commands.suiteFull` changes.
-Seal behavior is covered by `seal.spec.mjs` (confere/diverge).
+Seal behavior is covered in this repo by
+`.opencode/plugins/__tests__/suite-command.spec.mjs` (`seal round-trips the
+current commands and rejects a changed command` — confere/diverge).
 
 ## Static checks (TST-02)
 
-Run locally and in CI with the same command:
+**No repo de origem (`harness`)** these run locally and in CI with the same
+command:
 
 ```sh
 node scripts/static-checks.mjs
 node --test ".opencode/plugins/__tests__/*.spec.mjs"
 ```
+
+**Neste repo (atlas-agenda) o primeiro comando não existe**: `scripts/` só tem
+`dev-functions.sh` e `.github/workflows/` só tem `release-please.yml`. Logo
+V2/V3/V7/V12/V14 — inclusive `checkV15` — **não rodam aqui**; nível 🟡 processo,
+sem mecanismo (DOC-01). Só o segundo comando roda, dentro de
+`commands.suiteFull`. Os parágrafos abaixo descrevem o repo de origem.
 
 V2/V3/V7 scan the files owned by Batch 2 and must read zero. Tooling
 (`scripts/`, `__tests__/`) is excluded from the scan — it names the
@@ -102,7 +116,7 @@ Canário R3 agora por **escopo** (substring só em código/config; pula prosa `.
 | Key | Valor real |
 |---|---|
 | `version` / `project` | `1` / `"atlas-agenda"` |
-| `stack.backend` / `stack.frontend` | `node` / `react` (declarado no Q&A do instalador) |
+| `stack.backend` / `stack.frontend` | `node+react backend (declared via Q&A)` / `node+react frontend (declared via Q&A)` — valor literal do `harness.config.json` |
 | `commands.suiteFull` | `npm test && node --test ".opencode/plugins/__tests__/*.spec.mjs"` |
 | `commands.unit` | `npm test` (`vitest run`) |
 | `infra` | nulls — SPA Vite + Supabase via CLI; sem compose/portas no config |

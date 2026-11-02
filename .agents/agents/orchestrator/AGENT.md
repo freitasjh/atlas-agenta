@@ -270,8 +270,11 @@ Fases (rótulos — mapeados ao vocabulário canônico, **sem** valor novo de
 mecanismo; a recusa é humana.)
 
 Validação da esteira: `PRD-01`/`ADR-01`/`ADR-02`
-(`.agents/skills/prd-adr-pipeline/checks.mjs`) — 🟢 neste repo via
-`scripts/static-checks.mjs` no `commands.suiteFull`; 🟡 processo no repo-destino.
+(`.agents/skills/prd-adr-pipeline/checks.mjs`) — ⚠️ **não rodam neste repo**:
+`scripts/static-checks.mjs` não existe e nenhum workflow de CI os invoca, logo é
+🟡 processo (sem mecanismo; a recusa é humana) aqui e no repo-destino. O
+`commands.suiteFull` daqui só prova a classe "comando canônico resolvível"
+(`suite-command.spec.mjs`), que **não** cobre esses checks.
 
 ---
 
