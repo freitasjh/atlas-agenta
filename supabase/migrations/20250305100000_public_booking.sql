@@ -204,3 +204,58 @@ $$;
 
 revoke all on function create_public_booking_link() from public;
 grant execute on function create_public_booking_link() to authenticated;
+
+-- RPC para super admin gerar link por tenant
+create or replace function create_public_booking_link(p_tenant_id uuid default null)
+returns table(token uuid, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_tenant_id uuid := p_tenant_id;
+  v_role text;
+  v_uid uuid := auth.uid();
+  v_user_tenant uuid;
+begin
+  begin v_tenant_id := coalesce(v_tenant_id, current_tenant_id()); exception when others then null; end;
+  begin v_role := current_role_name(); exception when others then v_role := null; end;
+
+  if v_uid is not null then
+    select p.tenant_id, lower(p.role)::text
+      into v_user_tenant, v_role
+    from public.profiles p
+    where p.id = v_uid
+    limit 1;
+  end if;
+
+  if v_role is null and v_uid is not null then
+    select lower(coalesce(raw_app_meta_data->>'role','')) into v_role
+    from auth.users where id = v_uid;
+  end if;
+
+  if lower(coalesce(v_role,'')) != 'super_admin' then
+    v_tenant_id := coalesce(v_user_tenant, v_tenant_id);
+  else
+    v_tenant_id := coalesce(p_tenant_id, v_tenant_id, v_user_tenant);
+  end if;
+
+  if v_tenant_id is null then
+    raise exception 'tenant_required';
+  end if;
+
+  if lower(coalesce(v_role,'')) not in ('admin','super_admin') then
+    raise exception 'forbidden_admin_only';
+  end if;
+
+  update public_booking_links set active = false where tenant_id = v_tenant_id;
+
+  return query
+  insert into public_booking_links (tenant_id, active)
+  values (v_tenant_id, true)
+  returning public_booking_links.token, public_booking_links.created_at;
+end;
+$$;
+
+revoke all on function create_public_booking_link(uuid) from public;
+grant execute on function create_public_booking_link(uuid) to authenticated;
