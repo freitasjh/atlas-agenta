@@ -104,7 +104,7 @@ begin
   from working_hours
   where tenant_id = v_tenant_id
     and professional_id = v_professional_id
-    and day_of_week = v_day_of_week
+    and weekday = v_day_of_week
     and active = true;
 
   if v_work_start is null then
