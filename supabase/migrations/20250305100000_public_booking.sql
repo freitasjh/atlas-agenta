@@ -53,6 +53,7 @@ declare
   v_day_of_week int;
   v_work_start time;
   v_work_end time;
+  v_timezone text := 'America/Sao_Paulo';
   v_slot_interval interval := interval '30 minutes';
 begin
   -- Valida link
@@ -62,6 +63,11 @@ begin
 
   if v_tenant_id is null or v_link_active is false then
     return;
+  end if;
+
+  select timezone into v_timezone from tenants where id = v_tenant_id;
+  if v_timezone is null then
+    v_timezone := 'America/Sao_Paulo';
   end if;
 
   -- Valida serviço
@@ -115,8 +121,8 @@ begin
   return query
   with slots as (
     select 
-      (p_date::timestamp + v_work_start + (n * v_slot_interval))::timestamptz as slot_start,
-      (p_date::timestamp + v_work_start + (n * v_slot_interval) + (v_duration || ' minutes')::interval)::timestamptz as slot_end
+      ((p_date::timestamp + v_work_start + (n * v_slot_interval)) AT TIME ZONE v_timezone) as slot_start,
+      ((p_date::timestamp + v_work_start + (n * v_slot_interval) + (v_duration || ' minutes')::interval) AT TIME ZONE v_timezone) as slot_end
     from generate_series(0, (extract(epoch from (v_work_end - v_work_start))::int - (v_duration * 60)) / extract(epoch from v_slot_interval)::int) as n
   )
   select sl.slot_start, sl.slot_end
