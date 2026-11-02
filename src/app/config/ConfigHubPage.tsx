@@ -11,8 +11,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { usePublicBookingLink, useCreatePublicBookingLink } from "@/hooks/usePublicBookingLink";
+import { useAdminTenants } from "@/hooks/useAdminTenants";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useState } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -45,6 +48,8 @@ export function ConfigHubPage() {
   const { combos: combosFeature } = useSegmentFeatures();
   const { data: bookingLink } = usePublicBookingLink();
   const createLink = useCreatePublicBookingLink();
+  const { data: tenants } = useAdminTenants();
+  const [selectedTenant, setSelectedTenant] = useState<string>("");
 
   function handleCopyLink() {
     if (!bookingLink?.token) return;
@@ -54,7 +59,7 @@ export function ConfigHubPage() {
   }
 
   function handleCreateLink() {
-    createLink.mutate(undefined, {
+    createLink.mutate(isAdmin && tenants?.length ? selectedTenant || tenants[0]?.id : undefined, {
       onSuccess: () => toast.success("Link gerado com sucesso!"),
       onError: (err: any) => toast.error(err?.message || "Erro ao gerar link"),
     });
@@ -146,6 +151,18 @@ export function ConfigHubPage() {
                 </div>
               </div>
               <div className="flex gap-2">
+                {isAdmin && tenants && tenants.length > 0 && (
+                  <Select value={selectedTenant || tenants[0]?.id} onValueChange={setSelectedTenant}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Selecione empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tenants.map((t: any) => (
+                        <SelectItem key={t.id} value={t.id}>{t.trade_name || t.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {bookingLink && (
                   <Button variant="outline" size="sm" onClick={handleCopyLink}>
                     <Copy className="h-4 w-4 mr-2" />

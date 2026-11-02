@@ -32,8 +32,10 @@ export function usePublicBookingLink() {
 export function useCreatePublicBookingLink() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.rpc("create_public_booking_link");
+    mutationFn: async (tenantId?: string | null) => {
+      const { data, error } = await supabase.rpc("create_public_booking_link", 
+        tenantId ? { p_tenant_id: tenantId } : {}
+      );
       if (error) throw error;
       if (!data || data.length === 0) throw new Error("Erro ao criar link");
       return publicBookingLinkListSchema.parse(data)[0];
