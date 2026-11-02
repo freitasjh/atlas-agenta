@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "project": "atlas-agenda",
+  "stack": {
+    "backend": "node+react backend (declared via Q&A)",
+    "frontend": "node+react frontend (declared via Q&A)"
+  },
+  "moduleMap": {
+    "plugins": ".opencode/plugins",
+    "rules": ".agents/rules",
+    "schemas": ".agents/schemas"
+  },
+  "commands": {
+    "suiteFull": "npm test && node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+    "unit": "npm test"
+  },
+  "infra": {
+    "composeFile": null,
+    "ports": {
+      "backend": null,
+      "frontend": null
+    }
+  },
+  "mcp": {
+    "required": [
+      "chrome-devtools"
+    ]
+  },
+  "protectedPaths": [
+    ".opencode/plugins/**",
+    ".agents/rules/**",
+    ".agents/schemas/**",
+    ".agents/agents/**",
+    "opencode.json",
+    "harness.config.json"
+  ],
+  "gates": {
+    "picco": "enforce",
+    "evidence": "enforce",
+    "hitlBatch": "enforce",
+    "e2eGreenfield": "warn"
+  },
+  "riskPaths": [
+    "**/security/**",
+    "**/auth/**"
+  ],
+  "escalateOnRisk": {
+    "e2eGreenfield": "enforce",
+    "evidenceScenario": "required"
+  },
+  "contraproveTimeoutMs": 900000,
+  "evidence": {
+    "path": "harness/",
+    "schema": ".agents/schemas/harness-report.schema.json"
+  }
+}
