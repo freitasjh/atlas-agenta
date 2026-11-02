@@ -23,7 +23,8 @@ interface Service {
 
 interface Professional {
   id: string;
-  full_name: string;
+  name?: string;
+  full_name?: string;
 }
 
 interface Slot {
