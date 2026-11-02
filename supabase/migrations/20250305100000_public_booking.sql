@@ -117,7 +117,7 @@ begin
     select 
       (p_date + s.slot_time)::timestamptz as slot_start,
       (p_date + s.slot_time + (v_duration || ' minutes')::interval)::timestamptz as slot_end
-    from generate_series(v_work_start, v_work_end - (v_duration || ' minutes')::interval, v_slot_interval) as s(slot_time)
+    from generate_series(v_work_start::timestamp, v_work_end::timestamp - (v_duration || ' minutes')::interval, v_slot_interval) as s(slot_time)
   )
   select sl.slot_start, sl.slot_end
   from slots sl
