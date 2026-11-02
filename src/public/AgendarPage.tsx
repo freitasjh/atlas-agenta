@@ -10,6 +10,7 @@ import { StatePanel } from "@/components/StatePanel";
 import { cn } from "@/lib/utils";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
 
 type Step = "service" | "professional" | "datetime" | "customer" | "confirm";
 
@@ -56,7 +57,8 @@ export function AgendarPage() {
       setLoading(true);
       const today = new Date().toISOString().split("T")[0];
       const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=00000000-0000-0000-0000-000000000000&date=${today}`
+        `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=00000000-0000-0000-0000-000000000000&date=${today}`,
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (res.ok) {
         const data = await res.json();
@@ -77,7 +79,8 @@ export function AgendarPage() {
     try {
       setLoading(true);
       const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=${selectedService.id}&professional_id=${selectedProfessional?.id || ""}&date=${date}`
+        `${SUPABASE_URL}/functions/v1/public-slots?token=${token}&service_id=${selectedService.id}&professional_id=${selectedProfessional?.id || ""}&date=${date}`,
+        { headers: { apikey: SUPABASE_ANON_KEY } }
       );
       if (res.ok) {
         const data = await res.json();
@@ -96,7 +99,7 @@ export function AgendarPage() {
       setBooking(true);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/public-book`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
         body: JSON.stringify({
           token,
           service_id: selectedService.id,
