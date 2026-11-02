@@ -72,8 +72,6 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
           { path: "termos", element: <TermosPage /> },
         ],
       },
-      // Autoagendamento público (ADR-19) - sem guard
-      { path: "agendar/:token", element: <AgendarPage /> },
       // Auth (público)
       {
         element: <AuthLayout />,
@@ -84,7 +82,8 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
           { path: "redefinir-senha", element: <RedefinirSenhaPage /> },
         ],
       },
-
+      // Autoagendamento público (ADR-19)
+      { path: "agendar/:token", element: <AgendarPage /> },
       // Troca de senha obrigatória (ADR-10). Exige sessão (`RequireAuth`), mas
       // fica FORA do guard de troca (ADR-11): incluir o guard aqui criaria
       // laço, porque é esta tela que limpa a flag.
