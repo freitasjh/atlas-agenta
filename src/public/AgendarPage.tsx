@@ -23,8 +23,7 @@ interface Service {
 
 interface Professional {
   id: string;
-  name?: string;
-  full_name?: string;
+  name: string;
 }
 
 interface Slot {
@@ -208,7 +207,7 @@ export function AgendarPage() {
                   className="w-full p-4 border rounded-lg text-left hover:border-primary transition-colors flex items-center gap-3"
                 >
                   <User className="h-5 w-5" />
-                  <span className="font-medium">{prof.name || prof.full_name || "Profissional"}</span>
+                  <span className="font-medium">{prof.name || "Profissional"}</span>
                 </button>
               ))}
               <Button variant="ghost" onClick={() => setStep("service")}><ArrowLeft className="h-4 w-4 mr-2" /> Voltar</Button>
@@ -273,7 +272,7 @@ export function AgendarPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2 text-sm">
                 <p><strong>Serviço:</strong> {selectedService?.name}</p>
-                <p><strong>Profissional:</strong> {selectedProfessional?.name || selectedProfessional?.full_name}</p>
+                <p><strong>Profissional:</strong> {selectedProfessional?.name}</p>
                 <p><strong>Data/Hora:</strong> {selectedDate} {selectedSlot && formatTime(selectedSlot.slot_start)}</p>
                 <p><strong>Cliente:</strong> {customerName}</p>
                 <p><strong>Telefone:</strong> {customerPhone}</p>
