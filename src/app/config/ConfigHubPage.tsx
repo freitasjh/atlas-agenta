@@ -56,7 +56,7 @@ export function ConfigHubPage() {
   function handleCreateLink() {
     createLink.mutate(undefined, {
       onSuccess: () => toast.success("Link gerado com sucesso!"),
-      onError: () => toast.error("Erro ao gerar link"),
+      onError: (err: any) => toast.error(err?.message || "Erro ao gerar link"),
     });
   }
   const { servicosLabel, profissionaisLabel } = useSegmentTerms();
