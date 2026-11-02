@@ -170,3 +170,37 @@ $$;
 
 revoke all on function create_public_booking_link() from public;
 grant execute on function create_public_booking_link() to authenticated;
+
+-- Atualiza RPC para mensagem mais clara
+create or replace function create_public_booking_link()
+returns table(token uuid, created_at timestamptz)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_tenant_id uuid;
+  v_role text;
+begin
+  v_tenant_id := current_tenant_id();
+  v_role := current_role_name();
+  
+  if v_tenant_id is null then
+    raise exception 'tenant_required';
+  end if;
+  
+  if v_role != 'admin' then
+    raise exception 'forbidden_admin_only';
+  end if;
+  
+  update public_booking_links set active = false where tenant_id = v_tenant_id;
+  
+  return query
+  insert into public_booking_links (tenant_id, active)
+  values (v_tenant_id, true)
+  returning public_booking_links.token, public_booking_links.created_at;
+end;
+$$;
+
+revoke all on function create_public_booking_link() from public;
+grant execute on function create_public_booking_link() to authenticated;
