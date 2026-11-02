@@ -70,5 +70,15 @@ export function mapWhatsAppError(error: unknown): string {
     return NO_PERMISSION_MESSAGE;
   }
 
+  // Mensagens controladas da Edge Function para condições de pareamento — são
+  // strings pt-BR produzidas pelo nosso servidor (já específicas e seguras),
+  // então chegam direto ao usuário com a verdade do que ocorreu.
+  if (
+    /inst[aâ]ncia do WhatsApp|QR Code|j[aá] est[aá] conectado/i.test(text) &&
+    typeof text === "string"
+  ) {
+    return text;
+  }
+
   return GENERIC_MESSAGE;
 }
