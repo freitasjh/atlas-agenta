@@ -6,7 +6,7 @@
 |---|---|---|---|---|---|---|---|
 | 1 | ADR-001 | Schema tenants: colunas de endereço + NOT NULL documento/phone | in-progress | — | ADRs/ADR-001-schema-tenants-endereco/ | adr/cadastro-empresa-rico/01-schema-tenants-endereco | — |
 | 2 | ADR-002 | RPC create_tenant_with_admin + Edge signup-tenant: params, validação server, 409 documento | in-progress | ADR-001 | ADRs/ADR-002-rpc-edge-signup/ | adr/cadastro-empresa-rico/02-rpc-edge-signup | — |
-| 3 | ADR-003 | UI CadastroPage + validações cliente + ViaCEP com fallback | todo | ADR-002 | ADRs/ADR-003-ui-cadastro-viacep/ | adr/cadastro-empresa-rico/03-ui-cadastro-viacep | — |
+| 3 | ADR-003 | UI CadastroPage + validações cliente + ViaCEP com fallback | in-progress | ADR-002 | ADRs/ADR-003-ui-cadastro-viacep/ | adr/cadastro-empresa-rico/03-ui-cadastro-viacep | — |
 
 > Contrato das colunas (SPEC §4.2): `order` inteiro ≥1 · `status` ∈
 > todo|in-progress|merged|dropped · `depends_on` declarado (`—` quando não há) ·

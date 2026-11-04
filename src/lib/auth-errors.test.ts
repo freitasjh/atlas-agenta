@@ -10,10 +10,12 @@ import { mapSignUpError } from "@/lib/auth-errors";
  * devolve à tela a mensagem do servidor.
  *
  * - 409 + `email_ja_cadastrado` → "Este e-mail já tem cadastro."
+ * - 409 + `document_ja_cadastrado` → "Este CNPJ/CPF já tem cadastro." (ADR-002)
  * - todo o resto (400, 409 sem código, 500, rede, formato estranho) → genérica.
  */
 
 const EMAIL_TAKEN = "Este e-mail já tem cadastro.";
+const DOCUMENT_TAKEN = "Este CNPJ/CPF já tem cadastro.";
 const GENERIC = "Não foi possível criar sua conta. Tente novamente.";
 
 /** Erro no shape que o hook entrega: `{ status, code }`, sem o corpo do servidor. */
@@ -40,6 +42,12 @@ describe("mapSignUpError", () => {
     expect(
       mapSignUpError({ status: 409, body: { code: "email_ja_cadastrado" } }),
     ).toBe(EMAIL_TAKEN);
+  });
+
+  it("409 com código document_ja_cadastrado ⇒ mensagem exata do catálogo", () => {
+    expect(
+      mapSignUpError(normalizedError(409, "document_ja_cadastrado")),
+    ).toBe(DOCUMENT_TAKEN);
   });
 
   it("409 sem código legível (gateway/proxy) ⇒ genérica, nunca vira e-mail repetido", () => {
