@@ -42,14 +42,7 @@ import {
   useRevokeInvitation,
 } from "@/hooks/useInvitations";
 import { usePermissions } from "@/hooks/usePermissions";
-
-const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super admin",
-  admin: "Administrador",
-  professional: "Profissional",
-  receptionist: "Recepção",
-};
-
+import { ROLE_LABELS, TENANT_ROLES } from "@/lib/roles";
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pendente",
   accepted: "Aceito",
@@ -63,8 +56,6 @@ const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | 
   revoked: "secondary",
   expired: "secondary",
 };
-
-const TENANT_ROLES = ["admin", "professional", "receptionist"] as const;
 
 const emailSchema = z.string().trim().email();
 

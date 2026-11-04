@@ -140,3 +140,72 @@ Deno.test("segredo ausente no ambiente responde 500 sem liberar o login", async 
     assertEquals((await res.json()).code, "identity_unavailable");
   });
 });
+
+Deno.test("perfil inativo responde 200 com claim active=false", async () => {
+  const { secret, key } = newSecret();
+  const TENANT_ID = "2b3c4d5e-6f70-4a8b-9c0d-1e2f3a4b5c6d";
+  const fakeService = {
+    from: (_table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_col: string, _val: string) => ({
+          maybeSingle: async () => ({
+            data: { role: "professional", tenant_id: TENANT_ID, active: false },
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  } as unknown as import("jsr:@supabase/supabase-js@2").SupabaseClient;
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.active, false);
+    assertEquals(json.claims.user_role, "professional");
+  });
+});
+
+Deno.test("perfil ausente responde 200 com claims mínimas", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = {
+    from: (_table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_col: string, _val: string) => ({
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+    }),
+  } as unknown as import("jsr:@supabase/supabase-js@2").SupabaseClient;
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.user_role, null);
+    assertEquals(json.claims.tenant_id, null);
+    assertEquals(json.claims.active, false);
+    assertEquals(json.claims.role, "authenticated");
+  });
+});
+
+Deno.test("erro de leitura do banco responde 500", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = {
+    from: (_table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_col: string, _val: string) => ({
+          maybeSingle: async () => ({ data: null, error: { code: "PGRST" } }),
+        }),
+      }),
+    }),
+  } as unknown as import("jsr:@supabase/supabase-js@2").SupabaseClient;
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 500);
+  });
+});

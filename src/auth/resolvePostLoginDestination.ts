@@ -3,6 +3,10 @@ import type { Role } from "@/types/domain";
 /** Destino padrão de quem não tem `from` utilizável. */
 export const POST_LOGIN_DEFAULT = "/app";
 
+/** Destino padrão de professional/receptionist (ADR-004): agenda própria. */
+export const POST_LOGIN_PROFESSIONAL = "/app/agenda";
+export const POST_LOGIN_RECEPTIONIST = "/app/agenda";
+
 /** Casa do super admin (ADR-08): painel de empresas, não o dashboard. */
 export const POST_LOGIN_SUPER_ADMIN = "/admin/empresas";
 
@@ -66,5 +70,38 @@ export function resolvePostLoginDestination({
   if (role === null) return POST_LOGIN_DEFAULT;
   if (role === "super_admin") return POST_LOGIN_SUPER_ADMIN;
 
+  if (role === "professional" || role === "receptionist") {
+    // Só respeita `from` se for caminho interno E permitido ao papel; caso
+    // contrário cai no destino padrão do papel (evita pousar em rota restrita).
+    if (isInternalPath(from) && isAllowedForRole(role, from)) {
+      return from;
+    }
+    return POST_LOGIN_PROFESSIONAL;
+  }
+
+  // admin: respeita `from` interno (acesso total ao /app).
   return isInternalPath(from) ? from : POST_LOGIN_DEFAULT;
+}
+
+/**
+ * Valida se `from` é uma rota que o papel pode acessar (ADR-004). Evita que
+ * um professional/receptionist seja redirecionado para rota restrita (ex.:
+ * /app/cobrancas) ao fazer login.
+ */
+function isAllowedForRole(role: Role, path: string): boolean {
+  if (role === "admin") return true;
+  const pathname = path.split("?")[0].split("#")[0];
+  if (pathname === "/app" || pathname === "/app/") return true;
+  if (pathname.startsWith("/app/agenda")) return true;
+  if (pathname.startsWith("/app/clientes")) return true;
+  // Detalhe de horários (router: RequireRole admin/professional/receptionist
+  // em /app/config/profissionais/:id/horarios). O índice da lista continua
+  // só-admin — não entra aqui.
+  if (
+    (role === "professional" || role === "receptionist") &&
+    /^\/app\/config\/profissionais\/[^/]+\/horarios(\/|$)/.test(pathname)
+  ) {
+    return true;
+  }
+  return false;
 }

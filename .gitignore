@@ -35,3 +35,7 @@ supabase/.temp
 # PRD, plan, analysis-*, pr-result e PR_BODY seguem versionados (ficam um nível acima, em dev-pipeline/).
 .agents/tasks/dev-pipeline/adr/
 .agents/tasks/dev-pipeline/qa/
+
+# Artefatos locais (nao versionar)
+.agents.zip
+opencode.bak

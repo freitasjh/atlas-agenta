@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "check:functions": "deno check supabase/functions/*/index.ts",
-    "test:functions": "npm run check:functions && deno test --allow-env supabase/functions/custom-access-token/ supabase/functions/signup-tenant/ supabase/functions/bootstrap-super-admin/ supabase/functions/change-password/ supabase/functions/admin-subscription/ supabase/functions/invite-member/ supabase/functions/accept-invitation/ supabase/functions/revoke-invitation/ supabase/functions/resend-invitation/ supabase/functions/public-slots/ supabase/functions/test-asaas-connection/ supabase/functions/save-asaas-config/ supabase/functions/create-charge/ supabase/functions/asaas-webhook/ supabase/functions/create-subscription-charge/ supabase/functions/asaas-subscription-webhook/ ",
+    "test:functions": "npm run check:functions && deno test --allow-env supabase/functions/custom-access-token/ supabase/functions/signup-tenant/ supabase/functions/bootstrap-super-admin/ supabase/functions/change-password/ supabase/functions/admin-subscription/ supabase/functions/invite-member/ supabase/functions/accept-invitation/ supabase/functions/revoke-invitation/ supabase/functions/resend-invitation/ supabase/functions/public-slots/ supabase/functions/test-asaas-connection/ supabase/functions/save-asaas-config/ supabase/functions/create-charge/ supabase/functions/asaas-webhook/ supabase/functions/create-subscription-charge/ supabase/functions/asaas-subscription-webhook/ supabase/functions/deactivate-user/ supabase/functions/reactivate-user/ supabase/functions/change-user-role/ supabase/functions/unlink-professional-profile/ ",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -31,6 +31,7 @@
     "@radix-ui/react-separator": "1.1.1",
     "@radix-ui/react-slot": "1.1.1",
     "@radix-ui/react-switch": "1.1.2",
+    "@radix-ui/react-tabs": "^1.2.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/supabase-js": "2.46.1",
     "@tanstack/react-query": "5.59.20",

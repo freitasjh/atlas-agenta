@@ -10,7 +10,7 @@ const USER_ID = "u-convite";
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const INVITATION_ID = "22222222-2222-4222-8222-222222222222";
 
-type FakeProfile = { tenant_id: string | null; role: string };
+type FakeProfile = { tenant_id: string | null; role: string; active?: boolean };
 type FakeError = { code?: string; message?: string } | null;
 
 type FakeOptions = {
@@ -106,9 +106,9 @@ async function call(handler: (r: Request) => Promise<Response>, init: { method?:
   }));
 }
 
-const SUPER_ADMIN: FakeProfile = { tenant_id: null, role: "super_admin" };
-const ADMIN: FakeProfile = { tenant_id: TENANT_ID, role: "admin" };
-const PROFESSIONAL: FakeProfile = { tenant_id: TENANT_ID, role: "professional" };
+const SUPER_ADMIN: FakeProfile = { tenant_id: null, role: "super_admin", active: true };
+const ADMIN: FakeProfile = { tenant_id: TENANT_ID, role: "admin", active: true };
+const PROFESSIONAL: FakeProfile = { tenant_id: TENANT_ID, role: "professional", active: true };
 
 Deno.test("método não-POST -> 405", async () => {
   const { handler } = build();

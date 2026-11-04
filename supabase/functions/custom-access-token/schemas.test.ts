@@ -42,7 +42,7 @@ Deno.test("recusa profile com papel fora da lista", () => {
 Deno.test("flag ausente em app_metadata vira false", () => {
   const result = buildHookClaims(
     { role: "authenticated", app_metadata: { provider: "email" } },
-    { role: "admin", tenant_id: TENANT_ID },
+    { role: "admin", tenant_id: TENANT_ID, active: true },
   );
   assertEquals(result.ok, true);
   if (result.ok) assertEquals(result.claims.must_change_password, false);
@@ -57,7 +57,7 @@ Deno.test("flag ausente com app_metadata inexistente vira false", () => {
 Deno.test("flag não booleana é recusada", () => {
   const result = buildHookClaims(
     { role: "authenticated", app_metadata: { must_change_password: "true" } },
-    { role: "super_admin", tenant_id: null },
+    { role: "super_admin", tenant_id: null, active: true },
   );
   assertEquals(result, { ok: false, code: "identity_invalid" });
 });
@@ -65,7 +65,7 @@ Deno.test("flag não booleana é recusada", () => {
 Deno.test("copia a flag booleana verdadeira de app_metadata", () => {
   const result = buildHookClaims(
     { role: "authenticated", app_metadata: { must_change_password: true } },
-    { role: "super_admin", tenant_id: null },
+    { role: "super_admin", tenant_id: null, active: true },
   );
   assertEquals(result.ok, true);
   if (result.ok) assertEquals(result.claims.must_change_password, true);
@@ -74,7 +74,7 @@ Deno.test("copia a flag booleana verdadeira de app_metadata", () => {
 Deno.test("emite user_role e tenant_id do profile e preserva role original", () => {
   const result = buildHookClaims(
     { sub: USER_ID, role: "authenticated", app_metadata: {} },
-    { role: "professional", tenant_id: TENANT_ID },
+    { role: "professional", tenant_id: TENANT_ID, active: true },
   );
   assertEquals(result.ok, true);
   if (result.ok) {
@@ -92,5 +92,15 @@ Deno.test("sem profile devolve user_role e tenant_id nulos", () => {
     assertEquals(result.claims.user_role, null);
     assertEquals(result.claims.tenant_id, null);
     assertEquals(result.claims.role, "authenticated");
+    assertEquals(result.claims.active, false);
   }
+});
+
+Deno.test("perfil inativo emite claim active=false", () => {
+  const result = buildHookClaims(
+    { role: "authenticated" },
+    { role: "professional", tenant_id: TENANT_ID, active: false },
+  );
+  assertEquals(result.ok, true);
+  if (result.ok) assertEquals(result.claims.active, false);
 });

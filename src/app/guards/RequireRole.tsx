@@ -1,4 +1,8 @@
+import { useEffect } from "react";
+import type { ReactNode } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+
+import { toast } from "sonner";
 
 import { RouteFallback } from "@/components/RouteFallback";
 import { AccessDenied } from "@/components/AccessDenied";
@@ -9,6 +13,8 @@ import type { Role } from "@/types/domain";
 interface RequireRoleProps {
   /** Papéis autorizados a acessar as rotas filhas. */
   roles: Role[];
+  /** Conteúdo a renderizar quando autorizado (uso inline em rotas folha). */
+  children?: ReactNode;
 }
 
 /**
@@ -26,7 +32,7 @@ interface RequireRoleProps {
  * Nota de fase futura: as telas de `cobrancas` (financeiro) deverão usar
  * `RequireRole roles={["admin"]}` para excluir `receptionist`/`professional`.
  */
-export function RequireRole({ roles }: RequireRoleProps) {
+export function RequireRole({ roles, children }: RequireRoleProps) {
   const location = useLocation();
   const {
     isLoadingAuth,
@@ -35,6 +41,20 @@ export function RequireRole({ roles }: RequireRoleProps) {
     hasTenantError,
     role,
   } = useCurrentUser();
+
+  // Hook antes dos early returns (Rules of Hooks). O toast só dispara quando o
+  // papel não autoriza a rota; a condição fica dentro do efeito.
+  useEffect(() => {
+    if (
+      !isLoadingAuth &&
+      isAuthenticated &&
+      !hasIdentityError &&
+      !hasTenantError &&
+      (!role || !roles.includes(role))
+    ) {
+      toast.error("Acesso restrito.");
+    }
+  }, [isLoadingAuth, isAuthenticated, hasIdentityError, hasTenantError, role, roles]);
 
   if (isLoadingAuth) {
     return <RouteFallback />;
@@ -64,6 +84,10 @@ export function RequireRole({ roles }: RequireRoleProps) {
         ? "/app"
         : "/";
     return <AccessDenied backTo={backTo} backLabel="Voltar ao início" />;
+  }
+
+  if (children) {
+    return <>{children}</>;
   }
 
   return <Outlet />;

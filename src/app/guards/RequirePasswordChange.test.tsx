@@ -47,6 +47,7 @@ function currentUser(overrides: Partial<CurrentUser> = {}): CurrentUser {
     role: "admin",
     tenantId: "tenant-1",
     mustChangePassword: false,
+    active: true,
     tenant: null,
     subscriptionStatus: null,
     isAuthenticated: true,

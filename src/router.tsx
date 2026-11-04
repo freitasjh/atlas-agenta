@@ -6,6 +6,7 @@ import {
 
 import { RootLayout } from "@/components/RootLayout";
 import { NotFound } from "@/components/NotFound";
+import { AcceptInvitationPage } from "@/app/accept-invitation/AcceptInvitationPage";
 
 import { MarketingLayout } from "@/marketing/MarketingLayout";
 import { LandingPage, PrecosPage, TermosPage } from "@/marketing/pages";
@@ -26,7 +27,9 @@ import { AgendaPage } from "@/app/agenda/AgendaPage";
 import { PagamentosPage } from "@/app/config/pagamentos/PagamentosPage";
 import { ClientesPage } from "@/app/clientes/ClientesPage";
 import { ConfigHubPage } from "@/app/config/ConfigHubPage";
+import { AuditoriaTenantPage } from "@/app/config/auditoria/AuditoriaTenantPage";
 import { MembrosPage } from "@/app/config/membros/MembrosPage";
+import { UsuariosPage } from "@/app/config/usuarios/UsuariosPage";
 import { RelatoriosHubPage } from "@/app/relatorios/RelatoriosHubPage";
 import { ComissoesPage } from "@/app/relatorios/ComissoesPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
@@ -75,6 +78,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
       },
       // Autoagendamento público (ADR-19) - sem guard
       { path: "agendar/:token", element: <AgendarPage /> },
+      { path: "accept-invitation", element: <AcceptInvitationPage /> },
       // Auth (público)
       {
         element: <AuthLayout />,
@@ -121,34 +125,41 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                       { index: true, element: <DashboardPage /> },
                       { path: "agenda", element: <AgendaPage /> },
                       { path: "clientes", element: <ClientesPage /> },
-                      { path: "cobrancas", element: <CobrancasPage /> },
+                      { path: "cobrancas", element: <RequireRole roles={["admin"]}><CobrancasPage /></RequireRole> },
                       {
                         path: "config",
                         children: [
-                          { index: true, element: <ConfigHubPage /> },
-                          { path: "servicos", element: <ServicosPage /> },
-                          { path: "combos", element: <CombosPage /> },
+                          { index: true, element: <RequireRole roles={["admin"]}><ConfigHubPage /></RequireRole> },
+                          { path: "servicos", element: <RequireRole roles={["admin"]}><ServicosPage /></RequireRole> },
+                          { path: "combos", element: <RequireRole roles={["admin"]}><CombosPage /></RequireRole> },
                           {
                             path: "profissionais",
                             children: [
-                              { index: true, element: <ProfissionaisPage /> },
+                              { index: true, element: <RequireRole roles={["admin"]}><ProfissionaisPage /></RequireRole> },
                               {
                                 path: ":profissionalId/horarios",
-                                element: <HorariosPage />,
+                                element: (
+                                  <RequireRole roles={["admin", "professional", "receptionist"]}>
+                                    <HorariosPage />
+                                  </RequireRole>
+                                ),
                               },
                             ],
                           },
-                          { path: "whatsapp", element: <WhatsAppPage /> },
-                          { path: "pagamentos", element: <PagamentosPage /> },
+                          { path: "whatsapp", element: <RequireRole roles={["admin"]}><WhatsAppPage /></RequireRole> },
+                          { path: "pagamentos", element: <RequireRole roles={["admin"]}><PagamentosPage /></RequireRole> },
                           {
                             path: "mensagens",
-                            element: <TemplatesMensagemPage />,
+                            element: <RequireRole roles={["admin"]}><TemplatesMensagemPage /></RequireRole>,
                           },
-                          { path: "membros", element: <MembrosPage /> },
+                          { path: "membros", element: <RequireRole roles={["admin"]}><MembrosPage /></RequireRole> },
+                          { path: "usuarios", element: <RequireRole roles={["admin"]}><UsuariosPage /></RequireRole> },
+                          { path: "auditoria", element: <RequireRole roles={["admin"]}><AuditoriaTenantPage /></RequireRole> },
                         ],
                       },
                       {
                         path: "relatorios",
+                        element: <RequireRole roles={["admin"]} />,
                         children: [
                           { index: true, element: <RelatoriosHubPage /> },
                           { path: "comissoes", element: <ComissoesPage /> },
