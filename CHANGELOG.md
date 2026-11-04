@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/freitasjh/atlas-agenta/compare/atlas-agenda-v0.1.2...atlas-agenda-v0.1.3) (2026-11-04)
+
+
+### Features
+
+* **adr-001:** schema tenants endereco + saneamento P1 timestamps ([89c2813](https://github.com/freitasjh/atlas-agenta/commit/89c2813408eadb9c3e87f1fe3bb00a2889e56004))
+* **adr-001:** schema tenants endereco + saneamento P1 timestamps ([c818517](https://github.com/freitasjh/atlas-agenta/commit/c81851786519bdbd4cb706837b9ac865ed373d7f))
+* **adr-002:** RPC 14 params + Edge signup validacao server + 409 ([7d5bf0f](https://github.com/freitasjh/atlas-agenta/commit/7d5bf0f8aec38400e69d5852ce12a34df77fc0be))
+* **adr-002:** RPC 14 params + Edge signup validacao server + 409 ([76a189f](https://github.com/freitasjh/atlas-agenta/commit/76a189f3c9224a1489b3845c1761917f959e421a))
+* **adr-003:** CadastroPage 4 blocos + mascaras + ViaCEP + signup com… ([9b6726a](https://github.com/freitasjh/atlas-agenta/commit/9b6726a3afa0ec512056898df7fb4bb3eafb5ba7))
+* **adr-003:** CadastroPage 4 blocos + mascaras + ViaCEP + signup completo ([0af4312](https://github.com/freitasjh/atlas-agenta/commit/0af4312cd24d8642e9a8a9823fd894bbaed236cd))
+
 ## [0.1.2](https://github.com/freitasjh/atlas-agenta/compare/atlas-agenda-v0.1.1...atlas-agenda-v0.1.2) (2026-11-04)
 
 
