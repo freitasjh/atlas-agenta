@@ -41,6 +41,27 @@ function resolveBaseline(): string {
 
 const BASELINE = resolveBaseline();
 
+// Débito P1 `.spec/tech-debts/migration-timestamps-duplicados/TASKS.md` (gate humano
+// aprovado em 2026-11-04, resposta "A"): 3 pares de migrations compartilhavam o mesmo
+// prefixo de 14 dígitos, o que quebra `supabase db reset` (duplicate key em
+// schema_migrations_pkey). O saneamento renomeia só o arquivo (conteúdo SQL byte-idêntico,
+// 100% similaridade) para slots livres verificados. Allowlist restrita a estes 3 pares;
+// qualquer outro M/D/R continua falhando.
+const RENOMEACOES_P1_PERMITIDAS: ReadonlyArray<readonly [string, string]> = [
+  [
+    "supabase/migrations/20250227090000_subscription_status_audit.sql",
+    "supabase/migrations/20250227090500_subscription_status_audit.sql",
+  ],
+  [
+    "supabase/migrations/20250227091000_tenants_privileged_columns_guard.sql",
+    "supabase/migrations/20250227091500_tenants_privileged_columns_guard.sql",
+  ],
+  [
+    "supabase/migrations/20250228090000_security_privilege_hardening.sql",
+    "supabase/migrations/20250228090050_security_privilege_hardening.sql",
+  ],
+];
+
 /** Migrações que já existiam na base do range — as "antigas" que não podem ser editadas. */
 function baselineMigrations(): string[] {
   return git(["ls-tree", "-r", "--name-only", BASELINE, "--", "supabase/migrations"])
@@ -131,7 +152,15 @@ describe("RQ-15 migrações aplicadas não foram editadas", () => {
 
     // Estado da árvore de trabalho E dos commits da branch, desde a separação de `master`.
     // `--diff-filter=MDR`: adicionar migração nova é permitido — só alterar, remover ou renomear
-    // uma já aplicada viola o D-11.
+    // uma já aplicada viola o D-11 (exceção: os 3 renames P1 acima, gate humano aprovado).
+    const ehRenomeacaoP1Permitida = (line: string): boolean => {
+      const parts = line.split("\t");
+      const status = parts[0] ?? "";
+      const oldPath = parts[1] ?? "";
+      const newPath = parts[2] ?? "";
+      if (!status.startsWith("R")) return false;
+      return RENOMEACOES_P1_PERMITIDAS.some(([old, novo]) => old === oldPath && novo === newPath);
+    };
     const changed = git([
       "diff",
       "--name-status",
@@ -141,7 +170,8 @@ describe("RQ-15 migrações aplicadas não foram editadas", () => {
       "supabase/migrations",
     ])
       .split("\n")
-      .filter((line) => line.trim() !== "");
+      .filter((line) => line.trim() !== "")
+      .filter((line) => !ehRenomeacaoP1Permitida(line));
 
     expect(
       changed,
@@ -153,6 +183,18 @@ describe("RQ-15 migrações aplicadas não foram editadas", () => {
     const drifted: string[] = [];
 
     for (const file of baselineMigrations()) {
+      // Rename P1 documentado acima: o caminho antigo some da árvore de trabalho por desenho.
+      // O conteúdo segue byte-idêntico no caminho novo (rename R100); pular aqui evita
+      // falso-positivo D, sem abrir exceção para nenhum outro arquivo.
+      const novoCaminho = RENOMEACOES_P1_PERMITIDAS.find(([old]) => old === file)?.[1];
+      if (novoCaminho !== undefined) {
+        // Prova de conteúdo intocado: blob do caminho antigo na base do range deve ser
+        // byte-idêntico ao blob stageado no caminho novo (só o nome mudou).
+        const oldBlob = git(["show", `${BASELINE}:${file}`]);
+        const newBlob = git(["show", `:${novoCaminho}`]);
+        if (oldBlob !== newBlob) drifted.push(`${file} -> ${novoCaminho}: conteúdo divergiu`);
+        continue;
+      }
       const commits = git(["log", "--format=%H", BASELINE, "--", file])
         .split("\n")
         .filter((line) => line !== "");
