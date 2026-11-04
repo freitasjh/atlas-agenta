@@ -1,0 +1,63 @@
+{
+  "current_feature": "gestao-usuarios-tenant",
+  "current_phase": "Testing",
+  "previous_phase": "Execution",
+  "next_phase": "Completed",
+  "type": "feature",
+  "code_review": {
+    "last_invoked_at": "2026-11-04T00:00:00+00:00",
+    "last_status": "passed",
+    "critical_issues": 0,
+    "attention_issues": 0,
+    "reviewer_notes": "APPROVED pos-correcao: cross-tenant guard 409, limit + periodo server-side, CSV anti-injection, isAllowedForRole alinhado; 430 unit + 80 integration + 262 functions + build verdes."
+  },
+  "harness_status": "passed",
+  "last_update": "2026-11-04T00:00:00+00:00",
+  "code_review_status": "passed",
+  "pendencies": [
+    {
+      "id": "A3",
+      "what": "Publicar HARNESS_SEAL_JSON no host",
+      "owner": "host",
+      "json": "{\"suiteFull\":\"74aa623e819de28a3342a1e16781ee3b9bcf101a7ec30b8063f40788a5c1af1c\",\"unit\":\"328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539\"}"
+    },
+    {
+      "id": "gitignore-lixo",
+      "what": "Adicionar .agents.zip e opencode.bak ao .gitignore",
+      "owner": "developer-engineer"
+    },
+    {
+      "id": "harness-versioning",
+      "what": "5 arquivos com git add -N (diff visivel, nao commitados). Commit definitivo depende de versionar .agents/** + .opencode/**",
+      "owner": "decisao-usuario"
+    },
+    {
+      "id": "pr-adr-20",
+      "what": "Abrir PR e revisar/mergear manualmente",
+      "url": "https://github.com/freitasjh/atlas-agenta/compare/master...adr/cobranca-pix-asaas",
+      "owner": "humano"
+    }
+  ],
+  "artifacts": {
+    "prd": ".spec/prd/gestao-usuarios-tenant/PRD.md",
+    "research": ".spec/prd/gestao-usuarios-tenant/RESEARCH.md",
+    "adr_index": ".spec/prd/gestao-usuarios-tenant/ADR-INDEX.md",
+    "spec": ".spec/frontend/gestao-usuarios-tenant-adr-006/SPEC.md",
+    "plan": ".spec/frontend/gestao-usuarios-tenant-adr-006/PLAN.md",
+    "tasks": ".spec/frontend/gestao-usuarios-tenant-adr-006/TASKS.md"
+  },
+  "prd_adr": {
+    "prd_id": "gestao-usuarios-tenant",
+    "prd_status": "approved",
+    "active_adr": "ADR-006",
+    "adr_order": [
+      "ADR-001",
+      "ADR-002",
+      "ADR-003",
+      "ADR-004",
+      "ADR-005",
+      "ADR-006"
+    ],
+    "snapshots": []
+  }
+}

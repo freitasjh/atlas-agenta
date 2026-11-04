@@ -1,0 +1,120 @@
+{
+  "$comment": "v2-only config (opencode v2.0.32). Shape unico: chave `agent` (singular) com `description` OBRIGATORIA + `permission`; `plugin`/`plugins` VAZIOS (plugin local e auto-carregado de `.opencode/plugins/`). O shape v1/dual (`server`, mapa `agents`/`system`, chave `permissions`, `plugin` com caminhos locais) foi REMOVIDO — ver ciclo `.spec/backend/opencode-v2-only/`. Contrato de plugin MEDIDO: `export default { id, setup }` com `setup(ctx)` retornando `undefined` (retorno truthy e CHAMADO pelo runtime => `TypeError` => `failed to reload plugins` => registry global de agentes cai).",
+  "$experiment": "v2-only (2026-10-18, RT-02/opencode-v2-only): agent + description obrigatoria + permission (tools deprecated); removidos os mapas agents/system e permissions; `plugin` vazio (local plugins de .opencode/plugins/ sao AUTO-CARREGADOS; a chave e para pacotes npm). Backup pre-v2-only: opencode.json.rt02.bak",
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "architect": {
+      "description": "Decisoes arquiteturais, ADRs e integridade estrutural.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      },
+      "prompt": "{file:./.agents/agents/architect/AGENT.md}"
+    },
+    "code-reviewer": {
+      "description": "Code review com veredito por severidade; parecer, nao bloqueio.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/code-reviewer/PROMPT.md}"
+    },
+    "codebase-analyzer": {
+      "description": "Analise estatica de codigo e arquitetura; nao escreve.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/codebase-analyzer/AGENT.md}"
+    },
+    "design-system-specialist": {
+      "description": "Templates de componentes reutilizáveis do design system (props/slots/estados/variantes); nao decide UX nem implementa framework.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/design-system-specialist/AGENT.md}"
+    },
+    "developer-engineer": {
+      "description": "Implementa codigo e testes sob delegacao do orquestrador (com write/edit).",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      },
+      "prompt": "{file:./.agents/agents/developer-engineer/AGENT.md}"
+    },
+    "orchestrator": {
+      "description": "Triagem, governance, SPEC/PLAN/TASKS e orquestracao do harness. NAO implementa codigo.",
+      "mode": "primary",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/orchestrator/AGENT.md}"
+    },
+    "product-manager": {
+      "description": "Validacao de negocio: escopo, aceite e riscos de produto.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      },
+      "prompt": "{file:./.agents/agents/product-manager/AGENT.md}"
+    },
+    "qa-engineer": {
+      "description": "Execucao do harness/qualidade e verificacao independente (nao corrige).",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow"
+      },
+      "prompt": "{file:./.agents/agents/qa-engineer/AGENT.md}"
+    },
+    "security-engineer": {
+      "description": "Auditoria de seguranca (OWASP/ASVS) por fase do SDD.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/security-engineer/AGENT.md}"
+    },
+    "ux-designer": {
+      "description": "Parecer de UX/interface; vinculante no escopo visual.",
+      "mode": "subagent",
+      "permission": {
+        "bash": "allow",
+        "edit": "deny"
+      },
+      "prompt": "{file:./.agents/agents/ux-designer/AGENT.md}"
+    }
+  },
+  "instructions": [
+    ".agents/rules/*.md",
+    "../brain/.agents/skills/brain/SKILL.md",
+    "../brain/.agents/rules/BRAIN.MCP.md"
+  ],
+  "mcp": {
+    "servers": {
+      "brain": {
+        "disabled": false,
+        "timeout": {
+          "catalog": 30000,
+          "execution": 30000
+        },
+        "type": "remote",
+        "url": "http://localhost:8321/mcp"
+      }
+    }
+  },
+  "permission": {
+    "task": "ask"
+  },
+  "plugin": [],
+  "plugins": []
+}
