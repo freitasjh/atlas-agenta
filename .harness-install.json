@@ -1,0 +1,1869 @@
+{
+  "version": "1.0.0",
+  "date": "2026-11-01T01:21:26.006Z",
+  "source": "harness@1.0.0",
+  "target": "/home/joao/fusionlf/wsProjeto/atlas-agenda",
+  "installed": [
+    {
+      "path": ".agents/agents/architect/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/code-reviewer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/code-reviewer/PROMPT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/gemini.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/opencode.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/design-system-specialist/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/developer-engineer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/orchestrator/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/orchestrator/opencode.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/product-manager/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/product-manager/gemini.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/product-manager/opencode.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/gemini.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/opencode.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/gemini.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/opencode.yaml",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/security-engineer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/agents/ux-designer/AGENT.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/brain-context.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/frontend-react-coding-standards.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/gate-contract.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/harness-config.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/prd-adr-pipeline.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/sdd-workflow-standard.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/rules/workflow-rules.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/schemas/harness-report.schema.json",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/LICENSE-dart-lang-skills",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/LICENSE-flutter-skills",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/LICENSE-kadajett-agent-nestjs-skills",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/LICENSE-stitch-skills",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/LICENSE-vercel-agent-skills",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/VENDOR-NOTICE.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/context-compressor/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/dev-planner/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/dev-planner/anti-patterns.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/dev-planner/questions-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/dev-planner/workflow.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/feature-status-dashboard/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/feature-status-dashboard/references/status-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/frontend-design/LICENSE.txt",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/frontend-design/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/frontend-react-specialist/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/harness-installer/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/harness-report/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/java-architecture-specialist/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/jira-microtask-breaker/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/nestjs-architecture-specialist/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/node-architecture-specialist/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/checks.mjs",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/ADR-INDEX.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/ADR.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/PRD.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/RESEARCH.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/references/clarifying-questions.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/references/picco-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/AGENTS.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/README.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/metadata.json",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_sections.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-effect-event-deps.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-event-handler-refs.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-init-once.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-use-latest.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-api-routes.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-cheap-condition-before-await.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-defer-await.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-dependencies.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-parallel.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-suspense-boundaries.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-analyzable-paths.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-barrel-imports.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-conditional.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-defer-third-party.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-dynamic-imports.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-preload.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-event-listeners.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-localstorage-schema.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-passive-event-listeners.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-swr-dedup.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-batch-dom-css.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-function-results.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-property-access.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-storage.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-combine-iterations.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-early-exit.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-flatmap-filter.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-hoist-regexp.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-index-maps.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-length-check-first.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-min-max-loop.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-request-idle-callback.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-set-map-lookups.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-tosorted-immutable.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-activity.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-animate-svg-wrapper.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-conditional-render.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-content-visibility.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hoist-jsx.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hydration-no-flicker.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hydration-suppress-warning.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-resource-hints.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-script-defer-async.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-svg-precision.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-usetransition-loading.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-defer-reads.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-dependencies.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-derived-state-no-effect.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-derived-state.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-functional-setstate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-lazy-state-init.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-memo-with-default-value.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-memo.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-move-effect-to-event.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-no-inline-components.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-simple-expression-in-memo.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-split-combined-hooks.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-transitions.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-use-deferred-value.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-use-ref-transient-values.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-after-nonblocking.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-auth-actions.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-lru.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-react.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-dedup-props.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-hoist-static-io.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-no-shared-module-state.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-parallel-fetching.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-parallel-nested-fetching.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-serialization.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/README.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/examples/gold-standard-card.tsx",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/package-lock.json",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/package.json",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/architecture-checklist.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/component-template.tsx",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/stitch-api-reference.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/style-guide.json",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/scripts/fetch-stitch.sh",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/react-components/scripts/validate.js",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/rust-architecture-specialist/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-architecture-board/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-architecture-board/templates/ADR_TEMPLATE.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/plan-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/proposal-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/spec-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/tasks-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/traceability-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/verify-gate.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/api.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/backend.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/cloud.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/database.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/delta-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/ecommerce.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/fintech.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/frontend.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/healthcare.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/plan-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/proposal-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/saas-multitenant.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/security.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/spec-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/task-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/trace-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-feedback/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/sdd-feedback/references/summary-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/security-review/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/spec-review/README.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/spec-review/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/checklist.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/output-template.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/usage-guide.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/template-best-practices/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/template-deepsearch/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/template-structure/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/SKILL.md",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/_sync_all.py",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/app-interface.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/charts.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/colors.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/design.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/draft.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/google-fonts.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/icons.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/landing.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/products.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/react-performance.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/angular.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/astro.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/flutter.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/html-tailwind.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/jetpack-compose.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/laravel.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nextjs.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxt-ui.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxtjs.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react-native.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/shadcn.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/svelte.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/swiftui.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/threejs.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/vue.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/styles.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/typography.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ui-reasoning.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ux-guidelines.csv",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/__pycache__/core.cpython-310.pyc",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/__pycache__/design_system.cpython-310.pyc",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/core.py",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/design_system.py",
+      "kind": "file"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/search.py",
+      "kind": "file"
+    },
+    {
+      "path": ".opencode/plugins/gate.js",
+      "kind": "file"
+    },
+    {
+      "path": ".opencode/plugins/harness-validator.js",
+      "kind": "file"
+    },
+    {
+      "path": ".opencode/plugins/hitl-guardrail.js",
+      "kind": "file"
+    },
+    {
+      "path": ".opencode/plugins/lib/config.mjs",
+      "kind": "file"
+    },
+    {
+      "path": ".opencode/plugins/lib/seal.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "opencode.json",
+      "kind": "file"
+    },
+    {
+      "path": "harness.config.json",
+      "kind": "file"
+    }
+  ],
+  "merged": [],
+  "flagged": [],
+  "backupDir": "/home/joao/fusionlf/wsProjeto/.harness-backup-atlas-agenda-2026-11-01T01-21-25-980Z",
+  "answers": {
+    "project": "atlas-agenda",
+    "stack": "node+react",
+    "backend": "node",
+    "frontend": "react",
+    "suiteCommand": "npm run test:run",
+    "pluginsDir": "/home/joao/fusionlf/wsProjeto/atlas-agenda"
+  },
+  "checks": {
+    "passed": true,
+    "failed": []
+  },
+  "manifestSchemaVersion": 1,
+  "fileHashes": [
+    {
+      "path": ".agents/agents/architect/AGENT.md",
+      "sha256": "16459c95112f61b981a37f25696c6a652505781ac26e30cd01d16d944b7b9b39"
+    },
+    {
+      "path": ".agents/agents/code-reviewer/AGENT.md",
+      "sha256": "1b0fbd87a793c4e11fac4a4f5809f8f9620806ef9e8fe4d76e14ed546b20efd0"
+    },
+    {
+      "path": ".agents/agents/code-reviewer/PROMPT.md",
+      "sha256": "d68e7f0fc86614f521a40346d380782fe637cd21ca6c02e12e5cad15fdd5bea6"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/AGENT.md",
+      "sha256": "50ac538781bdfed7345e78099d77e07d3e02b191d12426d60c6a85af6f3e39d0"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/gemini.yaml",
+      "sha256": "6753d4401e7668f0cb53763bc6320be472dd1fb03b5484d6cb1810a942f34005"
+    },
+    {
+      "path": ".agents/agents/codebase-analyzer/opencode.yaml",
+      "sha256": "ad673e84a6df1a11fbbddadf1e27ee90131ccd07da9ab45bf33cb844ac489bf1"
+    },
+    {
+      "path": ".agents/agents/design-system-specialist/AGENT.md",
+      "sha256": "738e0750924d7a97c42f8157b9d77e7e4a7a9ec79499e982003a269ede132ef5"
+    },
+    {
+      "path": ".agents/agents/developer-engineer/AGENT.md",
+      "sha256": "608c0d99b252d3f985e27b66cd3f630112be464834cce076564ef4691889974a"
+    },
+    {
+      "path": ".agents/agents/orchestrator/AGENT.md",
+      "sha256": "2cf1f94038cfbcd6fb512f86cb86fd57943060a6136970da04d76eb5b3b4fda0"
+    },
+    {
+      "path": ".agents/agents/orchestrator/opencode.yaml",
+      "sha256": "73c522e03ce6e725a3dd9e8aa53f46e76a5fae6cac61f97200c985397d0f283c"
+    },
+    {
+      "path": ".agents/agents/product-manager/AGENT.md",
+      "sha256": "4c8bda262ea859311556f02ea42a2b7636e6ae911986e863fcf881db5ecb53ef"
+    },
+    {
+      "path": ".agents/agents/product-manager/gemini.yaml",
+      "sha256": "a056b3468c3424b86177510cddd8a884a397cf26ef69599162554ede8fd9b4aa"
+    },
+    {
+      "path": ".agents/agents/product-manager/opencode.yaml",
+      "sha256": "57fc34b8bd377400686131149ea2c9f1bb07fadf9c3836fe7313d1961b37bfd6"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/AGENT.md",
+      "sha256": "a41963de7085dfb282319e1664da6a40f9e77c95020efed5c3ba2b32518d5ef2"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/gemini.yaml",
+      "sha256": "2090251fc7ff60b71ca85df696a0f7a66c3cabb8751918ad708ca46f60d7c6df"
+    },
+    {
+      "path": ".agents/agents/qa-engineer/opencode.yaml",
+      "sha256": "5590e14b6a1fb8f907194377bf55a8f390d92faa84cb1ca84df5c3a975639728"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/AGENT.md",
+      "sha256": "9928a6f4bab0a82e9dfcb9b3f137e4ea32f62bf1e5fc8d9caa2b675ba6f4bdc6"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/gemini.yaml",
+      "sha256": "60c582bd3b273710418889b397c2d33b24fbdaaaec5ae78f3e4d1c73b58828e8"
+    },
+    {
+      "path": ".agents/agents/sdd-orquestrador/opencode.yaml",
+      "sha256": "5d6d766070f20e015dadd98100cc2688ce2704b8052681e3250446df91ac4d01"
+    },
+    {
+      "path": ".agents/agents/security-engineer/AGENT.md",
+      "sha256": "0a2661430045a39fd3f40576a4fe66707cf408660b22f500b24912931238f25e"
+    },
+    {
+      "path": ".agents/agents/ux-designer/AGENT.md",
+      "sha256": "7bcf5398cb741705da561b5735f1bde4ef29b36ae66a81532a19957ae782832e"
+    },
+    {
+      "path": ".agents/rules/brain-context.md",
+      "sha256": "c676faa610ee5c68e01f9738542561af8e8da295a4cb70c1dd7f0e7bd26fbeea"
+    },
+    {
+      "path": ".agents/rules/frontend-react-coding-standards.md",
+      "sha256": "8244d3dbeef32f7e4970a8ef5161bbe19e2e7f6663a882b13ef6119d7b5550a1"
+    },
+    {
+      "path": ".agents/rules/gate-contract.md",
+      "sha256": "288aa54e65729210de5737a931324fff89c517897a2ecd0fc3e9cc46b2963470"
+    },
+    {
+      "path": ".agents/rules/harness-config.md",
+      "sha256": "eeeba673f97e05664e538b8cd4928af88e842d97425f67b91a12cf9b6574dea9"
+    },
+    {
+      "path": ".agents/rules/prd-adr-pipeline.md",
+      "sha256": "bcfa217e21c25a0e391bb37d5b5ba2a99749fc13be8bfe2ecc7660f855b75ba5"
+    },
+    {
+      "path": ".agents/rules/sdd-workflow-standard.md",
+      "sha256": "58c7cb4ed9b4a9120f0b4e86cab821b9d8722646221b806e8bc157abf81f07b8"
+    },
+    {
+      "path": ".agents/rules/workflow-rules.md",
+      "sha256": "74b73aa6fcc7fba393a8c0f827ce22047e2aa18389f5f3482533f0de96eb3d9e"
+    },
+    {
+      "path": ".agents/schemas/harness-report.schema.json",
+      "sha256": "d587d6b11236d890fb595f117040d2f475aa0da85ae90b9287921f593516458a"
+    },
+    {
+      "path": ".agents/skills/LICENSE-dart-lang-skills",
+      "sha256": "835b0ffef5681b070c8d9c6c7d67cdd018441a7ae65b1ebd772dbdd2bd40f097"
+    },
+    {
+      "path": ".agents/skills/LICENSE-flutter-skills",
+      "sha256": "5b95696b504e162bcf775060ec416005df9969a95cda6f7d4ddb57327dd74d35"
+    },
+    {
+      "path": ".agents/skills/LICENSE-kadajett-agent-nestjs-skills",
+      "sha256": "264e78cc6fa0d0c6067e947522100c11a7b302617c9b719d7d9f4e9def00177e"
+    },
+    {
+      "path": ".agents/skills/LICENSE-stitch-skills",
+      "sha256": "b4133a55232c0996713349891dc55469d46a16ec027c033c9e4108b2149abb42"
+    },
+    {
+      "path": ".agents/skills/LICENSE-vercel-agent-skills",
+      "sha256": "1cc9611d4fffbd0201696a5a81cc0b1d82743db847654ff4fa57d92ba7669387"
+    },
+    {
+      "path": ".agents/skills/VENDOR-NOTICE.md",
+      "sha256": "f0b7fbc1065dbe1067540278965efbf8af8b9530414748b903a266d97ab4f639"
+    },
+    {
+      "path": ".agents/skills/context-compressor/SKILL.md",
+      "sha256": "48affa536d6c91a27bcf5bca67be741d8366bc7d6e44748a0d883af70bda08c4"
+    },
+    {
+      "path": ".agents/skills/dev-planner/SKILL.md",
+      "sha256": "b19ac43c4b965add058dac8dc88fd52e1c03bc6d5e9097f4966bea58198d321e"
+    },
+    {
+      "path": ".agents/skills/dev-planner/anti-patterns.md",
+      "sha256": "b7aa14866904050b0333059118a0497df560fc868e1e1394933632eb13dfce1e"
+    },
+    {
+      "path": ".agents/skills/dev-planner/questions-template.md",
+      "sha256": "1f2adbbdf7e5f620f77bc0186bd89664983fcd8b1d934328ebccdd6b7c647014"
+    },
+    {
+      "path": ".agents/skills/dev-planner/workflow.md",
+      "sha256": "931d02533319e5abd41598cce16658e622370c81b14552107b9cd5e63d8e2253"
+    },
+    {
+      "path": ".agents/skills/feature-status-dashboard/SKILL.md",
+      "sha256": "49532473326ac4440d5aa6fcd09366c6b1beeb6817f6e586fc12ba94a24399d3"
+    },
+    {
+      "path": ".agents/skills/feature-status-dashboard/references/status-template.md",
+      "sha256": "6ac39006ec36c9e6ffe2c206b97ccd5babe87ca1356e1ca07f61d2325b68a077"
+    },
+    {
+      "path": ".agents/skills/frontend-design/LICENSE.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    },
+    {
+      "path": ".agents/skills/frontend-design/SKILL.md",
+      "sha256": "1608ea77fbb6fc30d13a97d12cfa8ebf31358d40f0dd97beed24829d6b3f45dd"
+    },
+    {
+      "path": ".agents/skills/frontend-react-specialist/SKILL.md",
+      "sha256": "546dbda00e439b3012217937358e7a50578c86ba2e2ff3bc2337b776e8a1cb74"
+    },
+    {
+      "path": ".agents/skills/harness-installer/SKILL.md",
+      "sha256": "186b56d41a9c3453f9a95eaaf4f0d56f18b52d9222b568e4286f870e03b10fa6"
+    },
+    {
+      "path": ".agents/skills/harness-report/SKILL.md",
+      "sha256": "78ab0abcae46a0a7bd161de54e8e24738d87e47dc3f90923ea06939a9bb7d387"
+    },
+    {
+      "path": ".agents/skills/java-architecture-specialist/SKILL.md",
+      "sha256": "652464c4b3b5fefde3d7478edb2c5f18f5c973eae096dd8f1b3bf8874413ae93"
+    },
+    {
+      "path": ".agents/skills/jira-microtask-breaker/SKILL.md",
+      "sha256": "f82dbc2311e986f545f2ce4063f332910d345ba979813a639ef1a9956a467ca2"
+    },
+    {
+      "path": ".agents/skills/nestjs-architecture-specialist/SKILL.md",
+      "sha256": "90fefbb6691014cef362fb9fd369ec027a92944340f823b633699427ffbaa788"
+    },
+    {
+      "path": ".agents/skills/node-architecture-specialist/SKILL.md",
+      "sha256": "a41e117015e38784172a849e96fdc541b0a290094e88d4efa41e0ec5b79a97d8"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/checks.mjs",
+      "sha256": "3ae81147618732e572ab77a4e70244733261d7653b9499b60a9b317d6837cafa"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/ADR-INDEX.md",
+      "sha256": "1b747601bf1e59955b8b66fa861755ce3504d5a3f6d21a74f429eccf88a2574d"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/ADR.md",
+      "sha256": "150b5229a9e397d5dbc1407803f387bf4934d82d12716c48c1d8c7753a7ab250"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/PRD.md",
+      "sha256": "df2d61eb5c3e775841a44fe3e6e59e2cea6dc435eb4b1efb74b9fa0adf97c8fe"
+    },
+    {
+      "path": ".agents/skills/prd-adr-pipeline/templates/RESEARCH.md",
+      "sha256": "c09d31662b4ad3a761a5b636fa5e10250d775c8af9df4b06f80939380d89f028"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/SKILL.md",
+      "sha256": "0dcb5f3c107ba71aecd0bf2cb4d9dc4632547335fcc4510f753e8a7e7c09a7c7"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/references/clarifying-questions.md",
+      "sha256": "450f213164f881d0c76aae27e1d0d1d726712399f56939a9247a6f9e760af133"
+    },
+    {
+      "path": ".agents/skills/prompt-optimizer/references/picco-template.md",
+      "sha256": "9217e3e0413a8ffa2c9c0b2f5c65ed7c336722cb84262995ba8d7d1c02899378"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/AGENTS.md",
+      "sha256": "fc93e7421177bbf869cce892bc60a6c83a4517d974bc3bf65c4e2c1e58a6ccf6"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/README.md",
+      "sha256": "9eafb2123d3b8b2aef41fba0db2648a3f4f49996f8c7c8bb2c86263befd8b48a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/SKILL.md",
+      "sha256": "71ed7794962fa6e803ee83030517b5b93a9f70fbfeb431ec4535c5480a8d8355"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/metadata.json",
+      "sha256": "c4e18bac3290fbe1b471a605867d4df68b03144ea26b8befdbe8f9d8fd124354"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_sections.md",
+      "sha256": "01c59969e4e867f0708c8f8ef9c6d87fab9a07d0586244f429ff84013db8a115"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_template.md",
+      "sha256": "99df2a3ea088c6c22de2484ddc7e964d0e9923846f44c63380343ecc64455442"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-effect-event-deps.md",
+      "sha256": "55ed8f9f27a1bff803d6fa55828176207714b02123cbb97ddb8a90d88024a723"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-event-handler-refs.md",
+      "sha256": "a3097edeecfb2ff6851cd66ed8cdf0617c3c88180504bee824aa6e75a215bbbc"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-init-once.md",
+      "sha256": "3e4dc22173eb0e2b6dcf583e3babd862b8696328f8f59aee7c4d746c5bc05f6c"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-use-latest.md",
+      "sha256": "8a3f64dfe5a77d1564248faf17fe662ae75b55d497a243cb30b38eb07ccbbf9a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-api-routes.md",
+      "sha256": "523338540d73427dc14c0cbb19f2741ebccdf8b105a7b2c1b33d2905cf237a42"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-cheap-condition-before-await.md",
+      "sha256": "03107c1f70a293cd58a8abc5474c5548e20ea4efdf01b6d45aae7ad0ac1cb32c"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-defer-await.md",
+      "sha256": "f3c142d090615abdcc99d31c123be37b31f0f1ed8d9ec9f7789a3bc6883ae0fb"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-dependencies.md",
+      "sha256": "16ef469f877e30c6b8e1e1b4bc3e527312fa3c6318cb785a4eca186ea236131a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-parallel.md",
+      "sha256": "6d2f841896279e976dfcdc1ac89e70771ac188baadfd43c096b5706cb838b961"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-suspense-boundaries.md",
+      "sha256": "de05fedac2eb7ae563b887b5a424464ec3dfaf84e5b7797467ebe2a796ac8afc"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-analyzable-paths.md",
+      "sha256": "62090b5c815fd71bf1133dce754f51abc16a9456d0ccd025fd627de27726e92a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-barrel-imports.md",
+      "sha256": "e648f6d54525f07a691357040ca5bff6ea3424788a91ff63812adb29622a671b"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-conditional.md",
+      "sha256": "09c8259c3efb04fc0abb8e412ccbda217c222ae8118516283e571c995fe3a7d4"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-defer-third-party.md",
+      "sha256": "3719fb47b191e8db4fe22686ec88448ad5af9e6838585425abbe103d0b642e37"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-dynamic-imports.md",
+      "sha256": "401817a7369f315fc5a68a1095742ff7d53d0461906880dc9d64a41495ee1986"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-preload.md",
+      "sha256": "d1f7cc28da7cd5ab249acd287edc5b761afcfb194e9cb62cd44c5f3543db2de2"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-event-listeners.md",
+      "sha256": "242a873349febc1ce685e85617994784dbab92c2eaa68aed7fed5a83e7680e93"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-localstorage-schema.md",
+      "sha256": "0fb7cdf9dc93fdf22f87e3669f953fb9d4ac9b0be42eec4a29fe9a2560610b88"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-passive-event-listeners.md",
+      "sha256": "1f35016f9053de69e884ee9be00654e37979c2ca85f5e57764dc2626ff7acb4b"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-swr-dedup.md",
+      "sha256": "644652c39c6cc00de8d1c77a7273612e868dc3f7edda30764164c12ec0f764a3"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-batch-dom-css.md",
+      "sha256": "480b891b9eaf96e929dc1e964274a4828e3a78009b7d00ccd965a0d425215959"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-function-results.md",
+      "sha256": "3daaa11d24f4295cb6be8bc6f407f2ce83cc7b5bd1f0e68891ea8ab835721dc7"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-property-access.md",
+      "sha256": "73e47431e74878a927061bf0ddc7cd91a7556cb35d2573f3421e82300d9ae311"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-storage.md",
+      "sha256": "11b826b0433898c1ece2d3547010d8e77db9fb240185748c45db91493de9b6cc"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-combine-iterations.md",
+      "sha256": "71add08aeeb43091d4ff4c0b2842cce8b4bdef8ad3e732cc034bb5a84827e746"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-early-exit.md",
+      "sha256": "925ce5ce87f3347186ca62212f29cc6baa2b8c85a96d2720ad07c3d0abf781c0"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-flatmap-filter.md",
+      "sha256": "9e5b166a41914d975bef7635467f8fb32cd98b5c3126c0bc6f163490812fb5f0"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-hoist-regexp.md",
+      "sha256": "f9e9aef2f7c2307dd7310f283df85dcada45fc43e9bb941b0c3aa414dec21ec4"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-index-maps.md",
+      "sha256": "5df1bdc2cfabb2c98abd55d26762e5c18189535c2e686184f426082e62920391"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-length-check-first.md",
+      "sha256": "8b54a311c826b299272f29187fc58bc55772a04c4a72eeb29456ee96dc9fc624"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-min-max-loop.md",
+      "sha256": "87dfb67e2f39df6ad8bcfb5b78c5fb364d3c07554ad188a202408d99f3763421"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-request-idle-callback.md",
+      "sha256": "ee08f83905b4011abbc33d594033157d77561b5bbd9b36b04f0f409581ffec32"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-set-map-lookups.md",
+      "sha256": "a7fd781a6ba9ad49065961b6f9a90ef486bf6b648390e1a08704025f98e1642b"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-tosorted-immutable.md",
+      "sha256": "d0a5e1b0fec48a0a81397957e2f068e224329f7c42cb5feeed8aae6fa64025e8"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-activity.md",
+      "sha256": "1e5e7eaf3555e61d6a2e900089c676527d26259501db5594f59544b6c664f85a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-animate-svg-wrapper.md",
+      "sha256": "9c6ae0ca7a51434e803887c64cded760956579a1452ccb80a461a03f9c937c77"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-conditional-render.md",
+      "sha256": "2ec2fa23c4148285144687050c52369adba3da2fbe3d486f8d3e0aad8f06f2bc"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-content-visibility.md",
+      "sha256": "64eee6d5b916fe74df33363994b27fc7f71bea3bcedc7ee04bda23107ca3e6e4"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hoist-jsx.md",
+      "sha256": "93b229560fae92005ed9a2a829064607b39b2e984e92d221d05b2d41df2b7c0e"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hydration-no-flicker.md",
+      "sha256": "dc7ab358c67c177bca6e6f360fbc935ebe4efa928c0ba3ebd3f9f3d9e2000ca3"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hydration-suppress-warning.md",
+      "sha256": "915bacb934e2927d84b37a3f3d225a47b309ac8f9e494ed2bcb66ce07c5676a2"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-resource-hints.md",
+      "sha256": "351b1095d641717b930f1b2253282b7120af3023bc74e06c17675168d4286864"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-script-defer-async.md",
+      "sha256": "4cea07b7875ba7fc2c7465ff23b63a2bb334f90aaf2d9293d38d67b05fdb32ab"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-svg-precision.md",
+      "sha256": "ed468533f6e95f622859c884b122cf21f9f593ed6bb3d500a54de4b9f9bcb9fb"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-usetransition-loading.md",
+      "sha256": "3a1249c3f13026b6f54ab5712c388df219d6af01b12aa542749acd99a46f4bc1"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-defer-reads.md",
+      "sha256": "234050a77faf50cb306be10a9e15bd4421134ab5907e75f13e6d78e2bd262dc9"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-dependencies.md",
+      "sha256": "17eb5830956fb56486fd3cfc7431f5849d39751730c05ad9e77dd4f0c27169c5"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-derived-state-no-effect.md",
+      "sha256": "cb11ec76f50aa7b6847269f02d79b120c889a30d9ecd2c1d578f75144419c77a"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-derived-state.md",
+      "sha256": "1c326bb67b01fb084eb00c8911b0a7cff54681c2315b629f88e49b64eaa6481d"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-functional-setstate.md",
+      "sha256": "5e68df6b2ae8058e67f476ff1ac67bde159f5a9d18df439e46eabcdeb7b52e58"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-lazy-state-init.md",
+      "sha256": "4ae844740f266fc8cbf050701230286624a2440ec5be67b9a63d9edc3c580573"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-memo-with-default-value.md",
+      "sha256": "81c47476564ad8a79fc68fc442734255ca7d6829424359464503fda0a9f9a0dd"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-memo.md",
+      "sha256": "1f258990c2f27ff6256b3cc5c43300631bb3f0d81f749aed08d07fcdcc131dd1"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-move-effect-to-event.md",
+      "sha256": "abc2cbf167bee056743023351e96806a411d3398da8802093620aecf0721f029"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-no-inline-components.md",
+      "sha256": "1cc32907a770272524ba682eef9e7efdd8ad4533b6f89b718a1fcd7d1d0eb6a3"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-simple-expression-in-memo.md",
+      "sha256": "5bdcf2d1558ba5204e643c887b7b4060f89630969425651eb68e96427d97f800"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-split-combined-hooks.md",
+      "sha256": "6f45d703343484ef9acef9388397f3642966ae6a5a258899a0cf1f9977cfbf6c"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-transitions.md",
+      "sha256": "60f4033909a62df5e5b8c601494f9e50a562e2f8c1c2d81eac24f38142265f1c"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-use-deferred-value.md",
+      "sha256": "8c3579576a61a949884167745dcfaf1d5426ba305cc61fd0a79602d70fda4909"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-use-ref-transient-values.md",
+      "sha256": "f1a649af9d1d0b5c762f6c9c4c1c70c90d7df82aa10296ee87aadb78c1b76c54"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-after-nonblocking.md",
+      "sha256": "d0b8d24a3db9f0f65f9e2bddbf230b0e03a5f60e1229d93a4a18f5e7a991c7c2"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-auth-actions.md",
+      "sha256": "a2ca8aa102839251c7971ec784560fab943c20b36fe6f80365d4110c13260c23"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-lru.md",
+      "sha256": "1924b64561841923b88a657085097a0aeba3e0ba2d5470b9f5c15cc10d6ae70f"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-react.md",
+      "sha256": "fddeea6c870bb3da4134b61d54b7d09b83d2603f929b7547cd3dc1dc269edd5c"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-dedup-props.md",
+      "sha256": "c2747424cdac46be62f835f245a0aa887b0090b416d28e2ac8676702645eeb37"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-hoist-static-io.md",
+      "sha256": "5abea4dd882b13661bd5f7dfb93f9e547d5f08176c61c448ade91b210ed5d49f"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-no-shared-module-state.md",
+      "sha256": "4d869bf1cd2f1632e5ca4c0e64b1cf0e71c5f5a0f940bc8a22174d205e735ed7"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-parallel-fetching.md",
+      "sha256": "569a2e9fc04f9606686cd75c5894ef8781b502786a7fffe241396846c7733472"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-parallel-nested-fetching.md",
+      "sha256": "ad5d9656984d4a959997a2367bf59cc6632297b4634a1dd13a087939d83f30b3"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-serialization.md",
+      "sha256": "f4c7d68b29c82381baad059c4a7f09e868e71ec9c3115a26ad3ae7d24c0dfe1f"
+    },
+    {
+      "path": ".agents/skills/react-components/README.md",
+      "sha256": "f000ddbcecffe54f5615b61ccc796a7b01305e95283f8c03f0d025c576b8bab9"
+    },
+    {
+      "path": ".agents/skills/react-components/SKILL.md",
+      "sha256": "a978bf8fb135c69f944432dfa4166d6a88903c524ed4be51899a226f7daa223e"
+    },
+    {
+      "path": ".agents/skills/react-components/examples/gold-standard-card.tsx",
+      "sha256": "c7b168b1ad6e81dbdb06a5a1cc9e4598f14c97abfbb0d15cfe36b3f4152ac4b2"
+    },
+    {
+      "path": ".agents/skills/react-components/package-lock.json",
+      "sha256": "db75fd36cd675a30d144138d4711b74429bffca81cb4cd75b866d6cdafd6e4c9"
+    },
+    {
+      "path": ".agents/skills/react-components/package.json",
+      "sha256": "937a3476dceff2386e7828962f926bccdf4f936b4fa727703082ee7d0e8083bd"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/architecture-checklist.md",
+      "sha256": "55c3407f307d557d3bd35eb3d653a18c6b2977f38efc71f6c33192ce37159c32"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/component-template.tsx",
+      "sha256": "9d6edbca16724ebe83084ea8bb4ef0c03cace3c1773ee1b693412ac4efc30579"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/stitch-api-reference.md",
+      "sha256": "f7cd8515705dcff420e40ee69609990b12c5e2c2c1489cea10244f177af31624"
+    },
+    {
+      "path": ".agents/skills/react-components/resources/style-guide.json",
+      "sha256": "9ac47e30d145bba43af7959e70cf1d8b96ba8b0e07a860ef98b1e05d50ced712"
+    },
+    {
+      "path": ".agents/skills/react-components/scripts/fetch-stitch.sh",
+      "sha256": "2b5939b68289d1eca1a616e7c4a4cbe6de09010941bb7756348d75509e5ef0ff"
+    },
+    {
+      "path": ".agents/skills/react-components/scripts/validate.js",
+      "sha256": "64e73219b05b0ccc049830be0cb890adf9388137177269665fd4bce52870d3a1"
+    },
+    {
+      "path": ".agents/skills/rust-architecture-specialist/SKILL.md",
+      "sha256": "7b459980cdc4a265ba477fcfa600dec0bef5bb161674349d7e56c567ac9b680d"
+    },
+    {
+      "path": ".agents/skills/sdd-architecture-board/SKILL.md",
+      "sha256": "8611ac312a2fad4774d9ac55bcd15011021d1d2793ad51614181adaabc0d7aa2"
+    },
+    {
+      "path": ".agents/skills/sdd-architecture-board/templates/ADR_TEMPLATE.md",
+      "sha256": "ea86c88dd36218c3e3584a9ac9c76e018c9299ae97d8e3db3aac1003ce81888c"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/SKILL.md",
+      "sha256": "903eef51279be12f2afd0b09fcf375e8f5209e7131165e3c1aad149787308fae"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/plan-gate.md",
+      "sha256": "1417738655f819f71fa4e1747210bb80012a5b5c2356e706c503e1d0d2134971"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/proposal-gate.md",
+      "sha256": "31f432e16a583f6670f799a1565b165dbffbf76bdaa2636701d241e18296534f"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/spec-gate.md",
+      "sha256": "0ead9b48ba4d71fd8f2db81e98316cfe25605e9b7e3d3054878ed2e5c26b0426"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/tasks-gate.md",
+      "sha256": "7aef91548865426fb867b81d1ca313c69c9bc145558181a8ed15c68bdb3aad81"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/traceability-gate.md",
+      "sha256": "004b0442bbcf6201dfceeec86977fa18d3ad6bedf14b1f941708fb4e710054f5"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/asserts/verify-gate.md",
+      "sha256": "da4a62e2ceeb1e1ab4382a5a227793763248e13aae95ad5dbb7972148fe926b4"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/api.md",
+      "sha256": "96e7e2e31f73de06444cf12233ea49db0e601c05935987151e7f0e0712208edd"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/backend.md",
+      "sha256": "b66901d63831b5190191ba9c625fee6b8334f5c7d5abc66fb8ebbbd534c8ad72"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/cloud.md",
+      "sha256": "69e08a0845c1d956b867b8adfd97df9f24fb30d9e52a2431cf4ff5d8aa7802b9"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/database.md",
+      "sha256": "ee3bb481ef4b2833fbf2bf0368921bba2577f20d68ba32574b5843e79b323014"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/delta-template.md",
+      "sha256": "18774ca0be944c9f4a79366e34525d828a968de709b1327e4d7308e55c136c1e"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/ecommerce.md",
+      "sha256": "65de040b863b4cca002185c5d54b7f8198ccb3b950be2fde72cfdf55dfd57db7"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/fintech.md",
+      "sha256": "75692b0cbac60bc09ef60f0b8a5dbd666b6b55216d31a068539cfdbbd3bf6679"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/frontend.md",
+      "sha256": "def283891e7adeb2d260986b15f5824f0810866ac7c613634d7a0e3e787fe21e"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/healthcare.md",
+      "sha256": "1f7db363f4dead9f7cdd1134f710d0dffca5f11c2912c11fb30762056ebd2e7f"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/plan-template.md",
+      "sha256": "91476b367d61ca154b7406d9694ff094ef2a02c23c3d0a9f3a134eb168f489d4"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/proposal-template.md",
+      "sha256": "75adee00091da3fe8e3fde27e6c63df51d6bb4d395118406eba1464823aa6fe5"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/saas-multitenant.md",
+      "sha256": "4077eabb8b27738437845718a8419aafa57223be7a48b54aa8cd3f3f9f518bfc"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/security.md",
+      "sha256": "2bf681eca1d7173a06091bf3af8b7bdb552b10b9a8f72ca830f84e4662145437"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/spec-template.md",
+      "sha256": "780408e04b944b99429041fb9e4496d594fcdb401f34ad3003e377a753b70b15"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/task-template.md",
+      "sha256": "b35156295c3764182b1e502b17c2d605054216e824c6245e1ea2b752ed9a5543"
+    },
+    {
+      "path": ".agents/skills/sdd-compiler/references/trace-template.md",
+      "sha256": "41510a882f319fdcd779d36767ceb5a6c891bef20c80dd4d6e6d2ea45be77809"
+    },
+    {
+      "path": ".agents/skills/sdd-feedback/SKILL.md",
+      "sha256": "dc5cee210a3d24e7832e38588535ea7a98ca9721767042427b284659d8464856"
+    },
+    {
+      "path": ".agents/skills/sdd-feedback/references/summary-template.md",
+      "sha256": "5c53fabc8dee4fbdfa16bfa9ad25f1b73ce0feaf0fde4dc1d2e5889681db0357"
+    },
+    {
+      "path": ".agents/skills/security-review/SKILL.md",
+      "sha256": "17b319f2017409cbcc5392163e64ad15b8a4546d0b8f344a4329d9586a1cb480"
+    },
+    {
+      "path": ".agents/skills/spec-review/README.md",
+      "sha256": "97b986ed76b875a740c382da97cf188f32bfd150cbc94f01feb59b30771e3420"
+    },
+    {
+      "path": ".agents/skills/spec-review/SKILL.md",
+      "sha256": "37564769f449379ca98bab4b9308260b780b5d1eb399e137f6ac2dee0c383e54"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/checklist.md",
+      "sha256": "9a32f0614250538bd8a4f8229a6115fb6e5e838bb41f0fd2b7d3d099000945e4"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/output-template.md",
+      "sha256": "f422a9cf34482e76c838c70cfcb572c614a325353f729e30f5211354835b5da0"
+    },
+    {
+      "path": ".agents/skills/spec-review/assets/usage-guide.md",
+      "sha256": "71f90fd4c66a7804d5722ca0f57adde1235b652aad71baecce785247445d8520"
+    },
+    {
+      "path": ".agents/skills/template-best-practices/SKILL.md",
+      "sha256": "e95eab41bc8eb13e42fb705b306217c845b33a44dc52b7257a320d1c22645907"
+    },
+    {
+      "path": ".agents/skills/template-deepsearch/SKILL.md",
+      "sha256": "e6fc53d0948bc78ad3643e78909a78aa905af0bb5c688bdfc80f414608533fd6"
+    },
+    {
+      "path": ".agents/skills/template-structure/SKILL.md",
+      "sha256": "bcd5f533374729b5a679fd97636682a3260070cd0897842d2bf7eb1f88adfaac"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/SKILL.md",
+      "sha256": "f571a0ab228ad3ad3ac41a51c2c3450a9edb6ac3eb65f16baf5b459d01d53689"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/_sync_all.py",
+      "sha256": "b540b3a4f87598ae29048b3cceae1fc17b39b629aee2cbe5c802ffc7b48abf6d"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/app-interface.csv",
+      "sha256": "2a17ef810dab715ce1f339861817a8fbe3ccc38142b70517301e874803e838ac"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/charts.csv",
+      "sha256": "ebb565308115f955791b0431797a89d9b3587c25d5babb9428d10712c4924817"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/colors.csv",
+      "sha256": "69ee8c1147b269599d20ca418bdd6f32563a9aa2d962fb9a9b8dec66bf7b1ba4"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/design.csv",
+      "sha256": "6f0ae42f16b3cbfa3f07050268387557859ff666e2651b1b82763f099d724b3f"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/draft.csv",
+      "sha256": "e190c796b707858a5436dc4c27f9ee9bb6618014ca73f533e423abe5ce9e4d06"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/google-fonts.csv",
+      "sha256": "2c03a3cd134d126bd9d6a7dc2a6360dc5272219ad6df3eb9315b031f806e1487"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/icons.csv",
+      "sha256": "f376c29fb4df37b4bdb366a5aa70cb211ba3dd8b435390aaa03152a64b07d2e8"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/landing.csv",
+      "sha256": "080cedbcd61ff8ec9520f33929baa76bee9589e783f83b2f8d824a466b6a46d7"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/products.csv",
+      "sha256": "9fd9e776ba847cf44c1ea78f95fe5e33b2c56bb7e186e3cfff9c49bc7fcb691b"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/react-performance.csv",
+      "sha256": "904c8afcda229629545912dde0e8ac37503757131f0169f80b016f1f58c4fd3f"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/angular.csv",
+      "sha256": "dd7cc2a2b34cd8f0508bd05b067545e7a44f7724440c432d491d92a61a8fb6c1"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/astro.csv",
+      "sha256": "ad18dae3ab6d148d37d144592df80dc1825b6c9e86d9d2d68fdda77434206a37"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/flutter.csv",
+      "sha256": "fe36d404c799781e8ba6e9a8179b45799ed5126a545528550cd2eb0f2346e8c5"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/html-tailwind.csv",
+      "sha256": "7aef38e75c53559470afcfa91580a9917ca8b7dbf8b92110389e23e93703ac52"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/jetpack-compose.csv",
+      "sha256": "6c8fd4b0391c342c12b0af15610cd5becbeccaef0bbe8dcfc01d928c3195d93e"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/laravel.csv",
+      "sha256": "50e11e60a64b30f329af25ae71f4b8bbdb43bafc1865451b74f9f540a88964d5"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nextjs.csv",
+      "sha256": "e828ccc04843742f52f545a068e8a9ab0d2b97c0e771f7e93bf0cef74da05554"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxt-ui.csv",
+      "sha256": "05d6e74501b2b6a636faed32450622759f49a5bcafad971f5f4e7eba0eb7be71"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxtjs.csv",
+      "sha256": "f7a3f2d9542856d00199f85c6c023b7c284cc698e2e6e12d61afce2edacb24d6"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react-native.csv",
+      "sha256": "a08ca77fcf6b6d9531982dce465366296013bfcf12d2938ac72ad57cf0c4f085"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react.csv",
+      "sha256": "e5624ab41d33427d88e41d07581ce4eca59b37b36ab72a6ad43a9c8e2d0a1c72"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/shadcn.csv",
+      "sha256": "395c2e415ef6f48a474acccdc8eb2c7258a6ed751a5037ba171a2d8823e02ded"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/svelte.csv",
+      "sha256": "71af52d64f266c88070b91dbbaa900c2f8074b6baae9f35eaea6ba9cec6fd803"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/swiftui.csv",
+      "sha256": "c9c2d2510f8e66281a2514e8dd0125a6b653b9ef53a71281b5e7dfe003d5b569"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/threejs.csv",
+      "sha256": "f1c05f8f269fc4784170c837f4ff43b50042f00bbd6ba7dbef2896081a052544"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/vue.csv",
+      "sha256": "c2724915d3c11cd67263f25896cff721f787a0fdd8326002d31e9f5806dfd8f8"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/styles.csv",
+      "sha256": "9b5089dcde8999333b36878252a255cc3bacbb2fe7b836c76cc7f7aa2abb643d"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/typography.csv",
+      "sha256": "7f67f2b0f1fb7134b6db61a02c1859d1fc804034f8e27503d30b5f2857a84bea"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ui-reasoning.csv",
+      "sha256": "41976082ecae1100da937c949215dc6694393e03f3c2a7444dd92a9edb43cb11"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ux-guidelines.csv",
+      "sha256": "1870ee048f2a2bdd60709f8f7adf7f3b6dcad560bc005c8b2915a8ac8639820d"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/__pycache__/core.cpython-310.pyc",
+      "sha256": "115f18a6f1e5a136bfb6fe194117cae93553101eebc4b223a2526fa5e99e0e09"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/__pycache__/design_system.cpython-310.pyc",
+      "sha256": "ac99a1647114658065467baa593609f1c52e993c4f8bcc122e070d92661a147b"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/core.py",
+      "sha256": "2ffc15c23660d0821c85bef75b9424e52fb0bae218bc4c32cebdf177b0c9ebb8"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/design_system.py",
+      "sha256": "f7a21e83739c5ac6ca3738846220f6a9eb7f3c1ae7a44989c5aaa2061ca60310"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/search.py",
+      "sha256": "29c9a14ad2722751acb973f1fda76c250485c1a60db4764350e0d5bb62e7db3d"
+    },
+    {
+      "path": ".opencode/plugins/gate.js",
+      "sha256": "b08b6393598eb222729f39afc340222c9db247a5846cde32e847101663f2263e"
+    },
+    {
+      "path": ".opencode/plugins/harness-validator.js",
+      "sha256": "e43272a6565d780df83fab71e73e6fa36519bd305f3be6490c206d98ff98c19d"
+    },
+    {
+      "path": ".opencode/plugins/hitl-guardrail.js",
+      "sha256": "eeead758efe9656e517e4c5c432096d3cd611901914cce3091e4b36042a5d025"
+    },
+    {
+      "path": ".opencode/plugins/lib/config.mjs",
+      "sha256": "3147ec936c570efa9fbfc169b21537b2b6a8e8cd32f3068b218f4bb380f679fa"
+    },
+    {
+      "path": ".opencode/plugins/lib/seal.mjs",
+      "sha256": "b698703d3a27249d5f92e79050854de1645dc0124f12290c9d06904a89a595a6"
+    },
+    {
+      "path": "opencode.json",
+      "sha256": "e46e260195ae4b39671519d370c05dca3c8cbcf3cf44beffe6ca22788f411c4e"
+    },
+    {
+      "path": "harness.config.json",
+      "sha256": "56c3a7349db5c84b7020ac6fc95b3005a46a194476bafde529be6b33d39a8a19"
+    }
+  ],
+  "flaggedResolution": [],
+  "validationMarks": [
+    {
+      "item": "project",
+      "status": "validated"
+    },
+    {
+      "item": "stack",
+      "status": "validated"
+    },
+    {
+      "item": "backend",
+      "status": "validated"
+    },
+    {
+      "item": "frontend",
+      "status": "validated"
+    },
+    {
+      "item": "suiteCommand",
+      "status": "validated"
+    },
+    {
+      "item": "pluginsDir",
+      "status": "validated"
+    }
+  ]
+}
