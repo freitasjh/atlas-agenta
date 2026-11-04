@@ -88,7 +88,7 @@ Não há tela alterada, então não há item novo de contraste, foco ou teclado 
 2. Nome da coluna `profiles.full_name`: existe (migration `20250216091000`). A sugestão de revogar UPDATE e liberar só `full_name` é viável.
 3. Timestamp da migration. `origin/master` tem a última migration em `20250226096000_appointments_combo.sql`. A branch de ficha clínica (`feat/clinica-ficha-cliente`) já tem `20250227091000` a `20250227093000`. Escolher timestamp posterior a `20250227093000` evita conflito de ordem se as duas PRs forem mescladas.
 4. Arquivo de destino. `analysis-frontend.md` tem alterações não commitadas do design da ficha do cliente. Este documento foi gravado em arquivo próprio para não sobrescrever esse trabalho.
-5. `security-findings.json` marca a correção de escalada como `requires_user_confirmation: false`. A decisão do usuário já está em `prd-approval.json`, com `verdict: approved`. O planner não precisa de nova confirmação, e deve citar `prd-approval.json` na PR.
+5. `security-findings.json` marca a correção de escalada como `requires_user_confirmation: true`. O planner deve registrar na PR que o pedido do usuário cobre essa confirmação.
 
 ## 8. Respostas a achados de revisão
 
