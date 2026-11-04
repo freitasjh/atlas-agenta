@@ -11,6 +11,7 @@ export const inviteSchema = z
   .object({
     email: z.string().email(),
     role: z.enum(INVITE_ROLES),
+    professional_id: z.string().uuid().optional(),
   })
   .strict();
 

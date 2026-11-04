@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import {
   Layers,
-  Mail,
   MessageCircle,
   MessageSquareText,
   Scissors,
@@ -9,6 +8,7 @@ import {
   Copy,
   Link as LinkIcon,
   CreditCard,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import { usePublicBookingLink, useCreatePublicBookingLink } from "@/hooks/usePublicBookingLink";
@@ -102,10 +102,17 @@ export function ConfigHubPage() {
       visible: canManageMessageTemplates,
     },
     {
-      to: "/app/config/membros",
-      titulo: "Membros",
-      descricao: "Convide pessoas para a sua empresa e gerencie convites.",
-      icon: Mail,
+      to: "/app/config/usuarios",
+      titulo: "Usuários",
+      descricao: "Gerencie usuários e convites da empresa.",
+      icon: Users,
+      visible: isAdmin,
+    },
+    {
+      to: "/app/config/auditoria",
+      titulo: "Auditoria",
+      descricao: "Quem fez o quê na sua empresa.",
+      icon: ScrollText,
       visible: isAdmin,
     },
     {

@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
+import { toast } from "sonner";
+
 import { RouteFallback } from "@/components/RouteFallback";
 import { useSignOut } from "@/hooks/useAuthMutations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -32,16 +34,25 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
  */
 export function DefensiveLogout() {
   const { pathname, search } = useLocation();
-  const { isAuthenticated, hasIdentityError, hasTenantError } = useCurrentUser();
+  const { isAuthenticated, hasIdentityError, hasTenantError, active } = useCurrentUser();
   const signOut = useSignOut();
   const { mutate } = signOut;
 
   const identityUnreadable =
-    isAuthenticated && (hasIdentityError || hasTenantError);
+    isAuthenticated && (hasIdentityError || hasTenantError || active === false);
 
   useEffect(() => {
     if (identityUnreadable) mutate();
   }, [identityUnreadable, mutate]);
+
+  useEffect(() => {
+    // Toast só quando a claim veio válida (active=false emitido pelo hook) — não
+    // quando a identidade é ilegível (token antigo/claims ausentes), para evitar
+    // toast falso para sessões antigas.
+    if (isAuthenticated && !hasIdentityError && active === false) {
+      toast.error("Acesso desativado. Contate o administrador.");
+    }
+  }, [isAuthenticated, hasIdentityError, active]);
 
   const from = `${pathname}${search}`;
 

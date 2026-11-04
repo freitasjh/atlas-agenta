@@ -18,16 +18,16 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
  */
 export function RequireAuth() {
   const location = useLocation();
-  const { isLoadingAuth, isAuthenticated, hasIdentityError, hasTenantError } =
+  const { isLoadingAuth, isAuthenticated, hasIdentityError, hasTenantError, active } =
     useCurrentUser();
 
   if (isLoadingAuth) {
     return <RouteFallback />;
   }
 
-  // Sessão viva mas identidade ilegível: encerrar a sessão antes de sair, senão
-  // o usuário fica preso entre a rota privada e `/login`.
-  if (isAuthenticated && (hasIdentityError || hasTenantError)) {
+  // Sessão viva mas identidade ilegível ou conta desativada: encerrar a sessão
+  // antes de sair, senão o usuário fica preso entre a rota privada e `/login`.
+  if (isAuthenticated && (hasIdentityError || hasTenantError || active === false)) {
     return <DefensiveLogout />;
   }
 

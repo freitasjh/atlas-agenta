@@ -18,6 +18,8 @@ export interface AuthClaims {
   /** `null` para `super_admin` (invariante do banco: sem tenant). */
   tenantId: string | null;
   mustChangePassword: boolean;
+  /** Claim `active` (ADR-003). Ausente/null ⇒ parse falha ⇒ `null` (fail-closed). */
+  active: boolean;
 }
 
 /**
@@ -30,6 +32,7 @@ const claimsSchema = z.object({
   user_role: z.enum(ROLES),
   tenant_id: z.string().uuid().nullable(),
   must_change_password: z.boolean(),
+  active: z.boolean(),
 });
 
 /**
@@ -82,5 +85,6 @@ export function parseAuthClaims(accessToken: string): AuthClaims | null {
     role: parsed.data.user_role,
     tenantId: parsed.data.tenant_id,
     mustChangePassword: parsed.data.must_change_password,
+    active: parsed.data.active,
   };
 }

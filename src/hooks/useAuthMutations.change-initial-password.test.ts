@@ -161,6 +161,7 @@ describe("useChangeInitialPassword — sucesso 200 (sessões revogadas)", () => 
         role: "admin",
         tenantId: TENANT_ID,
         mustChangePassword: false,
+        active: true,
       },
     });
   });
@@ -239,6 +240,7 @@ describe("useChangeInitialPassword — 409 password_change_not_required", () => 
       role: "professional",
       tenantId: TENANT_ID,
       mustChangePassword: false,
+      active: true,
     });
   });
 

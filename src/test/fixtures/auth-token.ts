@@ -27,6 +27,7 @@ export function claimsPayload(
     user_role: Role;
     tenant_id: string | null;
     must_change_password: boolean;
+    active: boolean;
   }> = {},
 ): Record<string, unknown> {
   return {
@@ -34,6 +35,7 @@ export function claimsPayload(
     user_role: "professional",
     tenant_id: TENANT_ID,
     must_change_password: false,
+    active: true,
     ...overrides,
   };
 }

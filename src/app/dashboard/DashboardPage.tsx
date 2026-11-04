@@ -65,7 +65,7 @@ const PERIOD_OPTIONS: { value: DashboardPeriod; label: string }[] = [
 ];
 
 export function DashboardPage() {
-  const { canScheduleForAnyProfessional } = usePermissions();
+  const { canScheduleForAnyProfessional, isProfessional } = usePermissions();
   const { tenant, userId } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
@@ -102,8 +102,12 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        titulo="Visão geral"
-        descricao="A saúde da operação e o que precisa de você agora."
+        titulo={isProfessional ? "Sua agenda" : "Visão geral"}
+        descricao={
+          isProfessional
+            ? "Seus agendamentos e o que precisa de você agora."
+            : "A saúde da operação e o que precisa de você agora."
+        }
         acoes={
           <div className="space-y-1">
             <label htmlFor="dashboard-periodo" className="sr-only">

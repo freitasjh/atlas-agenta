@@ -25,6 +25,7 @@ export type HookInput = z.infer<typeof hookInputSchema>;
 export const profileRowSchema = z.object({
   role: z.enum(ROLE_VALUES),
   tenant_id: z.string().uuid().nullable(),
+  active: z.boolean(),
 });
 
 export type ProfileRow = z.infer<typeof profileRowSchema>;
@@ -68,6 +69,7 @@ export function buildHookClaims(
       user_role: profile?.role ?? null,
       tenant_id: profile?.tenant_id ?? null,
       must_change_password: mustChangePassword,
+      active: profile?.active ?? false,
     },
   };
 }

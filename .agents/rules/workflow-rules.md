@@ -606,7 +606,7 @@ Para **TODO** desenvolvimento, as skills apropriadas **OBRIGATORIAMENTE** devem 
 | `.agents/rules/backend-integration-tests.md` | Regras detalhadas de testes de integração |
 | `.agents/rules/backend-coding-standards.md` | Padrões de codificação backend |
 | `.agents/rules/frontend-coding-standards.md` | Padrões de codificação frontend |
-| `.agents/rules/db-migration-flyway.md` | Regras de migração Flyway |
+| `.agents/rules/db-migration-supabase.md` | Regras de migração Supabase (PostgreSQL) |
 | `.agents/rules/security-standard.md` | **Fonte da verdade** de segurança (OWASP) — web, API, mobile |
 | `.agents/rules/brain-context.md` | Ponte fina → `BRAIN.MCP.md` (dono brain) |
 | `.agents/rules/sdd-workflow-standard.md` | Padrão do workflow SDD |

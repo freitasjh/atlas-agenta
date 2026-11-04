@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
+import { useAuthClaims } from "@/hooks/useAuthClaims";
 import type { Professional } from "@/types/domain";
+
+const unlinkProfessionalProfileResponseSchema = z.object({ ok: z.boolean() });
 import type { ProfessionalInput } from "@/lib/validations/catalog";
 import type { ScheduleValidityInput } from "@/lib/validations/schedule";
 
@@ -31,11 +34,16 @@ const PROFESSIONALS_KEY = ["professionals"] as const;
 
 export function useProfessionals<TData = Professional[]>(options?: {
   activeOnly?: boolean;
+  enabled?: boolean;
   select?: (professionals: Professional[]) => TData;
 }) {
   const activeOnly = options?.activeOnly ?? false;
+  const enabled = options?.enabled ?? true;
+  const claims = useAuthClaims();
+  const tenantId = claims?.tenantId ?? null;
   return useQuery<Professional[], Error, TData>({
-    queryKey: [...PROFESSIONALS_KEY, { activeOnly }],
+    queryKey: [...PROFESSIONALS_KEY, tenantId, { activeOnly }],
+    enabled,
     select: options?.select,
     queryFn: async () => {
       let query = supabase
@@ -148,6 +156,24 @@ export function useUpdateScheduleValidity() {
         .single();
       if (error) throw error;
       return professionalRowSchema.parse(data);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PROFESSIONALS_KEY });
+    },
+  });
+}
+
+/** Desvincula o login (profile) de um profissional (admin). Não apaga o registro operacional. */
+export function useUnlinkProfessionalProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (professionalId: string) => {
+      const { data, error } = await supabase.functions.invoke(
+        "unlink-professional-profile",
+        { body: { professional_id: professionalId } },
+      );
+      if (error) throw error;
+      return unlinkProfessionalProfileResponseSchema.parse(data);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: PROFESSIONALS_KEY });

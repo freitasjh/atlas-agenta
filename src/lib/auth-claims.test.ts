@@ -26,6 +26,7 @@ describe("parseAuthClaims", () => {
       role: "professional",
       tenantId: TENANT_ID,
       mustChangePassword: false,
+      active: true,
     } satisfies AuthClaims);
   });
 
@@ -38,6 +39,7 @@ describe("parseAuthClaims", () => {
       role: "super_admin",
       tenantId: null,
       mustChangePassword: false,
+      active: true,
     } satisfies AuthClaims);
   });
 
@@ -61,6 +63,28 @@ describe("parseAuthClaims", () => {
     delete payload.must_change_password;
 
     expect(parseAuthClaims(tokenWith(payload))).toBeNull();
+  });
+
+  it("claim active:false é parseada (conta desativada ⇒ logout defensivo)", () => {
+    const claims = parseAuthClaims(
+      tokenWith(claimsPayload({ active: false })),
+    );
+
+    expect(claims).not.toBeNull();
+    expect(claims?.active).toBe(false);
+  });
+
+  it("claim active ausente ⇒ null (sessão emitida antes do ADR-003)", () => {
+    const payload = claimsPayload();
+    delete payload.active;
+
+    expect(parseAuthClaims(tokenWith(payload))).toBeNull();
+  });
+
+  it("claim active: null ⇒ null (claim corrompida)", () => {
+    expect(
+      parseAuthClaims(tokenWith(claimsPayload({ active: null as unknown as boolean }))),
+    ).toBeNull();
   });
 
   it("claim tenant_id ausente ⇒ null (não confunde ausência com null)", () => {

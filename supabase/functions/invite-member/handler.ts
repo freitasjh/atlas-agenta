@@ -13,6 +13,9 @@ type ErrorCode =
   | "unauthenticated"
   | "forbidden"
   | "invalid_body"
+  | "conflict"
+  | "professional_not_found"
+  | "professional_already_linked"
   | "internal_error";
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
@@ -20,6 +23,9 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   unauthenticated: 401,
   forbidden: 403,
   invalid_body: 400,
+  conflict: 409,
+  professional_not_found: 400,
+  professional_already_linked: 400,
   internal_error: 500,
 };
 
@@ -28,6 +34,9 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   unauthenticated: "Sessão inválida ou expirada.",
   forbidden: "Você não tem permissão para convidar membros.",
   invalid_body: "Dados inválidos.",
+  conflict: "Profissional já vinculado a um perfil.",
+  professional_not_found: "Profissional não encontrado.",
+  professional_already_linked: "Profissional já vinculado a um perfil.",
   internal_error: "Não foi possível criar o convite. Tente novamente.",
 };
 
@@ -79,10 +88,11 @@ async function resolveIdentity(service: SupabaseClient, token: string): Promise<
   if (error || !data.user) return null;
   const { data: profile, error: profileErr } = await service
     .from("profiles")
-    .select("tenant_id, role")
+    .select("tenant_id, role, active")
     .eq("id", data.user.id)
     .maybeSingle();
   if (profileErr || !profile) return null;
+  if (profile.active !== true) return null;
   return {
     userId: data.user.id,
     tenantId: (profile.tenant_id as string | null) ?? null,
@@ -132,6 +142,32 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
       return errorResponse("forbidden");
     }
 
+    // Validação opcional de professional_id (ADR-002).
+    let professionalId: string | null = body.professional_id ?? null;
+    if (professionalId) {
+      if (tenantId === null) {
+        return errorResponse("invalid_body");
+      }
+      if (body.role !== "professional") {
+        return errorResponse("invalid_body");
+      }
+      const { data: professional, error: profErr } = await service
+        .from("professionals")
+        .select("id, tenant_id, profile_id")
+        .eq("id", professionalId)
+        .maybeSingle();
+      if (profErr || !professional) {
+        return errorResponse("professional_not_found");
+      }
+      const profTenant = (professional.tenant_id as string | null) ?? null;
+      if (profTenant !== tenantId) {
+        return errorResponse("professional_not_found");
+      }
+      if (professional.profile_id !== null && professional.profile_id !== undefined) {
+        return errorResponse("professional_already_linked");
+      }
+    }
+
     const inviteToken = generateToken();
     const tokenHash = await sha256Hex(inviteToken);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -146,6 +182,7 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
         status: "pending",
         expires_at: expiresAt,
         created_by: identity.userId,
+        professional_id: professionalId,
       })
       .select("id")
       .single();
@@ -161,7 +198,7 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
       action: "invitation.created",
       target_type: "invitation",
       target_id: invitation.id as string,
-      metadata: { role: body.role },
+      metadata: { role: body.role, ...(professionalId ? { professional_id: professionalId } : {}) },
     });
     if (auditErr) {
       console.error("invite-member: audit insert failed", auditErr.code ?? "no-code");
@@ -172,9 +209,22 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
     const siteUrl = Deno.env.get("SITE_URL") ?? "";
     const redirectTo = `${siteUrl}/accept-invitation?token=${inviteToken}`;
     try {
-      const admin = (service as { auth?: { admin?: { inviteUserByEmail?: (e: string, o: unknown) => Promise<unknown> } } }).auth?.admin;
+      const admin = (service as { auth?: { admin?: { inviteUserByEmail?: (e: string, o: unknown) => Promise<{ data?: unknown; error?: unknown }> } } }).auth?.admin;
+      console.log("invite-member: auth admin methods", {
+        hasInviteUserByEmail: typeof admin?.inviteUserByEmail,
+      });
       if (typeof admin?.inviteUserByEmail === "function") {
-        await admin.inviteUserByEmail(body.email, { redirectTo });
+        const result = await admin.inviteUserByEmail(body.email, { redirectTo });
+        const inviteErr = (result as { error?: unknown } | null | undefined)?.error as
+          | { code?: string; message?: string }
+          | null
+          | undefined;
+        if (inviteErr) {
+          console.error("invite-member: inviteUserByEmail failed", {
+            code: inviteErr.code ?? "no-code",
+            message: inviteErr.message ?? "no-message",
+          });
+        }
       }
     } catch (err) {
       console.error("invite-member: inviteUserByEmail failed", err instanceof Error ? err.name : "erro");

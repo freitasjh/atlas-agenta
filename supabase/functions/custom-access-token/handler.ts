@@ -118,7 +118,15 @@ function createServiceClient(): SupabaseClient {
   });
 }
 
-export async function handleHookRequest(req: Request): Promise<Response> {
+export interface HandleHookOptions {
+  /** Client de serviço injetado (testes). Default: criado a partir do env. */
+  serviceClient?: SupabaseClient;
+}
+
+export async function handleHookRequest(
+  req: Request,
+  options?: HandleHookOptions,
+): Promise<Response> {
   if (req.method !== "POST") {
     return errorResponse("method_not_allowed");
   }
@@ -157,16 +165,20 @@ export async function handleHookRequest(req: Request): Promise<Response> {
 
     // 3. Papel e tenant vêm de `profiles` (fonte da verdade), com service role.
     let service: SupabaseClient;
-    try {
-      service = createServiceClient();
-    } catch {
-      console.error("custom-access-token: config missing supabase env");
-      return errorResponse("identity_unavailable");
+    if (options?.serviceClient) {
+      service = options.serviceClient;
+    } else {
+      try {
+        service = createServiceClient();
+      } catch {
+        console.error("custom-access-token: config missing supabase env");
+        return errorResponse("identity_unavailable");
+      }
     }
 
     const { data, error } = await service
       .from("profiles")
-      .select("role, tenant_id")
+      .select("role, tenant_id, active")
       .eq("id", input.data.user_id)
       .maybeSingle();
 
@@ -184,6 +196,12 @@ export async function handleHookRequest(req: Request): Promise<Response> {
       }
       profile = parsedProfile.data;
     }
+
+    // ADR-003 (convite): o GoTrue chama este hook durante a verificação do token de
+    // convite, antes de `accept-invitation` criar o profile. Perfil ausente não é erro:
+    // emitimos claims mínimas (user_role=null, tenant_id=null, active=false) com 200.
+    // Fail-closed permanece para erro de leitura do banco (error !== null) e shape inválido,
+    // tratados acima (500 identity_unavailable).
 
     // 4. Monta as claims. Flag inválida também falha fechada.
     const built = buildHookClaims(input.data.claims, profile);

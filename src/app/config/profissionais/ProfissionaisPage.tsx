@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarClock, Loader2, Pencil, Plus } from "lucide-react";
+import { CalendarClock, Loader2, MailPlus, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -26,6 +26,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { ProfessionalFormDialog } from "@/app/config/profissionais/ProfessionalFormDialog";
+import { ConviteProfissionalDialog } from "@/app/config/profissionais/ConviteProfissionalDialog";
 import {
   useProfessionals,
   useDeactivateProfessional,
@@ -85,6 +86,7 @@ export function ProfissionaisPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Professional | null>(null);
   const [toToggle, setToToggle] = useState<Professional | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<Professional | null>(null);
 
   function openCreate() {
     setEditing(null);
@@ -194,6 +196,16 @@ export function ProfissionaisPage() {
                         </Button>
                         {canManageCatalog ? (
                           <>
+                            {!professional.profile_id && professional.active ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setInviteTarget(professional)}
+                              >
+                                <MailPlus aria-hidden="true" />
+                                Convidar para acesso
+                              </Button>
+                            ) : null}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -248,6 +260,16 @@ export function ProfissionaisPage() {
                   </Button>
                   {canManageCatalog ? (
                     <>
+                      {!professional.profile_id && professional.active ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setInviteTarget(professional)}
+                        >
+                          <MailPlus aria-hidden="true" />
+                          Convidar para acesso
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -277,6 +299,17 @@ export function ProfissionaisPage() {
           open={formOpen}
           onOpenChange={setFormOpen}
           professional={editing}
+        />
+      ) : null}
+
+      {canManageCatalog && inviteTarget ? (
+        <ConviteProfissionalDialog
+          open={!!inviteTarget}
+          onOpenChange={(open) => {
+            if (!open) setInviteTarget(null);
+          }}
+          professionalId={inviteTarget.id}
+          professionalName={inviteTarget.name}
         />
       ) : null}
 

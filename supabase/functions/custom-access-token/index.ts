@@ -2,4 +2,4 @@
 // testes importam sem subir servidor.
 import { handleHookRequest } from "./handler.ts";
 
-Deno.serve(handleHookRequest);
+Deno.serve((req: Request) => handleHookRequest(req));

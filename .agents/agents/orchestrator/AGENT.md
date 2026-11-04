@@ -655,7 +655,7 @@ Antes de marcar qualquer tarefa como concluída, verifique:
 | `.agents/rules/frontend-coding-standards.md` | Padrões frontend |
 | `.agents/rules/backend-unit-tests.md` | Regras de testes unitários |
 | `.agents/rules/backend-integration-tests.md` | Regras de testes de integração |
-| `.agents/rules/db-migration-flyway.md` | Regras de migração Flyway |
+| `.agents/rules/db-migration-supabase.md` | Regras de migração Flyway |
 | `.agents/rules/security-standard.md` | **Fonte da verdade** de segurança (OWASP) — web, API, mobile |
 | `.agents/rules/brain-context.md` | Protocolo de contexto do Brain |
 | `.doc/especificacao-sistema.md` | Especificação do sistema |

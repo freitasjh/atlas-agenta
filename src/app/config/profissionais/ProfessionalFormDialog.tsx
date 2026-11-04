@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -29,7 +29,9 @@ import { professionalSchema, type ProfessionalInput } from "@/lib/validations/ca
 import {
   useCreateProfessional,
   useUpdateProfessional,
+  useUnlinkProfessionalProfile,
 } from "@/hooks/useProfessionals";
+import { useTenantUsers } from "@/hooks/useTenantUsers";
 import {
   useProfessionalCommission,
   useUpsertProfessionalCommission,
@@ -69,12 +71,22 @@ export function ProfessionalFormDialog({
   // Comissão só é editável para barbearia (gating de UI) e só por quem gerencia
   // (admin). A trava real é o RLS `professional_commissions_write_admin`.
   const { commission: commissionFeature } = useSegmentFeatures();
-  const { canManageCommission } = usePermissions();
+  const { canManageCommission, isAdmin } = usePermissions();
   const showCommission = commissionFeature && canManageCommission;
 
   const createProfessional = useCreateProfessional();
   const updateProfessional = useUpdateProfessional();
   const upsertCommission = useUpsertProfessionalCommission();
+  const unlinkProfessionalProfile = useUnlinkProfessionalProfile();
+
+  const tenantUsersQuery = useTenantUsers({ enabled: open });
+  const linkedEmail =
+    (professional?.profile_id &&
+      tenantUsersQuery.data?.find((u) => u.id === professional.profile_id)
+        ?.email) ||
+    null;
+
+  const [confirmUnlinkOpen, setConfirmUnlinkOpen] = useState(false);
 
   // Lê a taxa atual (em bps) só quando o campo é visível e há um profissional
   // em edição. Novo profissional ainda não tem linha de comissão.
@@ -157,9 +169,22 @@ export function ProfessionalFormDialog({
     }
   }
 
+  async function handleUnlink() {
+    if (!professional) return;
+    try {
+      await unlinkProfessionalProfile.mutateAsync(professional.id);
+      toast.success("Acesso revogado.");
+      setConfirmUnlinkOpen(false);
+      onOpenChange(false);
+    } catch {
+      toast.error("Não foi possível revogar o acesso. Tente novamente.");
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? "Editar profissional" : "Novo profissional"}
@@ -270,17 +295,33 @@ export function ProfessionalFormDialog({
             ) : null}
 
             {/*
-              Acesso (profile_id) é somente-leitura nesta fase: sem fluxo de
-              convite, apenas informamos se já há login vinculado.
+              Acesso (profile_id): exibe se há login vinculado e permite revogar
+              (admin) sem apagar o registro operacional (ADR-005).
             */}
             {isEdit ? (
-              <div className="rounded-md border border-border p-3">
+              <div className="rounded-md border border-border p-3 space-y-2">
                 <p className="text-sm font-medium text-foreground">Acesso</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {hasLogin
-                    ? "Vinculado a um login da equipe."
-                    : "Sem login vinculado. O convite de acesso chega em uma fase futura."}
+                    ? tenantUsersQuery.isLoading
+                      ? "Carregando usuários…"
+                      : linkedEmail
+                        ? `Acesso vinculado a: ${linkedEmail}`
+                        : "Acesso vinculado a um login da equipe."
+                    : "Sem login vinculado."}
                 </p>
+                {hasLogin && isAdmin ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmUnlinkOpen(true)}
+                    disabled={unlinkProfessionalProfile.isPending}
+                  >
+                    <ShieldOff aria-hidden="true" />
+                    Revogar acesso
+                  </Button>
+                ) : null}
               </div>
             ) : null}
 
@@ -308,5 +349,49 @@ export function ProfessionalFormDialog({
         </Form>
       </DialogContent>
     </Dialog>
+
+      <Dialog
+        open={confirmUnlinkOpen}
+        onOpenChange={(o) => {
+          if (!o) setConfirmUnlinkOpen(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revogar acesso</DialogTitle>
+            <DialogDescription>
+              {professional?.name
+                ? `Revogar o acesso de "${professional.name}"? O registro operacional é mantido.`
+                : "Revogar o acesso deste profissional?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmUnlinkOpen(false)}
+              disabled={unlinkProfessionalProfile.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleUnlink()}
+              disabled={unlinkProfessionalProfile.isPending}
+            >
+              {unlinkProfessionalProfile.isPending ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                  Revogando…
+                </>
+              ) : (
+                "Revogar acesso"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -61,6 +61,7 @@ const resendInvitationResponseSchema = z.object({
 export interface InviteMemberInput {
   email: string;
   role: (typeof INVITATION_ROLES)[number];
+  professional_id?: string | null;
 }
 
 export function useInvitations() {
@@ -82,7 +83,13 @@ export function useInviteMember() {
   return useMutation({
     mutationFn: async (input: InviteMemberInput) => {
       const { data, error } = await supabase.functions.invoke("invite-member", {
-        body: { email: input.email, role: input.role },
+        body: {
+          email: input.email,
+          role: input.role,
+          ...(input.professional_id
+            ? { professional_id: input.professional_id }
+            : {}),
+        },
       });
       if (error) throw error;
       return inviteMemberResponseSchema.parse(data);

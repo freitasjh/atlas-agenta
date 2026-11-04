@@ -74,19 +74,18 @@ describe("RQ-15 funções e trigger do desenho antigo removidos", () => {
             'release_password_change_claim',
             'finish_password_change',
             'complete_password_change',
-            'current_must_change_password',
-            'profiles_guard_privileged_columns'
+            'current_must_change_password'
           );`,
     );
     expect(remaining).toBe(0);
   });
 
-  it("trigger profiles_guard_privileged_columns_trg não existe", () => {
+  it("trigger profiles_guard_privileged_columns_trg existe (ADR-001)", () => {
     const remaining = count(
       `select count(*) from pg_trigger
         where not tgisinternal and tgname = 'profiles_guard_privileged_columns_trg';`,
     );
-    expect(remaining).toBe(0);
+    expect(remaining).toBe(1);
   });
 
   it("policy profiles_update_self_or_admin não existe", () => {

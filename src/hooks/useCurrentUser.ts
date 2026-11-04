@@ -21,6 +21,8 @@ export interface CurrentUser {
   tenantId: string | null;
   /** Claim `must_change_password` (ADR-01); `false` sem claims. */
   mustChangePassword: boolean;
+  /** Claim `active` (ADR-003); `false` sem claims (fail-closed). */
+  active: boolean;
   tenant: CurrentTenant | null;
   subscriptionStatus: SubscriptionStatus | null;
   isAuthenticated: boolean;
@@ -84,6 +86,7 @@ export function useCurrentUser(): CurrentUser {
     role,
     tenantId,
     mustChangePassword: claims?.mustChangePassword ?? false,
+    active: claims?.active ?? false,
     tenant,
     subscriptionStatus: tenant?.subscription_status ?? null,
     isAuthenticated: !!session,

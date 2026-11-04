@@ -80,14 +80,54 @@ describe("resolvePostLoginDestination", () => {
       expect(destination).toBe("/app/agenda?date=2026-10-31");
     });
 
-    it("professional com from válido respeita a origem", () => {
+    it("professional com from restrito cai no destino padrão", () => {
       const destination = resolvePostLoginDestination({
         role: "professional",
         mustChangePassword: false,
         from: "/app/cobrancas",
       });
 
-      expect(destination).toBe("/app/cobrancas");
+      expect(destination).toBe("/app/agenda");
+    });
+
+    it("professional com from permitido respeita a origem", () => {
+      const destination = resolvePostLoginDestination({
+        role: "professional",
+        mustChangePassword: false,
+        from: "/app/clientes",
+      });
+
+      expect(destination).toBe("/app/clientes");
+    });
+
+    it("receptionist com from de horários respeita a origem (alinhado ao router)", () => {
+      const destination = resolvePostLoginDestination({
+        role: "receptionist",
+        mustChangePassword: false,
+        from: "/app/config/profissionais/abc-123/horarios",
+      });
+
+      expect(destination).toBe("/app/config/profissionais/abc-123/horarios");
+    });
+
+    it("receptionist com from da lista de profissionais cai no padrão", () => {
+      const destination = resolvePostLoginDestination({
+        role: "receptionist",
+        mustChangePassword: false,
+        from: "/app/config/profissionais",
+      });
+
+      expect(destination).toBe("/app/agenda");
+    });
+
+    it("professional com from de horários respeita a origem", () => {
+      const destination = resolvePostLoginDestination({
+        role: "professional",
+        mustChangePassword: false,
+        from: "/app/config/profissionais/abc-123/horarios",
+      });
+
+      expect(destination).toBe("/app/config/profissionais/abc-123/horarios");
     });
 
     it("admin sem from ⇒ /app", () => {
