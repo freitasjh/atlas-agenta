@@ -18,6 +18,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 # PIDs e artefatos locais dos scripts de dev (dev-up.sh/dev-down.sh)
+
 *.pid
 .atlas-dev/
 
@@ -38,6 +39,9 @@ supabase/.temp
 # PRD, plan, analysis-*, pr-result e PR_BODY seguem versionados (ficam um nível acima, em dev-pipeline/).
 .agents/tasks/dev-pipeline/adr/
 .agents/tasks/dev-pipeline/qa/
+
+# Traces de QA (gerados, grandes; reports e screenshots seguem versionados).
+harness/qa/trace-*.json
 
 # Artefatos locais (nao versionar)
 .agents.zip
