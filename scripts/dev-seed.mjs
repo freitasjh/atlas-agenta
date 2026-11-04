@@ -172,6 +172,15 @@ async function ensureTenant(db, user) {
     p_trade_name: DEMO.tradeName,
     p_full_name: DEMO.fullName,
     p_segment: DEMO.segment,
+    p_legal_name: null,
+    p_document: "52998224725",
+    p_phone: "11987654321",
+    p_cep: "01310100",
+    p_street: "Avenida Paulista",
+    p_number: "1000",
+    p_complement: null,
+    p_city: "Sao Paulo",
+    p_state: "SP",
   });
   if (error) throw error;
 
