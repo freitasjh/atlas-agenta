@@ -61,13 +61,38 @@ async function createAuthUser(
   return data.user.id;
 }
 
+/** Gera um CPF válido e único por chamada (base aleatória + DVs calculados). */
+function validCpfSeed(): string {
+  let base = "";
+  for (let i = 0; i < 9; i += 1) base += Math.floor(Math.random() * 10).toString();
+  if (/^([0-9])\1*$/.test(base)) base = "234567891";
+  const digit = (s: string, weight: number): number => {
+    let sum = 0;
+    for (let i = 0; i < s.length; i += 1) sum += Number(s[i]) * (weight - i);
+    const rem = sum % 11;
+    return rem < 2 ? 0 : 11 - rem;
+  };
+  const d1 = digit(base, 10);
+  const d2 = digit(`${base}${d1}`, 11);
+  return `${base}${d1}${d2}`;
+}
+
 async function createTenantWithAdmin(userId: string, email: string, track = true): Promise<string> {
   const { data, error } = await serviceClient().rpc("create_tenant_with_admin", {
     p_user_id: userId,
     p_owner_email: email,
     p_trade_name: tradeName(),
-    p_full_name: null,
+    p_full_name: "Usuário Teste",
     p_segment: null,
+    p_legal_name: null,
+    p_document: validCpfSeed(),
+    p_phone: "11987654321",
+    p_cep: "01310100",
+    p_street: "Avenida Paulista",
+    p_number: "1000",
+    p_complement: null,
+    p_city: "Sao Paulo",
+    p_state: "SP",
   });
   if (error || typeof data !== "string") {
     throw new Error(`Criação da empresa de teste falhou (código ${error?.code ?? "sem código"}).`);
