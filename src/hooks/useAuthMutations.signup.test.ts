@@ -9,21 +9,26 @@ import { mapSignUpError } from "@/lib/auth-errors";
 import type { SignupInput } from "@/lib/validations/auth";
 
 /**
- * Contrato de `useSignUp` (ADR-03).
+ * Contrato de `useSignUp` (ADR-02/ADR-03).
  *
  * 1. O cadastro chama a Edge Function `signup-tenant` — nunca o cadastro
  *    nativo do Auth (o trigger `handle_new_user` não existe mais; o cliente
  *    criaria usuário sem empresa).
- * 2. O corpo leva SÓ os campos da ADR-02: `email`, `password`, `trade_name`,
- *    `segment`. Nada de `role`, `tenant_id`, `app_metadata` nem `full_name`.
+ * 2. O corpo é byte-idêntico ao schema ADR-002 (`.strict()`): `email`,
+ *    `password`, `trade_name`, `legal_name?`, `document` (só dígitos),
+ *    `phone_empresa` (só dígitos), `address_cep` (8 dígitos), `address_street`,
+ *    `address_number`, `address_complement?`, `address_city`, `address_state`
+ *    (UF maiúscula), `full_name`, `segment?`. Nada de `role`, `tenant_id`,
+ *    `whatsapp`, `app_metadata` nem `confirmPassword`.
  * 3. Em sucesso, o login automático usa o MESMO e-mail e a MESMA senha e a
  *    sessão resultante é devolvida (destino pós-login = ADR-08).
  * 4. Se o login automático falha, a mutation NÃO falha: devolve
  *    `{ session: null }` — a conta já existe e a tela manda para `/login`.
  * 5. Erro do invoke sobe normalizado em `{ status, code }`, para
- *    `mapSignUpError` traduzir; a senha não acompanha o erro.
+ *    `mapSignUpError` traduzir (`document_ja_cadastrado` → mensagem exata do
+ *    catálogo); a senha não acompanha o erro.
  *
- * Supabase inteiro é mockado: nenhuma rede.
+ * Supabase inteiro é mockado: nenhuma rede. Dígitos fictícios de teste.
  */
 
 const { invokeMock, signInWithPasswordMock } = vi.hoisted(() => ({
@@ -41,11 +46,21 @@ vi.mock("@/lib/supabase", () => ({
 vi.mock("@/hooks/useSession", () => ({ sessionQueryKey: ["session"] }));
 
 const SIGNUP_INPUT: SignupInput = {
-  tradeName: "Clínica Bem Viver",
-  segment: "clinica",
-  email: "ana@clinica.test",
-  password: "senha-segura-1",
-  confirmPassword: "senha-segura-1",
+  tradeName: "Salão da Ana",
+  legalName: "Ana Souza LTDA",
+  document: "529.982.247-25",
+  phoneEmpresa: "(11) 98765-4321",
+  addressCep: "01310-100",
+  addressStreet: "Avenida Paulista",
+  addressNumber: "1000",
+  addressComplement: "Sala 1",
+  addressCity: "São Paulo",
+  addressState: "sp",
+  email: "dona@salao.com.br",
+  password: "Senha@123",
+  confirmPassword: "Senha@123",
+  fullName: "Ana Souza",
+  segment: "salao",
 };
 
 const SESSION = {
@@ -113,7 +128,7 @@ describe("useSignUp — requisição", () => {
     expect(invokeMock.mock.calls[0]?.[0]).toBe("signup-tenant");
   });
 
-  it("envia só { email, password, trade_name, segment }", async () => {
+  it("envia o corpo completo idêntico ao schema ADR-002", async () => {
     invokeMock.mockResolvedValue({ data: { user_id: "user-1" }, error: null });
     signInWithPasswordMock.mockResolvedValue({
       data: { session: SESSION },
@@ -128,17 +143,21 @@ describe("useSignUp — requisição", () => {
       { body: Record<string, unknown> },
     ];
 
-    expect(Object.keys(options.body).sort()).toEqual([
-      "email",
-      "password",
-      "segment",
-      "trade_name",
-    ]);
     expect(options.body).toEqual({
       email: SIGNUP_INPUT.email,
       password: SIGNUP_INPUT.password,
-      trade_name: SIGNUP_INPUT.tradeName,
-      segment: SIGNUP_INPUT.segment,
+      trade_name: "Salão da Ana",
+      legal_name: "Ana Souza LTDA",
+      document: "52998224725",
+      phone_empresa: "11987654321",
+      address_cep: "01310100",
+      address_street: "Avenida Paulista",
+      address_number: "1000",
+      address_complement: "Sala 1",
+      address_city: "São Paulo",
+      address_state: "SP",
+      full_name: "Ana Souza",
+      segment: "salao",
     });
     // Nenhum campo de papel/tenant/empresa-no-metadado sai do cliente.
     for (const forbidden of [
@@ -146,12 +165,40 @@ describe("useSignUp — requisição", () => {
       "tenant_id",
       "app_metadata",
       "user_metadata",
-      "full_name",
+      "whatsapp",
       "confirmPassword",
       "tradeName",
+      "phoneEmpresa",
+      "addressCep",
     ]) {
       expect(options.body).not.toHaveProperty(forbidden);
     }
+  });
+
+  it("omite opcionais vazios (legal_name, complement, segment)", async () => {
+    invokeMock.mockResolvedValue({ data: { user_id: "user-1" }, error: null });
+    signInWithPasswordMock.mockResolvedValue({
+      data: { session: SESSION },
+      error: null,
+    });
+
+    const { result } = renderSignUp();
+    await act(async () => {
+      await result.current.mutateAsync({
+        ...SIGNUP_INPUT,
+        legalName: undefined,
+        addressComplement: undefined,
+        segment: undefined,
+      });
+    });
+
+    const [, options] = invokeMock.mock.calls[0] as [
+      string,
+      { body: Record<string, unknown> },
+    ];
+    expect(options.body).not.toHaveProperty("legal_name");
+    expect(options.body).not.toHaveProperty("address_complement");
+    expect(options.body).not.toHaveProperty("segment");
   });
 });
 
@@ -218,6 +265,35 @@ describe("useSignUp — sucesso", () => {
 });
 
 describe("useSignUp — erros do cadastro", () => {
+  it("409 document_ja_cadastrado sobe normalizado e exibe a mensagem exata", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: functionsHttpError(
+        409,
+        JSON.stringify({
+          code: "document_ja_cadastrado",
+          message: "Este CNPJ/CPF já tem cadastro.",
+        }),
+      ),
+    });
+
+    const { result } = renderSignUp();
+
+    let thrown: unknown;
+    await act(async () => {
+      thrown = await result.current.mutateAsync(SIGNUP_INPUT).catch((e) => e);
+    });
+
+    expect(thrown).toMatchObject({
+      message: "signup_failed",
+      status: 409,
+      code: "document_ja_cadastrado",
+    });
+    expect(signInWithPasswordMock).not.toHaveBeenCalled();
+    // A tela mapeia o erro capturado do `mutateAsync` (try/catch do onSubmit).
+    expect(mapSignUpError(thrown)).toBe("Este CNPJ/CPF já tem cadastro.");
+  });
+
   it("409 email_ja_cadastrado sobe normalizado e não tenta login", async () => {
     invokeMock.mockResolvedValue({
       data: null,
@@ -232,20 +308,19 @@ describe("useSignUp — erros do cadastro", () => {
 
     const { result } = renderSignUp();
 
+    let thrown: unknown;
     await act(async () => {
-      await expect(
-        result.current.mutateAsync(SIGNUP_INPUT),
-      ).rejects.toMatchObject({
-        message: "signup_failed",
-        status: 409,
-        code: "email_ja_cadastrado",
-      });
+      thrown = await result.current.mutateAsync(SIGNUP_INPUT).catch((e) => e);
+    });
+
+    expect(thrown).toMatchObject({
+      message: "signup_failed",
+      status: 409,
+      code: "email_ja_cadastrado",
     });
 
     expect(signInWithPasswordMock).not.toHaveBeenCalled();
-    expect(mapSignUpError(result.current.error)).toBe(
-      "Este e-mail já tem cadastro.",
-    );
+    expect(mapSignUpError(thrown)).toBe("Este e-mail já tem cadastro.");
   });
 
   it("erro sem corpo legível vira genérico e não tenta login", async () => {

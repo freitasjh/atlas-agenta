@@ -16,6 +16,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CadastroPage } from "@/auth/CadastroPage";
+import { cadastroMessages } from "@/auth/cadastro-messages";
 
 /**
  * Costura de `CadastroPage` com `useSignUp` e `usePostLoginRedirect` (ADR-03).
@@ -24,13 +25,15 @@ import { CadastroPage } from "@/auth/CadastroPage";
  * - `{ session }` presente ⇒ `redirectAfterLogin(session)` (destino da ADR-08),
  *   e a tela NÃO passa por `/login`;
  * - `{ session: null }` (conta criada, login automático falhou) ⇒
- *   `navigate("/login", { state: { notice: "Conta criada. Entre com seu e-mail
- *   e senha." } })`, sem tratar como erro de cadastro.
+ *   `navigate("/login", { state: { notice } })` neutro do catálogo, sem tratar
+ *   como erro de cadastro.
  *
- * `useSignUp` e `usePostLoginRedirect` são mockados: nenhuma rede, nenhum
- * Supabase. A navegação é observada por uma rota-sonda em `/login` que lê
- * `location.state` — nada de mock de `useNavigate`, para provar o estado que a
- * `LoginPage` real consome via `readNoticeState`.
+ * `useSignUp`, `usePostLoginRedirect` e `useCepLookup` são mockados: nenhuma
+ * rede, nenhum Supabase, nenhum ViaCEP. A navegação é observada por uma
+ * rota-sonda em `/login` que lê `location.state` — nada de mock de
+ * `useNavigate`, para provar o estado que a `LoginPage` real consome via
+ * `readNoticeState`. O `useCepLookup` fica `idle`: o cadastro manual conclui
+ * sem o ViaCEP (RF06).
  */
 
 /**
@@ -68,6 +71,18 @@ vi.mock("@/components/ui/select", async () => {
   };
 });
 
+const cepState = vi.hoisted(() => ({
+  status: "idle" as string,
+  address: null as null,
+  lookup: vi.fn(),
+  retry: vi.fn(),
+  reset: vi.fn(),
+}));
+
+vi.mock("@/hooks/useCepLookup", () => ({
+  useCepLookup: () => cepState,
+}));
+
 const state = vi.hoisted(() => ({
   isPending: false,
   mutateAsync: vi.fn(),
@@ -84,8 +99,6 @@ vi.mock("@/hooks/useAuthMutations", () => ({
 vi.mock("@/auth/usePostLoginRedirect", () => ({
   usePostLoginRedirect: () => state.redirectAfterLogin,
 }));
-
-const SKIP_AUTO_LOGIN_NOTICE = "Conta criada. Entre com seu e-mail e senha.";
 
 const SESSION = {
   access_token: "token-de-teste",
@@ -125,29 +138,35 @@ function renderCadastro() {
   );
 }
 
-/** Escolhe o ramo no `Select` (mockado como `<select>` nativo). */
-function selectSegment(label: string) {
-  fireEvent.change(screen.getByRole("combobox"), {
-    target: { value: label },
-  });
+function fillById(container: HTMLElement, id: string, value: string) {
+  const input = container.querySelector(`#${id}`);
+  expect(input).not.toBeNull();
+  fireEvent.change(input as Element, { target: { value } });
 }
 
-async function submitForm(container: HTMLElement, segment = "clinica") {
-  fireEvent.change(
-    container.querySelector("input[autocomplete='organization']") as Element,
-    { target: { value: "Clínica Bem Viver" } },
-  );
-  fireEvent.change(container.querySelector("input[type='email']") as Element, {
-    target: { value: "ana@clinica.test" },
-  });
+/** Preenche o formulário rico completo (dígitos fictícios de teste). */
+async function submitForm(container: HTMLElement) {
+  fillById(container, "cadastro-tradeName", "Salão da Ana");
+  fillById(container, "cadastro-legalName", "Ana Souza LTDA");
+  fillById(container, "cadastro-document", "529.982.247-25");
+  fillById(container, "cadastro-phoneEmpresa", "(11) 98765-4321");
+  fillById(container, "cadastro-addressCep", "01310-100");
+  fillById(container, "cadastro-addressStreet", "Avenida Paulista");
+  fillById(container, "cadastro-addressNumber", "1000");
+  fillById(container, "cadastro-addressCity", "São Paulo");
+  fillById(container, "cadastro-email", "dona@salao.com.br");
 
   const [password, confirmPassword] = Array.from(
-    container.querySelectorAll("input[type='password']"),
+    container.querySelectorAll("#cadastro-password, #cadastro-confirmPassword"),
   );
-  fireEvent.change(password, { target: { value: "senha-segura-1" } });
-  fireEvent.change(confirmPassword, { target: { value: "senha-segura-1" } });
+  fireEvent.change(password, { target: { value: "Senha@123" } });
+  fireEvent.change(confirmPassword, { target: { value: "Senha@123" } });
 
-  selectSegment(segment);
+  fillById(container, "cadastro-fullName", "Ana Souza");
+
+  const selects = screen.getAllByRole("combobox");
+  fireEvent.change(selects[0], { target: { value: "SP" } });
+  fireEvent.change(selects[1], { target: { value: "salao" } });
 
   const form = container.querySelector("form");
   expect(form).not.toBeNull();
@@ -158,6 +177,9 @@ beforeEach(() => {
   state.isPending = false;
   state.mutateAsync.mockReset();
   state.redirectAfterLogin.mockReset();
+  cepState.status = "idle";
+  cepState.lookup.mockClear();
+  cepState.retry.mockClear();
 });
 
 afterEach(() => {
@@ -187,24 +209,36 @@ describe("CadastroPage — costura com useSignUp (ADR-03)", () => {
     const probe = await screen.findByTestId("login-state");
 
     expect(JSON.parse(probe.textContent ?? "null")).toEqual({
-      notice: SKIP_AUTO_LOGIN_NOTICE,
+      notice: cadastroMessages.skipAutoLoginNotice,
     });
     expect(state.redirectAfterLogin).not.toHaveBeenCalled();
   });
 
-  it("envia só os valores do formulário para a mutation", async () => {
+  it("envia os valores normalizados do formulário para a mutation", async () => {
     state.mutateAsync.mockResolvedValue({ session: null });
 
     const { container } = renderCadastro();
     await submitForm(container);
 
     await waitFor(() => expect(state.mutateAsync).toHaveBeenCalledTimes(1));
+    // O resolver zod normaliza antes do submit: máscaras viram só-dígitos e
+    // a UF vai para maiúscula — o mesmo canônico do corpo ADR-002.
     expect(state.mutateAsync).toHaveBeenCalledWith({
-      tradeName: "Clínica Bem Viver",
-      segment: "clinica",
-      email: "ana@clinica.test",
-      password: "senha-segura-1",
-      confirmPassword: "senha-segura-1",
+      tradeName: "Salão da Ana",
+      legalName: "Ana Souza LTDA",
+      document: "52998224725",
+      phoneEmpresa: "11987654321",
+      addressCep: "01310100",
+      addressStreet: "Avenida Paulista",
+      addressNumber: "1000",
+      addressComplement: undefined,
+      addressCity: "São Paulo",
+      addressState: "SP",
+      email: "dona@salao.com.br",
+      password: "Senha@123",
+      confirmPassword: "Senha@123",
+      fullName: "Ana Souza",
+      segment: "salao",
     });
   });
 
@@ -220,8 +254,24 @@ describe("CadastroPage — costura com useSignUp (ADR-03)", () => {
     await submitForm(container);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Este e-mail já tem cadastro.");
+    expect(alert.textContent).toBe(cadastroMessages.errors.emailTaken);
     expect(screen.queryByTestId("login-state")).toBeNull();
     expect(state.redirectAfterLogin).not.toHaveBeenCalled();
+  });
+
+  it("409 document_ja_cadastrado ⇒ mensagem exata do catálogo", async () => {
+    state.mutateAsync.mockRejectedValue(
+      Object.assign(new Error("signup_failed"), {
+        status: 409,
+        code: "document_ja_cadastrado",
+      }),
+    );
+
+    const { container } = renderCadastro();
+    await submitForm(container);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(cadastroMessages.errors.documentTaken);
+    expect(screen.queryByTestId("login-state")).toBeNull();
   });
 });

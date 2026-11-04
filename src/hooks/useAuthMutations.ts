@@ -4,6 +4,7 @@ import type { AuthSession } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { sessionQueryKey } from "@/hooks/useSession";
 import { parseAuthClaims, type AuthClaims } from "@/lib/auth-claims";
+import { stripDigits } from "@/lib/mask";
 import type {
   InitialPasswordInput,
   LoginInput,
@@ -51,14 +52,17 @@ export interface SignUpResult {
 }
 
 /**
- * Cadastro da empresa (ADR-03) pela Edge Function `signup-tenant` (ADR-02).
+ * Cadastro da empresa (ADR-03) pela Edge Function `signup-tenant` (ADR-002).
  *
  * - O trigger `handle_new_user` não existe mais: o cadastro nativo do Auth no
  *   cliente criaria usuário SEM empresa/profile. A empresa (tenant + profile
  *   admin + templates) nasce na RPC transacional do servidor.
- * - O corpo leva SÓ os campos da ADR-02 (`email`, `password`, `trade_name`,
- *   `segment`). Nada de `role`, `tenant_id` ou `app_metadata`: o papel é
- *   decidido no servidor, nunca pelo cliente.
+ * - O corpo é byte-idêntico ao schema ADR-002 (`.strict()`): `email`,
+ *   `password`, `trade_name`, `legal_name?`, `document` (só dígitos),
+ *   `phone_empresa` (só dígitos), `address_cep` (8 dígitos), `address_street`,
+ *   `address_number`, `address_complement?`, `address_city`, `address_state`
+ *   (UF maiúscula), `full_name`, `segment?`. Nada de `role`, `tenant_id`,
+ *   `whatsapp` ou `app_metadata`: o papel é decidido no servidor.
  * - Em sucesso, o login automático usa o mesmo e-mail e a mesma senha; a
  *   sessão resultante alimenta o destino pós-login da ADR-08.
  * - A senha existe só nas variáveis da mutation: `gcTime: 0` descarta o cache
@@ -72,9 +76,10 @@ export function useSignUp() {
 
   return useMutation<SignUpResult, Error, SignupInput>({
     gcTime: 0,
-    mutationFn: async ({ tradeName, segment, email, password }) => {
+    mutationFn: async (input) => {
+      const { email, password, body } = splitSignUpCredentials(input);
       const { error } = await supabase.functions.invoke("signup-tenant", {
-        body: { email, password, trade_name: tradeName, segment },
+        body,
       });
 
       if (error) {
@@ -103,6 +108,53 @@ export function useSignUp() {
       void queryClient.invalidateQueries({ queryKey: sessionQueryKey });
     },
   });
+}
+
+/**
+ * Corpo snake_case da Edge `signup-tenant`, idêntico ao schema ADR-002.
+ *
+ * Normaliza de novo na borda (strip de máscara + UF maiúscula + opcional vazio
+ * ausente): o zod já normaliza no submit, mas a mutation é chamada também por
+ * outros caminhos e o servidor (` .strict()`) recusa qualquer divergência.
+ * Função pura, sem PII em log.
+ */
+export function buildSignUpBody(input: SignupInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    email: input.email,
+    password: input.password,
+    trade_name: input.tradeName.trim(),
+    document: stripDigits(input.document),
+    phone_empresa: stripDigits(input.phoneEmpresa),
+    address_cep: stripDigits(input.addressCep),
+    address_street: input.addressStreet.trim(),
+    address_number: input.addressNumber.trim(),
+    address_city: input.addressCity.trim(),
+    address_state: input.addressState.trim().toUpperCase(),
+    full_name: input.fullName.trim(),
+  };
+
+  const legalName = input.legalName?.trim();
+  if (legalName) body.legal_name = legalName;
+
+  const complement = input.addressComplement?.trim();
+  if (complement) body.address_complement = complement;
+
+  if (input.segment) body.segment = input.segment;
+
+  return body;
+}
+
+/** Separa credenciais do login automático do corpo da Edge. */
+function splitSignUpCredentials(input: SignupInput): {
+  email: string;
+  password: string;
+  body: Record<string, unknown>;
+} {
+  return {
+    email: input.email,
+    password: input.password,
+    body: buildSignUpBody(input),
+  };
 }
 
 /**
