@@ -17,6 +17,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+# PIDs e artefatos locais dos scripts de dev (dev-up.sh/dev-down.sh)
+*.pid
+.atlas-dev/
 
 # Supabase — artefatos locais do CLI (não versionar). config.toml e migrations SÃO versionados.
 supabase/.branches
