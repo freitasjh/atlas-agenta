@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { isSupabaseConfigured } from "@/lib/env";
-import { sessionQueryKey } from "@/hooks/useSession";
+import { applyAuthEvent } from "@/lib/auth-cache";
 
 /**
  * Assina `supabase.auth.onAuthStateChange` UMA vez e mantém o cache da sessão
@@ -11,14 +11,14 @@ import { sessionQueryKey } from "@/hooks/useSession";
  * evento `PASSWORD_RECOVERY` (usado pela tela de redefinição, ADR-07).
  *
  * Em `SIGNED_OUT`, também remove as queries de identidade dependentes para não
- * servir tenant obsoleto antes do redirect do guard. A identidade em si vem das
- * claims do JWT (ADR-07), que deixam de existir junto com a sessão.
+ * servir tenant obsoleto antes do redirect do guard.
  *
- * Único consumidor que toca o client no LOAD (montado no `RootLayout` que
- * envolve todas as rotas). Por isso traz o guard por `isSupabaseConfigured`:
- * sem `.env` válido, nem assina `onAuthStateChange` — early-return. É o ponto
- * cirúrgico que reprovou a 1ª tentativa; combinado com o client no-op de
- * `supabase.ts`, o load fica seguro sem custo para o caminho configurado.
+ * A reação ao cache fica em `applyAuthEvent` (`@/lib/auth-cache`), extraído para
+ * reutilização e sofisticação (troca de conta, reset sem refetch). A identidade
+ * em si vem das claims do JWT (ADR-07), que deixam de existir junto com a sessão.
+ *
+ * Guard por `isSupabaseConfigured`: este componente é montado no `RootLayout`,
+ * então roda no load. Sem `.env` válido, não assina `onAuthStateChange`.
  *
  * Não renderiza nada; desinscreve no unmount.
  */
@@ -33,7 +33,7 @@ export function AuthListener() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      queryClient.setQueryData(sessionQueryKey, session);
+      applyAuthEvent(queryClient, event, session);
 
       if (event === "SIGNED_OUT") {
         queryClient.removeQueries({ queryKey: ["tenant"] });
