@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "demand": "signup-tenant-503-e2e",
+  "agent": "qa-engineer",
+  "phase": "Testing",
+  "gitSha": "adr/cobranca-pix-asaas",
+  "commands": [
+    { "cmd": "npm run test:run", "exitCode": 1, "durationMs": 319, "stdoutHash": "missing-script:test:run (harness.config.json commands.suiteFull aponta script inexistente)" },
+    { "cmd": "npm test", "exitCode": 0, "durationMs": 8560, "stdoutHash": "44-files-377-tests-passed-0-failed" },
+    { "cmd": "npm run typecheck", "exitCode": 0, "durationMs": 0, "stdoutHash": "tsc-b-no-output" },
+    { "cmd": "curl -s -o /dev/null -w %{http_code} -X POST http://127.0.0.1:54321/functions/v1/signup-tenant -d {} (x5)", "exitCode": 0, "durationMs": 400, "stdoutHash": "400-400-400-400-400" }
+  ],
+  "counts": {
+    "unit": { "passed": 377, "failed": 0, "skipped": 0 },
+    "it": { "passed": 0, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 377, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "tool": "chrome-devtools",
+    "route": "/cadastro",
+    "steps": [
+      "new_page http://127.0.0.1:5173/cadastro",
+      "fill_form trade_name/email/password/confirmPassword",
+      "click combobox segment -> option Barbearia",
+      "click button Criar conta",
+      "assert redirect /app + dashboard renderizado"
+    ],
+    "network": {
+      "signup": "POST /functions/v1/signup-tenant -> 201 {ok:true}",
+      "autoLogin": "POST /auth/v1/token?grant_type=password -> 200",
+      "unexpected4xx5xx": 0,
+      "totalFetchXhr": 17
+    },
+    "console": { "errors": 0, "warnings": 0, "issues": 1 },
+    "consoleIssue": "A form field element should have an id or name attribute (count: 1) — a11y menor, SelectTrigger do shadcn sem id",
+    "dbAssertions": {
+      "tenant": "c89ebf59-169f-4cdb-9ad0-59128f749189",
+      "subscription_status": "trial",
+      "trial_ends_at": "2026-11-16T17:12:41Z",
+      "timezone": "America/Sao_Paulo",
+      "segment": "barbearia",
+      "profile_role": "admin",
+      "profile_full_name": null,
+      "message_templates": 5,
+      "services_seeded_frontend": 3,
+      "audit_log_rows": 0,
+      "orphan_auth_users": 0
+    },
+    "duplicateEmail": "409 (contrato ADR-02)"
+  },
+  "evaluation": {
+    "telas": "cadastro renderiza 5 campos + CTA, erro de servidor com role=alert e foco; dashboard /app renderiza apos signup",
+    "negocio": "tenant trial 14d + profile admin + 5 templates em transacao unica; e-mail duplicado 409; sem dado orfao",
+    "logica": "signup-tenant 201 com body .strict(); service role so no servidor; audit_log nao cobre signup (por design ADR-17)",
+    "perf": "signup 201 em ~108ms de upstream (x-kong-upstream-latency), sem timeout"
+  },
+  "brainStore": ["regras/projetos/atlas-agenda/edge-runtime-503-oom-exit-137"],
+  "cleanup": {
+    "startedByQa": [],
+    "closed": ["chrome-devtools page /cadastro"],
+    "leftRunning": [
+      "vite dev server :5173 (PID 981337) — pre-existente, nao iniciado pelo QA",
+      "supabase_edge_runtime_atlas-agenda — reiniciado pelo orquestrador"
+    ]
+  },
+  "selfReported": true
+}

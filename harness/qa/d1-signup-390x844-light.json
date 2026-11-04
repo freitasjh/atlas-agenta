@@ -1,0 +1,57 @@
+{
+  "label": "390x844-light",
+  "viewport": "390x844",
+  "theme": "light",
+  "email": "qa-ui-390x844-light@teste.local",
+  "company": "QA UI 390x844-light",
+  "segment": "clinica",
+  "startedAt": "2026-11-01T18:28:14.009Z",
+  "form": {
+    "path": "/cadastro",
+    "title": true,
+    "inputs": [
+      "tradeName",
+      "email",
+      "password",
+      "confirmPassword"
+    ],
+    "autoFocus": "BODY",
+    "horizontal": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    }
+  },
+  "segmentPick": {
+    "clicked": true
+  },
+  "beforeSubmit": {
+    "values": [
+      "tradeName:preenchido",
+      "email:preenchido",
+      "password:preenchido",
+      "confirmPassword:preenchido"
+    ],
+    "segment": "Clínica"
+  },
+  "clicked": {
+    "clicked": true
+  },
+  "pathAfter": "/app",
+  "finalPath": "/app",
+  "claims": {
+    "user_role": "admin",
+    "tenant_id": "7313e4d4-62fd-4eab-b755-71a44f28a8c2",
+    "must_change_password": false,
+    "sub": "c9d08a54-3ddd-43a6-bd94-91daecd44fce"
+  },
+  "landedInApp": true,
+  "problems": {
+    "consoleErrors": [],
+    "consoleWarnings": [],
+    "logErrors": [],
+    "logWarnings": []
+  },
+  "failures": [],
+  "finishedAt": "2026-11-01T18:28:17.414Z",
+  "pass": true
+}

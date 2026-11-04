@@ -1,0 +1,668 @@
+{
+  "label": "390x844-light",
+  "viewport": "390x844",
+  "theme": "light",
+  "startedAt": "2026-11-01T18:29:17.459Z",
+  "items": {
+    "1": {
+      "pass": true,
+      "agendaPath": "/login",
+      "adminPath": "/login",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      },
+      "failures": []
+    },
+    "2": {
+      "pass": true,
+      "path": "/trocar-senha",
+      "dom": {
+        "title": true,
+        "badge": true,
+        "adminContent": false
+      },
+      "metrics": {
+        "inputs": [
+          {
+            "fontSize": "16px",
+            "borderColor": "rgb(212, 218, 226)",
+            "ariaInvalid": "false",
+            "describedBy": ":r5:-form-item-description"
+          },
+          {
+            "fontSize": "16px",
+            "borderColor": "rgb(212, 218, 226)",
+            "ariaInvalid": "false",
+            "describedBy": ":r7:-form-item-description"
+          }
+        ],
+        "labels": [
+          {
+            "text": "Nova senha",
+            "htmlFor": ":r5:-form-item",
+            "target": true
+          },
+          {
+            "text": "Confirmar nova senha",
+            "htmlFor": ":r7:-form-item",
+            "target": true
+          }
+        ],
+        "submit": {
+          "height": 44,
+          "width": 305,
+          "bg": "rgb(35, 159, 118)",
+          "color": "rgb(248, 252, 251)"
+        },
+        "sair": {
+          "height": 20,
+          "color": "rgb(90, 104, 124)"
+        },
+        "card": {
+          "left": 16,
+          "right": 374,
+          "width": 358,
+          "top": 88,
+          "contentWidth": 358,
+          "bg": "rgb(255, 255, 255)"
+        },
+        "formWidth": 305,
+        "titleColor": "rgb(21, 27, 40)",
+        "descriptionColor": null,
+        "horizontal": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "overflow": 0
+        },
+        "sidePanels": {
+          "aside": 0,
+          "nav": 0
+        },
+        "htmlClass": "",
+        "colorScheme": "light",
+        "bodyBg": "rgb(252, 252, 253)",
+        "autoFocus": {
+          "tag": "INPUT",
+          "type": "password"
+        }
+      },
+      "tabOrder": [
+        {
+          "tag": "INPUT",
+          "type": "password",
+          "text": null,
+          "visible": true,
+          "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+        },
+        {
+          "tag": "BUTTON",
+          "type": "submit",
+          "text": "Salvar nova senha",
+          "visible": true,
+          "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+        },
+        {
+          "tag": "BUTTON",
+          "type": "button",
+          "text": "Sair",
+          "visible": true,
+          "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+        },
+        {
+          "tag": "BODY"
+        },
+        {
+          "tag": "A",
+          "type": null,
+          "text": "Pular para o conteúdo",
+          "visible": true,
+          "boxShadow": "rgb(255, 255, 255) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+        }
+      ],
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      },
+      "failures": []
+    },
+    "3": {
+      "pass": true,
+      "directAdmin": "/trocar-senha",
+      "directApp": "/trocar-senha",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "4": {
+      "pass": true,
+      "path": "/trocar-senha",
+      "evidence": {
+        "ariaInvalid": [
+          "true",
+          "false"
+        ],
+        "messages": [
+          "A senha deve ter ao menos 8 caracteres."
+        ],
+        "activeIsFirstPassword": true,
+        "activeTag": "INPUT",
+        "activeType": "password"
+      },
+      "enterSubmits": true,
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "5": {
+      "pass": true,
+      "path": "/trocar-senha",
+      "evidence": {
+        "messages": [
+          "As senhas não coincidem."
+        ]
+      },
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "6": {
+      "pass": true,
+      "doubleClicked": true,
+      "extraPausedPosts": 0,
+      "during": {
+        "buttonDisabled": true,
+        "label": "Salvando…",
+        "statusAnnouncement": true
+      },
+      "afterPath": "/admin/empresas",
+      "changePasswordPosts": 1,
+      "postStatuses": [
+        200
+      ],
+      "authCalls": [
+        {
+          "url": "http://127.0.0.1:54321/auth/v1/token?grant_type=password",
+          "method": "POST",
+          "type": "Fetch",
+          "status": 200,
+          "failed": null
+        },
+        {
+          "url": "http://127.0.0.1:54321/auth/v1/token?grant_type=password",
+          "method": "OPTIONS",
+          "type": "Other",
+          "status": 200,
+          "failed": null
+        }
+      ],
+      "responseBody": "{\"ok\":true}",
+      "requestBody": null,
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "7": {
+      "pass": true,
+      "path": "/trocar-senha",
+      "evidence": {
+        "alertText": "Sua sessão expirou. Entre novamente. Ir para o login",
+        "linkText": "Ir para o login",
+        "linkHref": "/login"
+      },
+      "intercepted": true,
+      "changePasswordStatuses": [
+        401
+      ],
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [
+          "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        ],
+        "logWarnings": []
+      }
+    },
+    "8": {
+      "pass": true,
+      "path": "/trocar-senha",
+      "evidence": {
+        "alertText": "Não foi possível salvar a nova senha. Tente novamente.",
+        "buttonDisabled": false,
+        "buttonText": "Salvar nova senha",
+        "offlineAlert": "Não foi possível salvar a nova senha. Tente novamente."
+      },
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [
+          "Failed to load resource: net::ERR_INTERNET_DISCONNECTED"
+        ],
+        "logWarnings": []
+      }
+    },
+    "9": {
+      "pass": true,
+      "afterSave": "/admin/empresas",
+      "revisitTrocarSenha": "/admin/empresas",
+      "tokenRefreshCalls": [
+        {
+          "url": "http://127.0.0.1:54321/auth/v1/token?grant_type=password",
+          "method": "POST",
+          "type": "Fetch",
+          "status": 200,
+          "failed": null
+        },
+        {
+          "url": "http://127.0.0.1:54321/auth/v1/token?grant_type=password",
+          "method": "OPTIONS",
+          "type": "Other",
+          "status": 200,
+          "failed": null
+        }
+      ],
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "10": {
+      "pass": true,
+      "path": "/admin/empresas",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      }
+    },
+    "11": {
+      "pass": true,
+      "logoutPath": "/login",
+      "initialPasswordPath": "/login",
+      "initialPasswordMessage": "E-mail ou senha incorretos.",
+      "newPasswordPath": "/admin/empresas",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [
+          "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+        ],
+        "logWarnings": []
+      }
+    },
+    "12": {
+      "pass": true,
+      "path": "/app",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      },
+      "failures": [
+        {
+          "url": "http://127.0.0.1:54321/auth/v1/logout?scope=global",
+          "method": "POST",
+          "type": "Fetch",
+          "status": 204,
+          "failed": "net::ERR_ABORTED"
+        }
+      ]
+    },
+    "cold-start": {
+      "pass": true,
+      "path": "/app/agenda",
+      "wallMsToSettle": 2627,
+      "lcpMs": 248,
+      "fcpMs": 196,
+      "domContentLoadedMs": 119.5,
+      "loadEventEndMs": 0,
+      "lcpUnder1500": true,
+      "profileRequests": [],
+      "agendaRendered": true,
+      "faviconColdStart": [],
+      "traceFile": "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/trace-390x844-light.json",
+      "problems": {
+        "consoleErrors": [],
+        "consoleWarnings": [],
+        "logErrors": [],
+        "logWarnings": []
+      },
+      "failures": []
+    }
+  },
+  "technical": {
+    "faviconFirstLoad": [
+      {
+        "url": "http://127.0.0.1:5174/favicon.svg",
+        "status": 200,
+        "failed": null
+      }
+    ],
+    "layout": {
+      "viewport": "390x844",
+      "themeClass": "",
+      "horizontalOverflowPx": 0,
+      "noHorizontalScroll": true,
+      "inputFontSizes": [
+        "16px",
+        "16px"
+      ],
+      "inputsAtLeast16": true,
+      "submitHeight": 44,
+      "submitAtLeast44": true,
+      "submitFillsCardContent": true,
+      "cardCentered": true,
+      "cardTop": 88,
+      "sidePanels": {
+        "aside": 0,
+        "nav": 0
+      },
+      "labelsBound": true,
+      "descriptionsBound": true,
+      "autoFocus": {
+        "tag": "INPUT",
+        "type": "password"
+      },
+      "bodyBg": "rgb(252, 252, 253)",
+      "colorScheme": "light",
+      "requirementScope": "390px: fonte>=16, botão>=44 e botão na largura do card são exigidos",
+      "compliant": true
+    },
+    "tabOrder": [
+      {
+        "tag": "INPUT",
+        "type": "password",
+        "text": null,
+        "visible": true,
+        "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+      },
+      {
+        "tag": "BUTTON",
+        "type": "submit",
+        "text": "Salvar nova senha",
+        "visible": true,
+        "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+      },
+      {
+        "tag": "BUTTON",
+        "type": "button",
+        "text": "Sair",
+        "visible": true,
+        "boxShadow": "rgb(252, 252, 253) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+      },
+      {
+        "tag": "BODY"
+      },
+      {
+        "tag": "A",
+        "type": null,
+        "text": "Pular para o conteúdo",
+        "visible": true,
+        "boxShadow": "rgb(255, 255, 255) 0px 0px 0px 2px, rgb(39, 176, 130) 0px 0px 0px 4px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+      }
+    ],
+    "focusVisible": [
+      {
+        "tag": "INPUT",
+        "text": null,
+        "visible": true
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Salvar nova senha",
+        "visible": true
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Sair",
+        "visible": true
+      },
+      {
+        "tag": "BODY"
+      },
+      {
+        "tag": "A",
+        "text": "Pular para o conteúdo",
+        "visible": true
+      }
+    ],
+    "enterSubmits": true,
+    "changePasswordResponse": {
+      "statuses": [
+        200
+      ],
+      "body": "{\"ok\":true}",
+      "requestBody": null,
+      "leaks": {
+        "newPassword": false,
+        "provisionalPassword": false,
+        "serviceRole": false,
+        "bootstrapSecretName": false,
+        "secretWord": false
+      }
+    },
+    "faviconOk": true,
+    "consoleAll": {
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "logErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "logWarnings": []
+    },
+    "console": {
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "logErrors": [],
+      "logWarnings": []
+    }
+  },
+  "contrast": {
+    "normal": {
+      "state": "normal",
+      "cardBg": "rgb(255, 255, 255)",
+      "pairs": [
+        {
+          "pair": "foreground/card",
+          "ratio": 17.22,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(21,27,40)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "muted-foreground/card",
+          "ratio": 5.67,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(90,104,124)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "primary-foreground/primary",
+          "ratio": 3.23,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(248,252,251)",
+          "bg": "rgb(35,159,118)"
+        },
+        {
+          "pair": "link primary/card",
+          "ratio": null,
+          "minimum": 4.5,
+          "note": "estado=normal: sem link na tela"
+        },
+        {
+          "pair": "borda input/card",
+          "ratio": 1.41,
+          "minimum": 3,
+          "note": "1.4.11",
+          "fg": "rgb(212,218,226)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "anel/bg (token --ring)",
+          "ratio": 2.69,
+          "minimum": 3,
+          "note": "não textual",
+          "fg": "rgb(39,176,130)",
+          "bg": "rgb(252,252,253)"
+        },
+        {
+          "pair": "foreground/fundo do alerta",
+          "ratio": null,
+          "minimum": 4.5,
+          "note": "estado=normal: sem alerta"
+        },
+        {
+          "pair": "destructive/card (token; tela sem ícone destructive)",
+          "ratio": 5.22,
+          "minimum": 3,
+          "note": null,
+          "fg": "rgb(211,34,34)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "primary/card (token)",
+          "ratio": 3.34,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(35,159,118)",
+          "bg": "rgb(255,255,255)"
+        }
+      ]
+    },
+    "expired": {
+      "state": "sessao-expirada",
+      "cardBg": "rgb(255, 255, 255)",
+      "pairs": [
+        {
+          "pair": "foreground/card",
+          "ratio": 17.22,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(21,27,40)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "muted-foreground/card",
+          "ratio": 5.67,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(90,104,124)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "primary-foreground/primary",
+          "ratio": 3.23,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(248,252,251)",
+          "bg": "rgb(35,159,118)"
+        },
+        {
+          "pair": "link primary/card",
+          "ratio": 5.22,
+          "minimum": 4.5,
+          "note": "estado sessão expirada",
+          "fg": "rgb(211,34,34)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "borda input/card",
+          "ratio": 1.41,
+          "minimum": 3,
+          "note": "1.4.11",
+          "fg": "rgb(212,218,226)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "anel/bg (token --ring)",
+          "ratio": 2.69,
+          "minimum": 3,
+          "note": "não textual",
+          "fg": "rgb(39,176,130)",
+          "bg": "rgb(252,252,253)"
+        },
+        {
+          "pair": "foreground/fundo do alerta",
+          "ratio": 4.45,
+          "minimum": 4.5,
+          "note": "destructive a 10% composto no card",
+          "fg": "rgb(211,34,34)",
+          "bg": "rgb(251,233,233)"
+        },
+        {
+          "pair": "destructive/card (token; tela sem ícone destructive)",
+          "ratio": 5.22,
+          "minimum": 3,
+          "note": null,
+          "fg": "rgb(211,34,34)",
+          "bg": "rgb(255,255,255)"
+        },
+        {
+          "pair": "primary/card (token)",
+          "ratio": 3.34,
+          "minimum": 4.5,
+          "note": null,
+          "fg": "rgb(35,159,118)",
+          "bg": "rgb(255,255,255)"
+        }
+      ]
+    }
+  },
+  "perf": {
+    "path": "/app/agenda",
+    "wallMsToSettle": 2627,
+    "lcpMs": 248,
+    "fcpMs": 196,
+    "domContentLoadedMs": 119.5,
+    "loadEventEndMs": 0,
+    "lcpUnder1500": true,
+    "profileRequests": [],
+    "agendaRendered": true,
+    "faviconColdStart": [],
+    "traceFile": "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/trace-390x844-light.json",
+    "problems": {
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "logErrors": [],
+      "logWarnings": []
+    },
+    "failures": []
+  },
+  "screenshots": [
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-01-login.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-02-trocar-senha.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-03-erro-senha-curta.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-04-sessao-expirada.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-05-rede-offline.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-06-admin-empresas.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-06-admin-empresas.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-07-app-dashboard.png",
+    "/home/joao/fusionlf/wsProjeto/atlas-agenda/harness/qa/screenshots/390x844-light-08-app-agenda.png"
+  ],
+  "finishedAt": "2026-11-01T18:29:42.400Z"
+}

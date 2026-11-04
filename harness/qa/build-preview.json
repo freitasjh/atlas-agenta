@@ -1,0 +1,33 @@
+{
+  "base": "http://127.0.0.1:5175",
+  "startedAt": "2026-11-01T18:40:25.473Z",
+  "firstLoad": {
+    "problems": {
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "logErrors": [],
+      "logWarnings": []
+    },
+    "favicon": [
+      {
+        "url": "http://127.0.0.1:5175/favicon.svg",
+        "status": 200,
+        "failed": null
+      }
+    ],
+    "failures": []
+  },
+  "spaNavigation": {
+    "route": "/login",
+    "loginForm": true,
+    "problems": {
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "logErrors": [],
+      "logWarnings": []
+    },
+    "failures": []
+  },
+  "pass": true,
+  "finishedAt": "2026-11-01T18:40:29.857Z"
+}
