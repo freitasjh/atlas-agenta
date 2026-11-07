@@ -1,8 +1,8 @@
 {
   "current_feature": "cobranca-formas-pagamento",
-  "current_phase": "Testing",
+  "current_phase": "Completed",
   "previous_phase": "Completed",
-  "next_phase": "Completed",
+  "next_phase": null,
   "type": "feature",
   "code_review": {
     "last_invoked_at": "2026-11-07T02:09:20+00:00",
@@ -12,7 +12,7 @@
     "reviewer_notes": "ADR-005 aprovado + fixes + E2E 10/10 (round2 P2/P3 corrigidos). 742 unit, 271 integração."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-07T02:09:20+00:00",
+  "last_update": "2026-11-07T18:03:47+00:00",
   "code_review_status": "passed",
   "pendencies": [
     {
@@ -49,7 +49,7 @@
   "prd_adr": {
     "prd_id": "cobranca-formas-pagamento",
     "prd_status": "approved",
-    "active_adr": "ADR-005",
+    "active_adr": null,
     "adr_order": [
       "ADR-001",
       "ADR-002",
@@ -57,6 +57,11 @@
       "ADR-004",
       "ADR-005"
     ],
-    "snapshots": []
+    "snapshots": [
+      {
+        "at": "2026-11-07T18:03:47+00:00",
+        "note": "PR #43 merged na master; ADR-001..005 merged"
+      }
+    ]
   }
 }
