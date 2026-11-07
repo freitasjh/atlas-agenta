@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
+import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { Button } from "@/components/ui/button";
 import { toTenantLocal, weekRangeOf } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
@@ -75,6 +77,14 @@ interface AgendaCalendarWeekProps {
   onSelectDay: (day: string) => void;
   /** Abre o diálogo de edição. */
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
+  /** Flags de pagamento por atendimento (pass-through, sem lógica). */
+  paymentFlags?: ReadonlyMap<string, AgendaPaymentFlag>;
+  /** Abre o settlement do atendimento. */
+  onOpenPayment?: (appointment: AppointmentWithRelations) => void;
+  /** Catálogo de mensagens repassado aos blocos. */
+  paymentsMessages?: PaymentsMessages;
+  /** Capacidade do cliente de registrar pagamentos (ação "Pagamento"). */
+  canRegisterPayments?: boolean;
 }
 
 /**
@@ -106,6 +116,10 @@ export function AgendaCalendarWeek({
   showCommission = false,
   onSelectDay,
   onOpenAppointment,
+  paymentFlags,
+  onOpenPayment,
+  paymentsMessages,
+  canRegisterPayments = false,
 }: AgendaCalendarWeekProps) {
   // Monta a semana (segunda a domingo) que contém o dia em foco. Mesma fonte
   // única (`weekRangeOf`) que a `AgendaPage` usa para buscar o intervalo, então
@@ -161,6 +175,10 @@ export function AgendaCalendarWeek({
           compact
           showCommission={showCommission}
           onOpen={onOpenAppointment}
+          paymentFlag={paymentFlags?.get(appointment.id)}
+          onOpenPayment={onOpenPayment}
+          messages={paymentsMessages}
+          canRegisterPayments={canRegisterPayments}
         />
       </div>
     ));

@@ -69,6 +69,10 @@ export function useAsaasConfig() {
   return useQuery<TenantAsaasConfig | null>({
     queryKey: ASAAS_CONFIG_KEY,
     queryFn: readAsaasConfig,
+    // Também consumida pelo capture: em `online` (padrão) a query pausa quando
+    // `navigator.onLine === false` e o chip PIX nunca resolve se está
+    // configurado. `always` falha rápido offline em vez de mascarar o estado.
+    networkMode: "always",
   });
 }
 

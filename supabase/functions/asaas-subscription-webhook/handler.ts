@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
 import { constantTimeEqual } from "../_shared/asaas.ts";
+import { beginEvent, finishEvent } from "../asaas-webhook/dedupe.ts";
 import { payloadSchema } from "./schemas.ts";
 
 const corsHeaders: Record<string, string> = {
@@ -38,21 +39,21 @@ export function createHandler(options: HandlerOptions) {
     const { data: charge } = await service.from("subscription_charges").select("*").eq("asaas_payment_id", paymentId).maybeSingle();
     if (!charge) return jsonResponse({ ok: true }, 200);
 
-    const eventId = (parsed.data as any)?.id ?? event;
-    const { data: existingEvent } = await service.from("webhook_events").select("id").eq("event_id", eventId).eq("payment_id", paymentId).maybeSingle();
-    if (existingEvent) return jsonResponse({ ok: true }, 200);
-    const { error: insEvErr } = await service.from("webhook_events").insert({
-      event_id: eventId,
-      payment_id: paymentId,
-      event_type: event,
-      tenant_id: charge.tenant_id,
-      external_event_id: eventId,
-      instance_name: "asaas",
-      source: "evolution",
-    });
-    if (insEvErr && !String(insEvErr.message ?? "").toLowerCase().includes("duplicate")) {
+    const eventId = String((parsed.data as any)?.id ?? event);
+
+    // Dedupe durável: insert sem `processed_at`; só vira `now()` depois do efeito.
+    let begin: "process" | "already_processed";
+    try {
+      begin = await beginEvent(service, {
+        tenantId: charge.tenant_id,
+        eventId,
+        paymentId,
+        eventType: event,
+      });
+    } catch {
       return jsonResponse({ error: "Falha ao registrar evento." }, 500);
     }
+    if (begin === "already_processed") return jsonResponse({ ok: true }, 200);
 
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
       if (charge.status !== "pago") {
@@ -68,6 +69,12 @@ export function createHandler(options: HandlerOptions) {
         const { error: updErr } = await service.from("subscription_charges").update({ status: "expirado" }).eq("id", charge.id);
         if (updErr) return jsonResponse({ error: "Falha ao atualizar cobrança." }, 500);
       }
+    }
+
+    try {
+      await finishEvent(service, eventId, paymentId);
+    } catch {
+      return jsonResponse({ error: "Falha ao marcar evento." }, 500);
     }
     return jsonResponse({ ok: true }, 200);
   };

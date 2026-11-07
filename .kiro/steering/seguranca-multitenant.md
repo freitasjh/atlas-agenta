@@ -21,9 +21,19 @@ toca dados precisa respeitar estas regras.
 ## RBAC dentro do tenant
 
 - `admin`: tudo dentro do tenant.
-- `professional`: apenas a própria agenda (`professional_id` ligado ao seu `profile_id`).
-- `receptionist`: agendamentos de todos os profissionais, **sem** ler `charges`/dados
-  financeiros sensíveis. RLS/colunas devem refletir isso.
+- `professional`: apenas a própria agenda (`professional_id` ligado ao seu `profile_id`); lê os
+  próprios recebimentos, sem cancelar/estornar/baixa manual.
+- `receptionist`: agendamentos de todos os profissionais, registra e cancela PIX, **sem** ler
+  `appointment_payments`/`charges` nem totais. RLS nega a leitura; a UI esconde.
+
+## Ledger financeiro
+
+- `appointment_payments` tem RLS admin-only, sem grant de escrita ao cliente (só service role
+  escreve via Edge). Leitura operacional é por Edge escopada a um atendimento
+  (`get-appointment-settlement`); listagem/histórico e resumo (`financial_summary`) só admin
+  sob RLS.
+- Nenhum dado de cartão é armazenado (PAN/CVV/bandeira/NSU jamais persistem);
+  cartão/maquininha são declaração do operador.
 
 ## Controle por status de assinatura
 

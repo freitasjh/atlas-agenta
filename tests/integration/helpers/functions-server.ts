@@ -260,6 +260,9 @@ function composeEnvFile(mode: FunctionsMode): void {
   }
 
   const env: Record<string, string> = { ...base, ATLAS_ENV: mode.atlasEnv };
+  // Gateway determinístico: a suíte aponta o Asaas para uma porta fechada. Nenhum teste
+  // depende de sandbox.asaas.com (SPEC §12.2).
+  env.ASAAS_API_BASE_URL = process.env.ASAAS_API_BASE_URL ?? "http://127.0.0.1:1";
   if (mode.bootstrapSecret === null) {
     delete env.BOOTSTRAP_SECRET;
   } else {

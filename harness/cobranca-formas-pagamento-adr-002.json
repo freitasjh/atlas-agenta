@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "demand": "cobranca-formas-pagamento-adr-002",
+  "agent": "developer-engineer",
+  "phase": "Testing",
+  "gitSha": "83633c7f1b9862a11fcf2eeb2acf1ae87febb451",
+  "timestamp": "2026-11-06T20:44:04.161Z",
+  "worktreeDirty": true,
+  "commands": [
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 27779,
+      "stdoutHash": "sha256:df076119bd5822033ba04e545f1730c5923651829bbe6b56085442c32f30e077"
+    },
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 27649,
+      "stdoutHash": "sha256:df076119bd5822033ba04e545f1730c5923651829bbe6b56085442c32f30e077"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 53177,
+      "stdoutHash": "sha256:fbe3f530c35803ad049cd6489c58d8826148690b75d0e7aeb4742240daa320ae"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 4754,
+      "stdoutHash": "sha256:3758657b4860a69e3f0cf6bbf8e778ec7d0e89d9bdccf13192abf825d921157f"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 4589,
+      "stdoutHash": "sha256:01d12b9fbef20005f848e100c4d6810995ce3b562d946091c91f079fdf25807d"
+    },
+    {
+      "cmd": "npm run check:functions",
+      "exitCode": 0,
+      "durationMs": 725,
+      "stdoutHash": "sha256:6c44fa461b051d08f1728c86fc6b8d20b3cd20ccda3a06515d0539318469bff6"
+    },
+    {
+      "cmd": "npm run typecheck",
+      "exitCode": 0,
+      "durationMs": 979,
+      "stdoutHash": "sha256:1f6b841af581ee09486001b6778984578b0b064857267bf33ee81494753af4de"
+    },
+    {
+      "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+      "exitCode": 0,
+      "durationMs": 88,
+      "stdoutHash": "sha256:d33fe0e5b8e57fbfa5de8f3cba70800f486daba0b16fcbe4ec3449895265111c"
+    }
+  ],
+  "counts": {
+    "unit": {
+      "passed": 298,
+      "failed": 0,
+      "skipped": 0
+    },
+    "it": {
+      "passed": 215,
+      "failed": 0,
+      "skipped": 0
+    },
+    "frontend": {
+      "passed": 526,
+      "failed": 0,
+      "skipped": 0
+    },
+    "gate": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "evaluation": {
+    "telas": "n/a — ADR sem UI (frontend ADR-004)",
+    "negocio": "ok — claim de criação no gateway com TTL 180s; perdedor reconcilia payment já referenciado sem DELETE; release com fence de claim; RBAC por papel/vínculo; reemissão nunca toca pago",
+    "logica": "ok — claim atômico (1 POST /payments), fencing por token no attach, release recusa claim vivo de outro criador, replay idempotente, FOR UPDATE em appointments/charges",
+    "perf": "ok — summary único, leituras filtradas por tenant; pior caso de I/O da criação (~120s) abaixo do TTL do claim"
+  },
+  "brainStore": [
+    "arquitetura/projetos/atlas-agenda/adr-002-api-pagamentos-rpc-edges",
+    "sessoes/atlas-agenda/2026-11-06-adr-002-api-pagamentos"
+  ],
+  "cleanup": {
+    "ports": [],
+    "note": "Nenhum servidor iniciado por esta execução ficou vivo; a suíte de integração encerrou o próprio `supabase functions serve` no teardown. O stack local e um `functions serve whatsapp` pré-existente (PID 622496, iniciado em 2026-11-04, mesmo projeto) foram mantidos intactos — não iniciados por esta rodada."
+  },
+  "selfReported": false
+}

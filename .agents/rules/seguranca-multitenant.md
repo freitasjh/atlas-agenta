@@ -9,7 +9,10 @@ Fonte: `.kiro/steering/seguranca-multitenant.md`. Regra descritiva.
 - Super admin cross-tenant apenas por caminhos explícitos e auditados (Edge Function service role ou política super_admin), nunca pelo cliente comum.
 
 ## RBAC dentro do tenant
-admin: tudo. professional: apenas própria agenda (professional_id ligado ao profile_id). receptionist: agendamentos de todos, sem charges/dados financeiros sensíveis (RLS/colunas).
+admin: tudo. professional: apenas própria agenda (professional_id ligado ao profile_id); lê os próprios recebimentos, sem cancelar/estornar/baixa manual. receptionist: agendamentos de todos, registra e cancela PIX, sem appointment_payments/charges nem totais (RLS nega leitura; UI esconde).
+
+## Ledger financeiro
+`appointment_payments` tem RLS admin-only, sem grant de escrita ao cliente (só service_role escreve via Edge). Leitura operacional é por Edge escopada a um atendimento (`get-appointment-settlement`); listagem/histórico e resumo (`financial_summary`) só admin sob RLS. Nenhum dado de cartão é armazenado (PAN/CVV/bandeira/NSU jamais persistem); cartão/maquininha são declaração do operador.
 
 ## Status de assinatura
 bloqueado/cancelado: bloquear escrita operacional e suspender disparos. App redireciona bloqueado para tela de quitação.

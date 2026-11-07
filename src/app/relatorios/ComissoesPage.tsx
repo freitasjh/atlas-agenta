@@ -131,6 +131,25 @@ export function ComissoesPage() {
     professionalId: effectiveProfessionalId,
   });
 
+  // QA-ADR005-01: clicar no preset já ativo refaz a query. Sem isso, com
+  // start/end inalterados o `useEffect` acima não roda e o painel prende no
+  // erro até clicar outro preset. Quando o intervalo não muda, força refetch.
+  function handlePresetChange(next: PeriodPreset) {
+    if (next === "personalizado") {
+      const unchanged = next === preset;
+      setPreset(next);
+      if (unchanged) void reportQuery.refetch();
+      return;
+    }
+    const range = resolvePresetRange(next, today);
+    const unchanged =
+      next === preset && range.start === start && range.end === end;
+    setStart(range.start);
+    setEnd(range.end);
+    setPreset(next);
+    if (unchanged) void reportQuery.refetch();
+  }
+
   // Fora de barbearia: estado honesto, sem request (CA-VIS-06). O hook já não
   // dispara (enabled=false); aqui mostramos a mensagem de ramo.
   if (!commission) {
@@ -210,10 +229,11 @@ export function ComissoesPage() {
       {/* Filtros: período + profissional (profissional só para admin). */}
       <div className="flex flex-col gap-4">
         <PeriodFilter
+          idPrefix="comissoes"
           preset={preset}
           start={start}
           end={end}
-          onPresetChange={setPreset}
+          onPresetChange={handlePresetChange}
           onStartChange={setStart}
           onEndChange={setEnd}
         />

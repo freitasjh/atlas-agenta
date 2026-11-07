@@ -1,9 +1,15 @@
 import * as React from "react";
+import { Wallet } from "lucide-react";
 
 import { ClientConfirmedBadge } from "@/components/ClientConfirmedBadge";
 import { ComboTag } from "@/components/ComboTag";
 import { CommissionAmount } from "@/components/CommissionAmount";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Button } from "@/components/ui/button";
+import { PaymentStatusBadge } from "@/app/agenda/pagamentos/PaymentStatusBadge";
+import { formatMessage } from "@/app/agenda/pagamentos/payments-messages";
+import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { cn } from "@/lib/utils";
 import { formatTimeInTenantTz } from "@/lib/datetime";
 import { serviceColorDotClass } from "@/lib/service-color";
@@ -34,18 +40,22 @@ interface AppointmentBlockProps {
   showCommission?: boolean;
   /** Abre o mesmo menu de ações da lista (editar/status/mensagem). */
   onOpen?: (appointment: AppointmentWithRelations) => void;
+  /** Estado de pagamento derivado do servidor (ADR-004 §7). */
+  paymentFlag?: AgendaPaymentFlag;
+  /** Abre o settlement do atendimento (ação "Pagamento"). */
+  onOpenPayment?: (appointment: AppointmentWithRelations) => void;
+  /** Capacidade do cliente de registrar pagamentos (defesa em profundidade). */
+  canRegisterPayments?: boolean;
+  /** Catálogo de mensagens (selo/ação). Sem ele, o selo não é renderizado. */
+  messages?: PaymentsMessages;
   className?: string;
   style?: React.CSSProperties;
 }
 
 /**
- * Bloco visual de um agendamento no calendário (dia/semana). Extrai a parte
- * visual que a lista desenha em `AgendaItem`, sem alterar o comportamento da
- * lista. É um `<button>` focável que abre o mesmo menu de ações (ADR-08 §3);
- * em bloco curto, mostra só cliente + horário e joga o resto no `title`.
- *
- * Os horários são formatados no fuso do tenant (AC-16) — um agendamento às
- * 09:00 local aparece 09:00, nunca deslocado por UTC.
+ * Bloco visual de um agendamento no calendário (dia/semana). Um `<button>`
+ * principal abre o menu; a ação "Pagamento" (quando aplicável) é um botão
+ * irmão — nunca aninhado — e não dispara `onOpen`.
  */
 export function AppointmentBlock({
   appointment,
@@ -53,91 +63,130 @@ export function AppointmentBlock({
   compact = false,
   showCommission = false,
   onOpen,
+  paymentFlag,
+  onOpenPayment,
+  canRegisterPayments = false,
+  messages,
   className,
   style,
 }: AppointmentBlockProps) {
   const customerName = appointment.customers?.name ?? "Cliente removido";
-  // Agendamento de pacote (`combo_id` preenchido, XOR com `service_id`, ADR-03):
-  // o nome do pacote toma o lugar do serviço avulso e ganha o selo "Pacote".
-  // Um `combo_id` só existe quando criado como pacote (segmento salão), então a
-  // exibição reage ao dado da linha, não ao segmento (não quebra se a flag mudar).
   const isCombo = appointment.combo_id != null;
   const comboName = appointment.combos?.name ?? "Pacote removido";
   const serviceName = appointment.services?.name ?? "Serviço removido";
-  // Nome principal: pacote tem prioridade; fallback defensivo quando ambos
-  // ausentes num shape inesperado.
   const itemName = isCombo ? comboName : serviceName;
   const professionalName =
     appointment.professionals?.name ?? "Profissional removido";
   const startLabel = formatTimeInTenantTz(appointment.starts_at, timeZone);
   const endLabel = formatTimeInTenantTz(appointment.ends_at, timeZone);
-  // Selo de origem é determinístico pela coluna `confirmed_via`.
   const confirmedByClient =
     appointment.status === "confirmado" &&
     appointment.confirmed_via === "cliente_whatsapp";
 
-  // Texto do item para title/aria-label: "Pacote: <nome>" quando há combo.
   const itemLabel = isCombo ? `Pacote: ${comboName}` : serviceName;
   const title =
     `${startLabel}–${endLabel} · ${customerName} · ${itemLabel} · ${professionalName}` +
     (confirmedByClient ? " · Confirmado pelo cliente no WhatsApp" : "");
 
+  const showPaymentBadge =
+    !!messages &&
+    !!paymentFlag &&
+    paymentFlag !== "unknown" &&
+    paymentFlag !== "quitado" &&
+    appointment.status === "concluido";
+  const showPaymentAction =
+    !!messages &&
+    !!onOpenPayment &&
+    canRegisterPayments &&
+    (appointment.status === "em_atendimento" ||
+      appointment.status === "concluido");
+
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={`${customerName}, ${itemLabel} às ${startLabel}`}
-      onClick={onOpen ? () => onOpen(appointment) : undefined}
-      className={cn(
-        "flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-md border border-border border-l-2 bg-card p-2 text-left",
-        "transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-        STATUS_BORDER[appointment.status],
-        className,
-      )}
-      style={style}
-    >
-      <span className="flex items-center justify-between gap-1">
-        <span className="min-w-0 truncate text-xs font-semibold tabular-nums text-foreground">
-          {startLabel}
-        </span>
-        <span className="flex shrink-0 items-center gap-1">
-          {!compact ? (
-            <ClientConfirmedBadge appointment={appointment} />
-          ) : null}
-          <StatusBadge status={appointment.status} className="shrink-0" />
-        </span>
-      </span>
-      <span className="min-w-0 truncate text-sm font-medium text-foreground">
-        {customerName}
-      </span>
-      {!compact ? (
-        <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className={cn(
-              "inline-block h-2 w-2 shrink-0 rounded-full",
-              // Chave de cor: `combo_id` quando é pacote, senão `service_id`
-              // (mesma função, outra chave — sem caso especial).
-              serviceColorDotClass(appointment.combo_id ?? appointment.service_id),
-            )}
-          />
-          <span className="truncate">
-            {itemName}
-            {" · "}
-            {professionalName}
+    <div className={cn("relative h-full", className)} style={style}>
+      <button
+        type="button"
+        title={title}
+        aria-label={`${customerName}, ${itemLabel} às ${startLabel}`}
+        onClick={onOpen ? () => onOpen(appointment) : undefined}
+        className={cn(
+          "flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-md border border-border border-l-2 bg-card p-2 text-left",
+          "transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+          STATUS_BORDER[appointment.status],
+        )}
+      >
+        <span className="flex items-center justify-between gap-1">
+          <span className="min-w-0 truncate text-xs font-semibold tabular-nums text-foreground">
+            {startLabel}
           </span>
-          {isCombo ? <ComboTag /> : null}
+          <span className="flex shrink-0 items-center gap-1">
+            {!compact ? (
+              <ClientConfirmedBadge appointment={appointment} />
+            ) : null}
+            <StatusBadge status={appointment.status} className="shrink-0" />
+          </span>
         </span>
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {customerName}
+        </span>
+        {!compact ? (
+          <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "inline-block h-2 w-2 shrink-0 rounded-full",
+                serviceColorDotClass(
+                  appointment.combo_id ?? appointment.service_id,
+                ),
+              )}
+            />
+            <span className="truncate">
+              {itemName}
+              {" · "}
+              {professionalName}
+            </span>
+            {isCombo ? <ComboTag /> : null}
+          </span>
+        ) : null}
+        {showPaymentBadge && messages && paymentFlag ? (
+          <PaymentStatusBadge
+            status={paymentFlag}
+            messages={messages}
+            className="mt-0.5 w-fit max-w-full truncate text-[10px]"
+          />
+        ) : null}
+        {!compact && showCommission && appointment.status === "concluido" ? (
+          <CommissionAmount
+            commissionCents={appointment.commission_cents}
+            className="truncate text-xs"
+          />
+        ) : null}
+      </button>
+
+      {showPaymentAction && messages ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size={compact ? "icon" : "sm"}
+          aria-label={formatMessage(messages.agenda.actionPaymentAria, {
+            cliente: customerName,
+          })}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenPayment?.(appointment);
+          }}
+          className={
+            compact
+              ? "absolute bottom-0 right-0 z-10 h-11 w-11 min-h-[44px] min-w-[44px] p-0"
+              : "absolute bottom-1 right-1 h-11 min-h-[44px] px-2 text-xs"
+          }
+        >
+          {compact ? (
+            <Wallet className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            messages.agenda.actionPayment
+          )}
+        </Button>
       ) : null}
-      {/* Comissão só no bloco com espaço (não-compacto) e atendimento concluído,
-          gated por segmento+RBAC (pai) e recortada pelo RLS (ADR-02).
-          CommissionAmount não renderiza nada quando commission_cents é null. */}
-      {!compact && showCommission && appointment.status === "concluido" ? (
-        <CommissionAmount
-          commissionCents={appointment.commission_cents}
-          className="truncate text-xs"
-        />
-      ) : null}
-    </button>
+    </div>
   );
 }

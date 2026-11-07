@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   CalendarDays,
@@ -37,6 +37,13 @@ import { toast } from "sonner";
 
 import { AppointmentFormDialog } from "@/app/agenda/AppointmentFormDialog";
 import { StatusChangeConfirm } from "@/app/agenda/StatusChangeConfirm";
+import { PaymentCaptureDialog } from "@/app/agenda/pagamentos/PaymentCaptureDialog";
+import { AppointmentSettlementDialog } from "@/app/agenda/pagamentos/AppointmentSettlementDialog";
+import { PaymentStatusBadge } from "@/app/agenda/pagamentos/PaymentStatusBadge";
+import {
+  formatMessage,
+  paymentsMessages,
+} from "@/app/agenda/pagamentos/payments-messages";
 import { AgendaCalendarDay } from "@/app/agenda/AgendaCalendarDay";
 import { AgendaCalendarWeek } from "@/app/agenda/AgendaCalendarWeek";
 import {
@@ -55,6 +62,10 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useSegmentTerms } from "@/hooks/useSegmentTerms";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
+import {
+  useAgendaPaymentFlags,
+  type AgendaPaymentFlag,
+} from "@/hooks/useAgendaPaymentFlags";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
 import { formatTimeInTenantTz, weekRangeOf } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
@@ -120,6 +131,10 @@ function AgendaItem({
   canManage,
   canSendMessage,
   showCommission,
+  paymentsState,
+  paymentFlag,
+  canRegisterPayments,
+  onOpenPayment,
   onEdit,
   onChangeStatus,
   onSendMessage,
@@ -130,6 +145,11 @@ function AgendaItem({
   canSendMessage: boolean;
   /** Pode exibir a linha de comissão (gating de segmento + RBAC resolvido no pai). */
   showCommission: boolean;
+  /** `null` = recurso ainda não resolvido (D5); nunca cai no fluxo legado. */
+  paymentsState: boolean | null;
+  paymentFlag?: AgendaPaymentFlag;
+  canRegisterPayments: boolean;
+  onOpenPayment: (appointment: AppointmentWithRelations) => void;
   onEdit: (appointment: AppointmentWithRelations) => void;
   onChangeStatus: (
     appointment: AppointmentWithRelations,
@@ -137,6 +157,7 @@ function AgendaItem({
   ) => void;
   onSendMessage: (appointment: AppointmentWithRelations) => void;
 }) {
+  const loadingHintId = useId();
   const transitions = getAllowedTransitions(appointment.status);
   const showStatusMenu =
     canManage && !isFinalStatus(appointment.status) && transitions.length > 0;
@@ -156,7 +177,7 @@ function AgendaItem({
       className={`rounded-lg border border-border border-l-2 ${STATUS_BORDER[appointment.status]} bg-card p-4`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex gap-4">
+        <div className="flex min-w-0 gap-4">
           <div className="shrink-0 font-display text-sm font-semibold tabular-nums text-foreground">
             {formatTimeInTenantTz(appointment.starts_at, timeZone)}
             <span className="text-muted-foreground">
@@ -164,8 +185,8 @@ function AgendaItem({
               {formatTimeInTenantTz(appointment.ends_at, timeZone)}
             </span>
           </div>
-          <div className="space-y-1">
-            <p className="font-medium text-foreground">
+          <div className="min-w-0 space-y-1">
+            <p className="break-words font-medium text-foreground">
               {appointment.customers?.name ?? "Cliente removido"}
             </p>
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
@@ -179,7 +200,7 @@ function AgendaItem({
                   ),
                 )}
               />
-              <span>
+              <span className="min-w-0 break-words">
                 {itemName}
                 {" · "}
                 {appointment.professionals?.name ?? "Profissional removido"}
@@ -198,27 +219,63 @@ function AgendaItem({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:flex-col sm:items-end">
-          <div className="flex items-center gap-1.5">
+        {/* `min-w-0` + `flex-wrap` no eixo das ações: em 375 px o conjunto
+            (selo + 3 botões) quebra linha em vez de esticar o documento.
+            Nenhum controle é escondido. */}
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-col sm:items-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <StatusBadge status={appointment.status} />
             <ClientConfirmedBadge appointment={appointment} />
+            {appointment.status === "concluido" &&
+            paymentFlag &&
+            paymentFlag !== "unknown" &&
+            paymentFlag !== "quitado" ? (
+              <PaymentStatusBadge
+                status={paymentFlag}
+                messages={paymentsMessages}
+              />
+            ) : null}
           </div>
           {canManage ? (
-            <div className="flex gap-2">
+            <div
+              data-testid="agenda-item-actions"
+              className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:justify-end"
+            >
+              {paymentsState === true &&
+              canRegisterPayments &&
+              (appointment.status === "em_atendimento" ||
+                appointment.status === "concluido") ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={formatMessage(
+                    paymentsMessages.agenda.actionPaymentAria,
+                    {
+                      cliente: appointment.customers?.name ?? "",
+                    },
+                  )}
+                  onClick={() => onOpenPayment(appointment)}
+                  className="h-11 min-h-[44px] max-w-full"
+                >
+                  {paymentsMessages.agenda.actionPayment}
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onEdit(appointment)}
+                className="max-w-full"
               >
                 <Pencil aria-hidden="true" />
                 Editar
               </Button>
               {canSendMessage ? (
-                <div className="flex flex-col items-start">
+                <div className="flex min-w-0 max-w-full flex-col items-start">
                   <Button
                     variant="ghost"
                     size="sm"
                     disabled={!optIn}
+                    className="max-w-full"
                     title={
                       optIn
                         ? undefined
@@ -244,14 +301,29 @@ function AgendaItem({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {transitions.map((to) => (
-                      <DropdownMenuItem
-                        key={to}
-                        onSelect={() => onChangeStatus(appointment, to)}
-                      >
-                        {getTransitionLabel(to)}
-                      </DropdownMenuItem>
-                    ))}
+                    {transitions.map((to) => {
+                      const concludeLoading =
+                        to === "concluido" && paymentsState === null;
+                      return (
+                        <DropdownMenuItem
+                          key={to}
+                          disabled={concludeLoading}
+                          aria-describedby={
+                            concludeLoading ? loadingHintId : undefined
+                          }
+                          onSelect={() => onChangeStatus(appointment, to)}
+                        >
+                          {concludeLoading
+                            ? paymentsMessages.agenda.concludeLoading
+                            : getTransitionLabel(to)}
+                          {concludeLoading ? (
+                            <span id={loadingHintId} className="sr-only">
+                              {paymentsMessages.gating.loading}
+                            </span>
+                          ) : null}
+                        </DropdownMenuItem>
+                      );
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
@@ -279,9 +351,14 @@ export function AgendaPage() {
     canManageAppointments,
     canScheduleForAnyProfessional,
     canSendWhatsAppMessage,
+    canViewCommission,
+    canViewFinancials,
+    canRegisterPayments,
   } = usePermissions();
-  const { canViewCommission } = usePermissions();
-  const { commission: commissionFeature } = useSegmentFeatures();
+  const {
+    commission: commissionFeature,
+    payments: paymentsFeature,
+  } = useSegmentFeatures();
   // Linha de comissão só aparece quando o ramo libera (ex.: barbearia) E o papel
   // pode ler comissão (admin/professional; receptionist nunca). Defesa em
   // profundidade — a trava real do snapshot é o RLS financeiro da ADR-02.
@@ -375,6 +452,14 @@ export function AgendaPage() {
     appointment: AppointmentWithRelations;
     to: AppointmentStatus;
   } | null>(null);
+  const [captureTarget, setCaptureTarget] = useState<{
+    appointment: AppointmentWithRelations;
+    mode: "close" | "register";
+  } | null>(null);
+  const [settlementAppointmentId, setSettlementAppointmentId] = useState<
+    string | null
+  >(null);
+  const [paymentPendingOnly, setPaymentPendingOnly] = useState(false);
   const [messageTarget, setMessageTarget] =
     useState<AppointmentWithRelations | null>(null);
   // Pré-preenchimento ao criar a partir de uma faixa vazia do calendário.
@@ -419,6 +504,14 @@ export function AgendaPage() {
     appointment: AppointmentWithRelations,
     to: AppointmentStatus,
   ) {
+    if (to === "concluido") {
+      // `null` = ainda não resolvido: nunca cair no fluxo legado (D5).
+      if (paymentsFeature === null) return;
+      if (paymentsFeature === true) {
+        setCaptureTarget({ appointment, mode: "close" });
+        return;
+      }
+    }
     if (SENSITIVE_TRANSITIONS.includes(to)) {
       setStatusChange({ appointment, to });
       return;
@@ -447,6 +540,19 @@ export function AgendaPage() {
   const weekAppointments = weekQuery.data ?? [];
   const activeProfessionals = professionalsQuery.data ?? [];
   const activeServices = servicesQuery.data ?? [];
+
+  const paymentFlagRows = view === "semana" ? weekAppointments : appointments;
+  const agendaPaymentFlags = useAgendaPaymentFlags(paymentFlagRows, {
+    enabled: paymentsFeature === true && canViewFinancials,
+  });
+
+  const visibleAppointments = paymentPendingOnly
+    ? appointments.filter((appointment) => {
+        if (appointment.status !== "concluido") return false;
+        const flag = agendaPaymentFlags.statusById.get(appointment.id);
+        return flag !== undefined && flag !== "unknown" && flag !== "quitado";
+      })
+    : appointments;
 
   // Na Semana, o estado de dados (carregando/erro/refetch) vem do `weekQuery`;
   // Dia e Lista seguem com o `appointmentsQuery` por-dia. A base de profissionais
@@ -480,10 +586,16 @@ export function AgendaPage() {
         />
       ) : (
         <>
-          {/* Barra de filtro: dia + profissional (oculto para professional) */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex items-end gap-2">
-              <div className="space-y-1">
+          {/* Barra de filtro: dia + profissional (oculto para professional).
+              `flex-wrap` + larguras fluidas evitam overflow horizontal em
+              1280 px (RNF-02): os controles quebram linha em vez de esticar
+              o documento — nenhum controle é escondido. */}
+          <div
+            data-testid="agenda-filter-bar"
+            className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end"
+          >
+            <div className="flex min-w-0 flex-wrap items-end gap-2">
+              <div className="min-w-0 space-y-1">
                 <label
                   htmlFor="agenda-dia"
                   className="text-sm font-medium text-foreground"
@@ -528,7 +640,10 @@ export function AgendaPage() {
             </div>
 
             {canScheduleForAnyProfessional ? (
-              <div className="space-y-1">
+              <div
+                data-testid="agenda-filter-professional"
+                className="min-w-0 space-y-1 lg:w-[220px] lg:shrink-0"
+              >
                 <label
                   htmlFor="agenda-profissional"
                   className="text-sm font-medium text-foreground"
@@ -543,7 +658,7 @@ export function AgendaPage() {
                 >
                   <SelectTrigger
                     id="agenda-profissional"
-                    className="w-[220px]"
+                    className="w-full"
                     aria-label={`Filtrar por ${profissionaisLower}`}
                   >
                     <SelectValue
@@ -564,7 +679,10 @@ export function AgendaPage() {
               </div>
             ) : null}
 
-            <div className="space-y-1">
+            <div
+              data-testid="agenda-filter-service"
+              className="min-w-0 space-y-1 lg:w-[200px] lg:shrink-0"
+            >
               <label
                 htmlFor="agenda-servico"
                 className="text-sm font-medium text-foreground"
@@ -579,7 +697,7 @@ export function AgendaPage() {
               >
                 <SelectTrigger
                   id="agenda-servico"
-                  className="w-[200px]"
+                  className="w-full"
                   aria-label={`Filtrar por ${servicosLower}`}
                 >
                   <SelectValue placeholder={`Todos (${servicosLower})`} />
@@ -595,7 +713,10 @@ export function AgendaPage() {
               </Select>
             </div>
 
-            <div className="space-y-1">
+            <div
+              data-testid="agenda-filter-status"
+              className="min-w-0 space-y-1 lg:w-[200px] lg:shrink-0"
+            >
               <label
                 htmlFor="agenda-status"
                 className="text-sm font-medium text-foreground"
@@ -612,7 +733,7 @@ export function AgendaPage() {
               >
                 <SelectTrigger
                   id="agenda-status"
-                  className="w-[200px]"
+                  className="w-full"
                   aria-label="Filtrar por status"
                 >
                   <SelectValue placeholder="Todos os status" />
@@ -628,7 +749,26 @@ export function AgendaPage() {
               </Select>
             </div>
 
-            <div className="sm:ml-auto">
+            {view === "lista" &&
+            paymentsFeature === true &&
+            canViewFinancials &&
+            agendaPaymentFlags.pendingCount > 0 ? (
+              <Button
+                type="button"
+                variant={paymentPendingOnly ? "default" : "outline"}
+                size="sm"
+                aria-pressed={paymentPendingOnly}
+                aria-label={paymentsMessages.agenda.filterPendingAria}
+                onClick={() => setPaymentPendingOnly((value) => !value)}
+                className="min-h-[44px]"
+              >
+                {formatMessage(paymentsMessages.agenda.filterPending, {
+                  count: agendaPaymentFlags.pendingCount,
+                })}
+              </Button>
+            ) : null}
+
+            <div className="min-w-0 lg:ml-auto lg:shrink-0">
               <AgendaViewToggle value={view} onChange={setView} />
             </div>
           </div>
@@ -663,6 +803,16 @@ export function AgendaPage() {
               showCommission={showCommission}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}
               onCreateAt={canManageAppointments ? openCreateAt : undefined}
+              paymentFlags={agendaPaymentFlags.statusById}
+              onOpenPayment={
+                paymentsFeature === true
+                  ? (appointment) => setSettlementAppointmentId(appointment.id)
+                  : undefined
+              }
+              paymentsMessages={paymentsMessages}
+              canRegisterPayments={
+                paymentsFeature === true && canRegisterPayments
+              }
             />
           ) : view === "semana" ? (
             <AgendaCalendarWeek
@@ -673,6 +823,16 @@ export function AgendaPage() {
               showCommission={showCommission}
               onSelectDay={setDay}
               onOpenAppointment={canManageAppointments ? openEdit : () => {}}
+              paymentFlags={agendaPaymentFlags.statusById}
+              onOpenPayment={
+                paymentsFeature === true
+                  ? (appointment) => setSettlementAppointmentId(appointment.id)
+                  : undefined
+              }
+              paymentsMessages={paymentsMessages}
+              canRegisterPayments={
+                paymentsFeature === true && canRegisterPayments
+              }
             />
           ) : appointments.length === 0 && hasActiveFilters ? (
             <StatePanel
@@ -701,7 +861,7 @@ export function AgendaPage() {
             </StatePanel>
           ) : (
             <ul className="space-y-3">
-              {appointments.map((appointment) => (
+              {visibleAppointments.map((appointment) => (
                 <AgendaItem
                   key={appointment.id}
                   appointment={appointment}
@@ -709,6 +869,12 @@ export function AgendaPage() {
                   canManage={canManageAppointments}
                   canSendMessage={canSendWhatsAppMessage}
                   showCommission={showCommission}
+                  paymentsState={paymentsFeature}
+                  paymentFlag={agendaPaymentFlags.statusById.get(appointment.id)}
+                  canRegisterPayments={canRegisterPayments}
+                  onOpenPayment={(target) =>
+                    setSettlementAppointmentId(target.id)
+                  }
                   onEdit={openEdit}
                   onChangeStatus={handleChangeStatus}
                   onSendMessage={setMessageTarget}
@@ -738,6 +904,49 @@ export function AgendaPage() {
         change={statusChange}
         onClose={() => setStatusChange(null)}
       />
+
+      {captureTarget ? (
+        <PaymentCaptureDialog
+          open
+          mode={captureTarget.mode}
+          appointment={{
+            id: captureTarget.appointment.id,
+            customerName: captureTarget.appointment.customers?.name ?? "",
+            serviceName:
+              captureTarget.appointment.combos?.name ??
+              captureTarget.appointment.services?.name ??
+              "",
+            professionalName:
+              captureTarget.appointment.professionals?.name ?? "",
+            totalCents: captureTarget.appointment.price_cents,
+            status: captureTarget.appointment.status,
+          }}
+          onOpenChange={(open) => {
+            if (!open) setCaptureTarget(null);
+          }}
+          onCompleted={() => setCaptureTarget(null)}
+        />
+      ) : null}
+
+      {settlementAppointmentId ? (
+        <AppointmentSettlementDialog
+          open
+          appointmentId={settlementAppointmentId}
+          onOpenChange={(open) => {
+            if (!open) setSettlementAppointmentId(null);
+          }}
+          onRegisterPayment={() => {
+            const id = settlementAppointmentId;
+            const target = [...appointments, ...weekAppointments].find(
+              (appointment) => appointment.id === id,
+            );
+            setSettlementAppointmentId(null);
+            if (target) {
+              setCaptureTarget({ appointment: target, mode: "register" });
+            }
+          }}
+        />
+      ) : null}
 
       {canSendWhatsAppMessage && messageTarget ? (
         <SendMessageDialog

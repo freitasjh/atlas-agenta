@@ -1,0 +1,314 @@
+{
+  "version": 1,
+  "demand": "cobranca-formas-pagamento-adr-004",
+  "agent": "qa-engineer",
+  "phase": "Testing",
+  "gitSha": "83633c7f1b9862a11fcf2eeb2acf1ae87febb451",
+  "timestamp": "2026-11-07T00:09:48.000Z",
+  "worktreeDirty": true,
+  "round": 3,
+  "roundNote": "Rodada 3 re-executa apenas os 2 cenários corrigidos (A: overflow em 375/1280; B: settlement offline). Correções lidas no working tree (não commitadas) sobre 83633c7. Ambiente subido à mão (supabase functions serve + vite --port 5174) porque a 5173 pertence a outro repo.",
+  "commands": [
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 10110,
+      "stdoutHash": "sha256:33140ba7f096a02aa91c4632f7bcc30546ecbfd2be390e5fd082277c712e5337"
+    },
+    {
+      "cmd": "npm run typecheck",
+      "exitCode": 0,
+      "durationMs": 390,
+      "stdoutHash": "sha256:1f6b841af581ee09486001b6778984578b0b064857267bf33ee81494753af4de"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 694, "failed": 0, "skipped": 0 },
+    "it": { "passed": 0, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 694, "failed": 0, "skipped": 0 },
+    "gate": { "passed": 0, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "backend": "UP — Supabase 54321 (REST 200), Edge Functions servidas via `supabase functions serve --env-file supabase/functions/.env` (probe signup-tenant {} → 400 no início; 503 após encerrar)",
+    "frontend": "UP — Vite em http://127.0.0.1:5174 (5173 pertence a atlas-financeiro e não foi tocada)",
+    "tenant": "04a803ef-fa4d-41b5-84ad-29e90c746817 (barbearia, trial, America/Sao_Paulo); Asaas sandbox configurado para o passo PIX",
+    "viewports": ["1280x800", "375x800"],
+    "steps": [
+      { "n": 1, "name": "login demo + agenda", "status": "pass" },
+      { "n": 2, "name": "selo Pagamento pendente em concluido sem pagamento + em_atendimento disponível", "status": "pass" },
+      { "n": 3, "name": "concluir dinheiro 50,00 + gorjeta 5,00 + recebido 60,00 → troco 10,00; zero create-charge", "status": "pass" },
+      { "n": 4, "name": "split dinheiro 30,00 + débito 20,00 → comprovante 2 linhas", "status": "pass" },
+      { "n": 5, "name": "registrar depois → sem_pagamento + selo + toggle (contador com P3)", "status": "pass" },
+      { "n": 6, "name": "settlement de pendente → saldo/totais/linhas + registrar parcial 40,00/120,00", "status": "pass" },
+      { "n": 7, "name": "PIX do sistema", "status": "partial", "detail": "sem Asaas: chip desabilitado com mensagem inline; com Asaas sandbox: 422 GATEWAY_ERROR (débito conhecido cpfCnpj), zero appointment_payments e cobrança cancelada — não marca pago sem webhook" },
+      { "n": 8, "name": "erro/retry do settlement", "status": "pass", "detail": "503 com runtime parado → Tentar novamente recupera; DevTools Offline deixou loading >2min (P3)" },
+      { "n": 9, "name": "lista/dia/semana + tenant clinica sem feature", "status": "pass" },
+      { "n": 10, "name": "375 px sem overflow horizontal e CTA acessível", "status": "pass", "detail": "scrollWidth == innerWidth (392); no capture o Confirmar exige scroll interno" },
+      { "n": 11, "name": "console limpo", "status": "pass", "detail": "0 [ERROR] / 0 [WARN] preservados" },
+      { "n": 12, "name": "network sem 4xx/5xx inesperado", "status": "pass", "detail": "provocados: 422 GATEWAY_ERROR, 409 APPOINTMENT_ALREADY_CONCLUDED, 503 runtime parado" }
+    ],
+    "round2": {
+      "timestamp": "2026-11-07T00:05:00.000Z",
+      "gitSha": "83633c7f1b9862a11fcf2eeb2acf1ae87febb451",
+      "worktreeDirty": true,
+      "environment": {
+        "frontend": "http://127.0.0.1:5174 (Vite; 5173 pertence a atlas-financeiro e nao foi tocada)",
+        "functions": "supabase functions serve (probe signup-tenant {} -> 400)",
+        "data": "sintetica local: 205 quitado (12.000), 206 criado em_atendimento 15:00; 2 concluidos pendentes (203 parcial, 204 sem pagamento)"
+      },
+      "scenarios": [
+        {
+          "n": 1,
+          "name": "1280 e 375: scrollWidth === clientWidth + barra de filtros completa",
+          "status": "fail",
+          "at1280": "pass — scrollWidth 1265 === clientWidth 1265; barra com data, Hoje, Barbeiros, Servicos, Status, Pagamento pendente (2), Lista/Dia/Semana",
+          "at375": "fail — scrollWidth 392 vs clientWidth 375 (17 px). Culpado: div.flex.flex-wrap.gap-2 (acoes Pagamento/Editar/Enviar mensagem) nos 2 cards com selo Pagamento pendente; texto 'Enviar mensage...' cortado",
+          "evidence": ["harness/qa/adr-004/20-r2-agenda-1280.png", "harness/qa/adr-004/21-r2-agenda-375.png"]
+        },
+        {
+          "n": 2,
+          "name": "Contador Pagamento pendente (N) = 2 (2 concluidos pendentes + 1 em_atendimento)",
+          "status": "pass",
+          "detail": "DOM: 'Pagamento pendente (2)'; 2 selos em concluido (203 parcial, 204 sem_pagamento); 206 em_atendimento nao conta",
+          "evidence": ["harness/qa/adr-004/20-r2-agenda-1280.png"]
+        },
+        {
+          "n": 3,
+          "name": "PIX com gateway quebrado -> 422 -> Concluir sem pagamento",
+          "status": "pass",
+          "detail": "flow limpo apos reload: exatamente 1 POST register-appointment-payments [422] (req 1492), zero 409; dialogo fechou; lista refletiu Concluido + Pagamento pendente sem reload; DB 206=concluido, 0 pagamentos ativos, charge cancelado",
+          "evidence": ["harness/qa/adr-004/22-r2-pix-gateway-erro-1280.png", "harness/qa/adr-004/23-r2-lista-apos-concluir-sem-pagamento-1280.png"]
+        },
+        {
+          "n": 4,
+          "name": "Settlement offline -> erro em <=~15s com Tentar novamente",
+          "status": "fail",
+          "detail": "DevTools Offline: apos 18s (e >2min na 1a tentativa) segue 'Carregando pagamento...', sem Tentar novamente; 0 requests get-appointment-settlement despachados. Causa: React Query pausa a query com navigator.onLine=false (networkMode:'online'), entao o withTimeout de 15s nunca inicia",
+          "evidence": ["harness/qa/adr-004/24-r2-settlement-offline-spinner-1280.png"]
+        }
+      ],
+      "console": {
+        "errors": 1,
+        "warnings": 1,
+        "detail": "erro unico = 'Failed to load resource: 422' provocado; warn = 'Blocked aria-hidden ... descendant retained focus' na transicao menu Mudar status -> dialogo Radix; nenhum erro de aplicacao. Apos reload final: apenas debug/info do Vite/React"
+      },
+      "network": {
+        "registerAppointmentPayments": { "total": 1, "statuses": [422], "conflicts409": 0 },
+        "settlementRequestsWhileOffline": 0,
+        "exploratory409": "1 POST 409 APPOINTMENT_INVALID_STATE em modo registrar (close_appointment:false) para atendimento em_atendimento; refeito em modo fechar apos reload e fora da contagem do cenario 3"
+      },
+      "cleanup": {
+        "ports": ["5174"],
+        "note": "Vite 5174 encerrado por PID (3770606/3770605); supabase functions serve encerrado por PID (3770565/3770587); 5174 free e signup-tenant -> 503 (mesmo estado inicial); 5173 (atlas-financeiro, PID 3230178) intocada; stack Supabase 54321/54322 permanece ativa; nenhum pkill -f"
+      }
+    },
+    "round3": {
+      "timestamp": "2026-11-07T00:09:48.000Z",
+      "gitSha": "83633c7f1b9862a11fcf2eeb2acf1ae87febb451",
+      "worktreeDirty": true,
+      "scope": "apenas os 2 cenarios corrigidos: A (overflow 375/1280 na lista da agenda) e B (settlement offline com Tentar novamente)",
+      "environment": {
+        "frontend": "http://127.0.0.1:5174 (Vite PID 3827591; 5173 pertence a atlas-financeiro PID 3230178, intocada)",
+        "functions": "supabase functions serve --env-file supabase/functions/.env (PID 3827563; probe signup-tenant {} -> 400 no inicio)",
+        "data": "massa sintetica local inalterada: 203 parcial 40/120, 204 sem pagamento, 206 concluido sem pagamento -> toggle 'Pagamento pendente (3)' e 3 selos"
+      },
+      "fixesVerifiedInCode": [
+        { "bug": "QA-ADR004-02", "where": "src/app/agenda/AgendaPage.tsx:225,242", "what": "linha de acoes 'flex w-full min-w-0 flex-wrap ...' + botoes 'max-w-full'; nenhum controle oculto (sm: so muda direcao)" },
+        { "bug": "QA-ADR004-05", "where": "src/hooks/useAppointmentPayments.ts:199, src/hooks/useAsaasConfig.ts:75", "what": "networkMode: 'always' (query nao e pausada por navigator.onLine=false); SETTLEMENT_TIMEOUT_MS=15_000 em :29" }
+      ],
+      "scenarios": [
+        {
+          "n": "A1",
+          "name": "375x800 — scrollWidth === clientWidth",
+          "status": "pass",
+          "detail": "scrollWidth 375 === clientWidth 375 (innerWidth 375); 0 elementos com right > clientWidth; 6 cards / 18 botoes de acao",
+          "evidence": ["harness/qa/adr-004/25-r3-agenda-375.png", "harness/qa/adr-004/27-r3-agenda-375-card-pendente.png"]
+        },
+        {
+          "n": "A2",
+          "name": "375x800 — 3 acoes visiveis e sem corte (Pagamento/Editar/Enviar mensagem)",
+          "status": "pass",
+          "detail": "todos os botoes com offsetParent nao nulo, visibility/display visiveis e scrollWidth === clientWidth: Pagamento 102px, Editar 87px, Enviar mensagem 167px (texto integral); quebra em 2-3 linhas",
+          "evidence": ["harness/qa/adr-004/26-r3-agenda-375-acoes.png", "harness/qa/adr-004/27-r3-agenda-375-card-pendente.png"]
+        },
+        {
+          "n": "A3",
+          "name": "1280x800 — scrollWidth === clientWidth e acoes visiveis",
+          "status": "pass",
+          "detail": "scrollWidth 1265 === clientWidth 1265; 18 botoes todos visiveis e sem corte; toggle 'Pagamento pendente (3)' na faixa dos filtros",
+          "evidence": ["harness/qa/adr-004/28-r3-agenda-1280.png"]
+        },
+        {
+          "n": "B1",
+          "name": "1280x800 — DevTools Offline + abrir Pagamento de pendente",
+          "status": "pass",
+          "detail": "navigator.onLine=false; POST get-appointment-settlement despachado -> net::ERR_INTERNET_DISCONNECTED (req 1743); erro 'Nao foi possivel carregar o pagamento.' + botao 'Tentar novamente' em 8,6 s; hasSpinner=false",
+          "evidence": ["harness/qa/adr-004/29-r3-settlement-offline-erro-1280.png"]
+        },
+        {
+          "n": "B2",
+          "name": "375x800 — mesmo fluxo em atendimento diferente (13:00)",
+          "status": "pass",
+          "detail": "POST get-appointment-settlement -> ERR_INTERNET_DISCONNECTED (req 2050); erro + Tentar novamente em 4,9 s; sem spinner",
+          "evidence": ["harness/qa/adr-004/30-r3-settlement-offline-erro-375.png"]
+        },
+        {
+          "n": "B3",
+          "name": "Retry recupera ao reconectar",
+          "status": "pass",
+          "detail": "com rede online, 'Tentar novamente' -> POST get-appointment-settlement [200] (req 1745); dialogo com Total 120,00 / Pago 40,00 / Saldo 80,00",
+          "evidence": []
+        }
+      ],
+      "console": {
+        "errors": 1,
+        "warnings": 0,
+        "detail": "unico [error] e o provocado 'Failed to load resource: net::ERR_INTERNET_DISCONNECTED'; nenhum erro de aplicacao; demais mensagens debug/info do Vite/React"
+      },
+      "network": {
+        "settlementRequestsWhileOffline": 2,
+        "offlineFailures": ["req 1743 POST get-appointment-settlement net::ERR_INTERNET_DISCONNECTED", "req 2050 POST get-appointment-settlement net::ERR_INTERNET_DISCONNECTED"],
+        "retryAfterOnline": "req 1745 POST get-appointment-settlement [200]",
+        "unexpected4xx5xx": 0
+      },
+      "observations": [
+        {
+          "id": "QA-ADR004-06",
+          "severity": "P3",
+          "status": "open",
+          "scope": "cosmetico",
+          "detail": "AppointmentSettlementDialog.tsx:215-223 usa messages.settlement.loading como DialogDescription quando settlement e null; no estado de erro o subtitulo continua 'Carregando pagamento...' acima da mensagem de erro. Sem spinner e com CTA de retry visivel — inconsistencia de texto, nao de fluxo."
+        }
+      ],
+      "cleanup": {
+        "ports": ["5174"],
+        "note": "Vite 5174 encerrado por PID (3827591); supabase functions serve encerrado por PID (3827563); 5174 free, signup-tenant -> 503 e container supabase_edge_runtime_atlas-agenda ausente (mesmo estado inicial); 5173 (atlas-financeiro, PID 3230178) intocada; stack Supabase 54321/54322 permanece ativa; nenhum pkill -f"
+      }
+    },
+    "console": { "errors": 0, "warnings": 0, "preservedNavigations": 3 },
+    "network": {
+      "unexpected4xx5xx": 0,
+      "expected": [
+        "422 POST /functions/v1/register-appointment-payments (GATEWAY_ERROR provocado no passo PIX)",
+        "409 POST /functions/v1/register-appointment-payments (APPOINTMENT_ALREADY_CONCLUDED ao tentar 'Concluir sem pagamento')",
+        "503 POST /functions/v1/get-appointment-settlement (runtime parado de propósito para o teste de retry)"
+      ],
+      "createChargeRequestsDuringCashFlow": 0
+    },
+    "screenshots": [
+      "harness/qa/adr-004/01-agenda-1280.png",
+      "harness/qa/adr-004/02-capture-dinheiro-1280.png",
+      "harness/qa/adr-004/03-comprovante-dinheiro-1280.png",
+      "harness/qa/adr-004/04-capture-split-1280.png",
+      "harness/qa/adr-004/05-comprovante-split-1280.png",
+      "harness/qa/adr-004/06-comprovante-sem-pagamento-1280.png",
+      "harness/qa/adr-004/07-filtro-pendente-1280.png",
+      "harness/qa/adr-004/08-settlement-pendente-1280.png",
+      "harness/qa/adr-004/09-comprovante-parcial-1280.png",
+      "harness/qa/adr-004/10-settlement-parcial-1280.png",
+      "harness/qa/adr-004/11-settlement-erro-rede-1280.png",
+      "harness/qa/adr-004/12-pix-gateway-erro-1280.png",
+      "harness/qa/adr-004/13-agenda-dia-1280.png",
+      "harness/qa/adr-004/14-agenda-semana-1280.png",
+      "harness/qa/adr-004/15-feature-off-clinica-1280.png",
+      "harness/qa/adr-004/16-agenda-375.png",
+      "harness/qa/adr-004/17-settlement-375.png",
+      "harness/qa/adr-004/18-capture-375.png",
+      "harness/qa/adr-004/19-overflow-horizontal-1280.png",
+      "harness/qa/adr-004/20-r2-agenda-1280.png",
+      "harness/qa/adr-004/21-r2-agenda-375.png",
+      "harness/qa/adr-004/22-r2-pix-gateway-erro-1280.png",
+      "harness/qa/adr-004/23-r2-lista-apos-concluir-sem-pagamento-1280.png",
+      "harness/qa/adr-004/24-r2-settlement-offline-spinner-1280.png",
+      "harness/qa/adr-004/25-r3-agenda-375.png",
+      "harness/qa/adr-004/26-r3-agenda-375-acoes.png",
+      "harness/qa/adr-004/27-r3-agenda-375-card-pendente.png",
+      "harness/qa/adr-004/28-r3-agenda-1280.png",
+      "harness/qa/adr-004/29-r3-settlement-offline-erro-1280.png",
+      "harness/qa/adr-004/30-r3-settlement-offline-erro-375.png"
+    ],
+    "bugs": [
+      {
+        "id": "QA-ADR004-01",
+        "status": "resolved",
+        "roundedVerifiedIn": 2,
+        "severity": "P2",
+        "title": "'Concluir sem pagamento' falha após GATEWAY_ERROR (409 APPOINTMENT_ALREADY_CONCLUDED)",
+        "repro": "Concluir atendimento com linha PIX do sistema; gateway retorna 422; clicar 'Concluir sem pagamento'.",
+        "expected": "Concluir sem pagamento ou fechar usando o settlement já persistido.",
+        "actual": "Reenvia register-appointment-payments com close_appointment=true e payments=[]; servidor já concluído responde 409; UI mostra erro genérico e não conclui.",
+        "evidence": "12-pix-gateway-erro-1280.png; req 1007 (422) e 1009 (409)"
+      },
+      {
+        "id": "QA-ADR004-02",
+        "status": "resolved",
+        "roundedVerifiedIn": 3,
+        "severity": "P2",
+        "title": "Overflow horizontal na agenda com toggle 'Pagamento pendente (N)'",
+        "repro": "Tenant barbearia com pendentes, viewport 375x800 e 1280x800, visão Lista.",
+        "actual": "Round 2: 1280 corrigido (0 overflow), mas restavam 17 px em 375 pelas acoes do card. Round 3: 0 overflow nos dois viewports (375 === 375 e 1265 === 1265), 3 acoes visiveis e sem corte.",
+        "evidence": "01-agenda-1280.png, 19-overflow-horizontal-1280.png, 20-r2-agenda-1280.png, 21-r2-agenda-375.png, 25..28-r3-*.png"
+      },
+      {
+        "id": "QA-ADR004-03",
+        "status": "resolved",
+        "roundedVerifiedIn": 2,
+        "severity": "P3",
+        "title": "Agenda não invalida após falha de gateway (status muda no servidor)",
+        "repro": "Após 422 GATEWAY_ERROR, voltar à lista sem reload.",
+        "actual": "Atendimento já concluído no banco continua 'Em atendimento' até reload; hook só invalida em onSuccess."
+      },
+      {
+        "id": "QA-ADR004-04",
+        "status": "resolved",
+        "roundedVerifiedIn": 2,
+        "severity": "P3",
+        "title": "Contador do toggle 'Pagamento pendente (N)' inclui em_atendimento",
+        "repro": "2 concluídos sem pagamento + 1 em atendimento.",
+        "actual": "Toggle mostra (3), mas selo só aparece nos 2 concluídos (badge exige status concluido).",
+        "evidence": "07-filtro-pendente-1280.png"
+      },
+      {
+        "id": "QA-ADR004-05",
+        "status": "resolved",
+        "roundedVerifiedIn": 3,
+        "severity": "P3",
+        "title": "Sem timeout de request no carregamento do settlement (DevTools Offline)",
+        "repro": "Emular Offline no DevTools e abrir 'Pagamento' de um atendimento.",
+        "actual": "Round 2 falhava: com navigator.onLine=false o React Query pausava a query e nenhum request era despachado. Round 3: com networkMode 'always' o POST get-appointment-settlement e despachado e rejeita com ERR_INTERNET_DISCONNECTED; erro + 'Tentar novamente' em 4,9-8,6 s, sem spinner; retry volta a 200 ao reconectar.",
+        "rootCause": "useAppointmentSettlement usava useQuery com networkMode padrao (pausa offline antes do queryFn).",
+        "evidence": "24-r2-settlement-offline-spinner-1280.png, 29-r3-settlement-offline-erro-1280.png, 30-r3-settlement-offline-erro-375.png"
+      },
+      {
+        "id": "QA-ADR004-06",
+        "status": "open",
+        "roundedVerifiedIn": 3,
+        "severity": "P3",
+        "title": "Settlement em erro mantem subtitulo 'Carregando pagamento...'",
+        "repro": "Com DevTools Offline, abrir 'Pagamento' e observar o estado de erro.",
+        "actual": "O DialogDescription cai em messages.settlement.loading quando settlement e null (AppointmentSettlementDialog.tsx:215-223), entao o subtitulo continua 'Carregando pagamento...' acima da mensagem de erro. Nao ha spinner e o CTA 'Tentar novamente' esta visivel — inconsistencia de texto, nao de fluxo.",
+        "evidence": "29-r3-settlement-offline-erro-1280.png, 30-r3-settlement-offline-erro-375.png"
+      }
+    ],
+    "notCovered": [
+      "Matriz RBAC recepção/profissional (sem usuários criados nesta sessão)",
+      "Estorno, baixa manual e cancelamento de PIX (sem charges pendentes válidas; PIX falhou no gateway)"
+    ]
+  },
+  "evaluation": {
+    "telas": "Rodada 3: agenda sem overflow horizontal em 375 (375===375) e 1280 (1265===1265), com as 3 acoes visiveis e sem corte. Pontos fortes: selo com texto+icone, comprovante claro (total/pago/gorjeta/troco/status), settlement com hierarquia correta e CTA visivel no mobile. Ressalva: CTA do capture ainda exige scroll interno no 375 quando ha linha; subtitulo do settlement em erro ainda diz 'Carregando pagamento...' (QA-ADR004-06).",
+    "negocio": "Dinheiro com troco correto (60-50=10), gorjeta fora da receita (5,00 separada), split com 2 linhas, 'registrar depois' sem cobrança, parcial com confirmação explícita. PIX não gera receita sem webhook (zero appointment_payments).",
+    "logica": "Zero create-charge no fluxo de dinheiro/split (confirmado na network). Idempotência não exercitada em conflito real. Retry de settlement recupera. Rodada 3: com networkMode 'always' a query de settlement e despachada offline e o estado de erro aparece em 4,9-8,6 s sem spinner; retry volta a 200 ao reconectar.",
+    "perf": "Agenda carrega em ~1s no local; uma chamada em lote para flags de pagamento e uma para settlement ao abrir o diálogo; sem refetch por tecla observado. Sem medição formal de Core Web Vitals."
+  },
+  "brainStore": [
+    "sessoes/atlas-agenda/2026-11-06-adr-004-e2e-qa",
+    "regras/projetos/atlas-agenda/pagamentos-e2e-armadilhas"
+  ],
+  "cleanup": {
+    "ports": ["5174"],
+    "note": "Rodada 3: Vite 5174 encerrado por PID 3827591 e `supabase functions serve` por PID 3827563 (donos confirmados por cwd/porta). 5174 free, signup-tenant -> 503 e container supabase_edge_runtime_atlas-agenda ausente (mesmo estado do inicio). Nenhum `pkill -f`. Porta 5173 (atlas-financeiro, PID 3230178) intocada; stack Supabase 54321/54322 permanece ativa (pre-existente)."
+  },
+  "notes": "Contagens unit/frontend espelham a mesma suíte vitest (repo sem backend Java nesta sessão); `npm run test:integration` não foi executado para não resetar o banco com a massa de E2E. Durante transição de diálogos, um clique com uid de snapshot obsoleto criou um pagamento de 50,00 no atendimento de 13:00; o lançamento foi estornado logicamente (voided_at/voided_by/void_reason) via SQL local antes de continuar — nenhum código-fonte foi alterado.",
+  "selfReported": true
+}

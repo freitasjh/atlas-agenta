@@ -32,6 +32,7 @@ import { MembrosPage } from "@/app/config/membros/MembrosPage";
 import { UsuariosPage } from "@/app/config/usuarios/UsuariosPage";
 import { RelatoriosHubPage } from "@/app/relatorios/RelatoriosHubPage";
 import { ComissoesPage } from "@/app/relatorios/ComissoesPage";
+import { FinanceiroPage } from "@/app/relatorios/FinanceiroPage";
 import { ServicosPage } from "@/app/config/servicos/ServicosPage";
 import { CombosPage } from "@/app/config/combos/CombosPage";
 import { ProfissionaisPage } from "@/app/config/profissionais/ProfissionaisPage";
@@ -163,6 +164,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                         children: [
                           { index: true, element: <RelatoriosHubPage /> },
                           { path: "comissoes", element: <ComissoesPage /> },
+                          { path: "financeiro", element: <FinanceiroPage /> },
                         ],
                       },
                     ],

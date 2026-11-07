@@ -47,6 +47,27 @@ export interface Permissions {
    * professional não edita nem a própria taxa. Trava real no RLS write admin.
    */
   canManageCommission: boolean;
+  /**
+   * Registrar recebimento de atendimento (admin, recepção e profissional).
+   * Ação efetiva = esta capacidade **E** `settlement.permissions.can_register`
+   * **E** `payments === true` (ADR-004 §8).
+   */
+  canRegisterPayments: boolean;
+  /**
+   * Ler dados financeiros agregados/histórico (só admin). Recepção e
+   * profissional nunca veem totais fora do diálogo do próprio atendimento.
+   */
+  canViewFinancials: boolean;
+  /** Profissional lê os próprios recebimentos (RLS recorta). */
+  canViewOwnPayments: boolean;
+  /** Cancelar cobrança PIX pendente (admin/recepção). */
+  canCancelCharge: boolean;
+  /** Baixa manual de PIX (só admin). */
+  canConfirmChargeManual: boolean;
+  /** Estornar recebimento (só admin). */
+  canVoidPayment: boolean;
+  /** Ver totais dentro do fechamento — quem registra, só no diálogo. */
+  canViewPaymentTotalsInClosing: boolean;
   isAdmin: boolean;
   isProfessional: boolean;
   isReceptionist: boolean;
@@ -72,6 +93,13 @@ export function usePermissions(): Permissions {
     canSendWhatsAppMessage: isAdmin || isReceptionist || isProfessional,
     canViewCommission: isAdmin || isProfessional,
     canManageCommission: isAdmin,
+    canRegisterPayments: isAdmin || isProfessional || isReceptionist,
+    canViewFinancials: isAdmin,
+    canViewOwnPayments: isProfessional,
+    canCancelCharge: isAdmin || isReceptionist,
+    canConfirmChargeManual: isAdmin,
+    canVoidPayment: isAdmin,
+    canViewPaymentTotalsInClosing: isAdmin || isProfessional || isReceptionist,
     isAdmin,
     isProfessional,
     isReceptionist,
