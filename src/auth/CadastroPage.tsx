@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 import {
   Card,
@@ -45,22 +46,16 @@ import { usePostLoginRedirect } from "@/auth/usePostLoginRedirect";
 import { getPlan, parsePlanSlug } from "@/lib/plans";
 
 /**
- * Cadastro rico da empresa (ADR-003, parecer ux-designer vinculante SPEC §1).
+ * Cadastro rico da empresa em Etapas (Multi-step Wizard).
  *
- * Página única, 4 `<fieldset>` empilhados, 1 submit — sem wizard, sem
- * accordion. Ordem fixa: 1 Empresa → 2 Endereço → 3 Acesso → 4 Responsável
- * (`segment` mora no bloco 4). A conta e a empresa nascem na Edge Function
- * `signup-tenant` (ADR-02), numa transação só do servidor.
+ * 4 etapas organizadas progressivamente para eliminar sobrecarga cognitiva e scroll vertical:
+ *  1. Empresa (Identificação comercial)
+ *  2. Endereço (Localização com busca ViaCEP integrada)
+ *  3. Acesso (Credenciais de login)
+ *  4. Responsável (Dados do proprietário da conta e segmento)
  *
- * - Máscara é apresentação (canônico só-dígitos via zod + `buildSignUpBody`);
- *   validação no blur (`mode: "onTouched"`), nunca no keystroke.
- * - ViaCEP é sugestão: pré-preenche logradouro/cidade/UF editáveis e NUNCA
- *   sobrescreve campo que o usuário já editou; falha ⇒ manual + retry; sem
- *   JS de ViaCEP o cadastro manual conclui (RF06).
- * - Erros por campo em pt-BR (catálogo) + error-summary com âncoras quando há
- *   ≥2 erros + foco no 1º inválido.
- * - Em sucesso o próprio hook faz o login com o mesmo e-mail e senha; se o
- *   login automático falhar, a tela vai para `/login` com aviso neutro.
+ * A submissão continua sendo ATÔMICA e ÚNICA para a Edge Function `signup-tenant` (ADR-02).
+ * Os 4 `<fieldset>` permanecem no DOM para preservar integridade de formulário e a11y.
  */
 
 /** Ordem dos campos p/ o summary e p/ o foco no 1º inválido. */
@@ -82,13 +77,49 @@ const FIELD_ORDER: FieldPath<SignupInput>[] = [
   "segment",
 ];
 
+const STEPS = [
+  { step: 1, label: "Empresa", short: "Empresa" },
+  { step: 2, label: "Endereço", short: "Endereço" },
+  { step: 3, label: "Acesso", short: "Acesso" },
+  { step: 4, label: "Responsável", short: "Responsável" },
+] as const;
+
+const STEP_FIELDS: Record<number, FieldPath<SignupInput>[]> = {
+  1: ["tradeName", "legalName", "document", "phoneEmpresa"],
+  2: [
+    "addressCep",
+    "addressStreet",
+    "addressNumber",
+    "addressComplement",
+    "addressCity",
+    "addressState",
+  ],
+  3: ["email", "password", "confirmPassword"],
+  4: ["fullName", "segment"],
+};
+
+function getStepForField(name: FieldPath<SignupInput>): number {
+  if (STEP_FIELDS[1].includes(name)) return 1;
+  if (STEP_FIELDS[2].includes(name)) return 2;
+  if (STEP_FIELDS[3].includes(name)) return 3;
+  return 4;
+}
+
 interface SummaryEntry {
   name: FieldPath<SignupInput>;
   label: string;
   message: string;
 }
 
-function SectionHeader({ index, title, description }: { index: string; title: string; description: string }) {
+function SectionHeader({
+  index,
+  title,
+  description,
+}: {
+  index: string;
+  title: string;
+  description: string;
+}) {
   return (
     <div className="mb-4 border-b pb-3">
       <div className="flex items-center gap-2">
@@ -110,23 +141,18 @@ export function CadastroPage() {
   const redirectAfterLogin = usePostLoginRedirect();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  // Intenção de plano vinda de `/precos` (`?plano=`). Entrada não confiável:
-  // `parsePlanSlug` valida contra o enum e devolve `null` no caso inválido.
-  // Puramente apresentacional — não entra em `onSubmit` nem é persistida.
   const plan = parsePlanSlug(params.get("plano"));
+  const [currentStep, setCurrentStep] = useState(1);
   const [serverError, setServerError] = useState<string | null>(null);
   const [summary, setSummary] = useState<SummaryEntry[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const feedbackRef = useRef<HTMLParagraphElement>(null);
-  // Campos de endereço que o usuário já editou: o retorno do ViaCEP nunca
-  // escreve por cima deles (SPEC §1). Ref (não estado): só a fusão lê.
   const userEditedAddressRef = useRef<Set<string>>(new Set());
   const cepLookup = useCepLookup();
 
   const form = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
-    // Blur-validation, nunca keystroke: valida no blur após o toque e no submit.
     mode: "onTouched",
     defaultValues: {
       tradeName: "",
@@ -154,9 +180,6 @@ export function CadastroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchedCep]);
 
-  // Fusão do retorno ViaCEP: só em campo que o usuário NÃO editou. Número
-  // sempre manual. O efeito roda quando o lookup conclui; cada campo tocado
-  // depois disso já está no ref e é preservado.
   useEffect(() => {
     if (cepLookup.status !== "success" || !cepLookup.address) return;
     const merge: Array<[FieldPath<SignupInput>, string]> = [
@@ -177,7 +200,11 @@ export function CadastroPage() {
   }, [serverError]);
 
   function focusField(name: FieldPath<SignupInput>) {
-    document.getElementById(`cadastro-${name}`)?.focus();
+    const targetStep = getStepForField(name);
+    setCurrentStep(targetStep);
+    setTimeout(() => {
+      document.getElementById(`cadastro-${name}`)?.focus();
+    }, 0);
   }
 
   function handleInvalid(errors: typeof form.formState.errors) {
@@ -199,6 +226,20 @@ export function CadastroPage() {
     if (entries.length > 0) focusField(entries[0].name);
   }
 
+  async function handleNextStep() {
+    const fields = STEP_FIELDS[currentStep];
+    const isValid = await form.trigger(fields, { shouldFocus: true });
+    if (isValid) {
+      setSummary([]);
+      setCurrentStep((prev) => Math.min(prev + 1, 4));
+    }
+  }
+
+  function handlePrevStep() {
+    setSummary([]);
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+  }
+
   async function onSubmit(values: SignupInput) {
     setServerError(null);
     setSummary([]);
@@ -208,8 +249,6 @@ export function CadastroPage() {
         redirectAfterLogin(session);
         return;
       }
-      // Empresa criada, sessão não: nada de dado órfão — pede login na tela
-      // própria, com aviso neutro (ADR-03).
       navigate("/login", {
         replace: true,
         state: { notice: cadastroMessages.skipAutoLoginNotice },
@@ -248,6 +287,84 @@ export function CadastroPage() {
             </p>
           </div>
         ) : null}
+
+        {/* Stepper Navigation Indicator */}
+        <nav aria-label="Etapas do cadastro" className="mb-6">
+          <ol className="grid grid-cols-4 gap-2">
+            {STEPS.map((s) => {
+              const isCurrent = s.step === currentStep;
+              const isPast = s.step < currentStep;
+              return (
+                <li key={s.step} className="flex flex-col items-center">
+                  <button
+                    type="button"
+                    disabled={!isPast}
+                    onClick={() => isPast && setCurrentStep(s.step)}
+                    aria-current={isCurrent ? "step" : undefined}
+                    className={cn(
+                      "group flex w-full flex-col items-center gap-1.5 text-center transition-colors",
+                      isPast && "cursor-pointer",
+                      !isPast && "cursor-default",
+                    )}
+                  >
+                    <div className="flex w-full items-center">
+                      <span
+                        className={cn(
+                          "h-1 w-full rounded-full transition-colors",
+                          s.step === 1 ? "invisible" : "",
+                          isPast || isCurrent ? "bg-primary" : "bg-muted",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-all",
+                          isCurrent &&
+                            "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background",
+                          isPast &&
+                            "bg-primary/20 text-primary group-hover:bg-primary/30",
+                          !isCurrent &&
+                            !isPast &&
+                            "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {isPast ? (
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                        ) : (
+                          s.step
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          "h-1 w-full rounded-full transition-colors",
+                          s.step === 4 ? "invisible" : "",
+                          isPast ? "bg-primary" : "bg-muted",
+                        )}
+                      />
+                    </div>
+                    <span
+                      className={cn(
+                        "hidden sm:inline text-xs font-medium truncate max-w-full",
+                        isCurrent && "font-semibold text-foreground",
+                        isPast &&
+                          "text-muted-foreground group-hover:text-foreground",
+                        !isCurrent && !isPast && "text-muted-foreground/60",
+                      )}
+                    >
+                      {s.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="mt-2 text-center text-xs text-muted-foreground sm:hidden">
+            Etapa {currentStep} de 4:{" "}
+            <span className="font-medium text-foreground">
+              {STEPS[currentStep - 1].label}
+            </span>
+          </div>
+        </nav>
+
         {serverError ? (
           <p
             ref={feedbackRef}
@@ -258,6 +375,7 @@ export function CadastroPage() {
             {serverError}
           </p>
         ) : null}
+
         {summary.length >= 2 ? (
           <div
             role="alert"
@@ -280,13 +398,21 @@ export function CadastroPage() {
             </ul>
           </div>
         ) : null}
+
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit, handleInvalid)}
-            className="space-y-8"
+            className="space-y-6"
             noValidate
           >
-            <fieldset>
+            {/* Bloco 1: Empresa */}
+            <fieldset
+              className={
+                currentStep === 1
+                  ? "block space-y-4 animate-in fade-in-50 duration-150"
+                  : "hidden"
+              }
+            >
               <legend className="sr-only">
                 {msg.sections.empresa.legend}
               </legend>
@@ -304,7 +430,9 @@ export function CadastroPage() {
                   name="tradeName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-tradeName">{msg.labels.tradeName}</FormLabel>
+                      <FormLabel htmlFor="cadastro-tradeName">
+                        {msg.labels.tradeName}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-tradeName"
@@ -322,7 +450,9 @@ export function CadastroPage() {
                   name="legalName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-legalName">{msg.labels.legalNameOptional}</FormLabel>
+                      <FormLabel htmlFor="cadastro-legalName">
+                        {msg.labels.legalNameOptional}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-legalName"
@@ -341,7 +471,9 @@ export function CadastroPage() {
                   name="document"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-document">{msg.labels.document}</FormLabel>
+                      <FormLabel htmlFor="cadastro-document">
+                        {msg.labels.document}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-document"
@@ -368,7 +500,9 @@ export function CadastroPage() {
                   name="phoneEmpresa"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-phoneEmpresa">{msg.labels.phoneEmpresa}</FormLabel>
+                      <FormLabel htmlFor="cadastro-phoneEmpresa">
+                        {msg.labels.phoneEmpresa}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-phoneEmpresa"
@@ -395,7 +529,15 @@ export function CadastroPage() {
               </div>
             </fieldset>
 
-            <fieldset aria-busy={addressLoading}>
+            {/* Bloco 2: Endereço */}
+            <fieldset
+              aria-busy={addressLoading}
+              className={
+                currentStep === 2
+                  ? "block space-y-4 animate-in fade-in-50 duration-150"
+                  : "hidden"
+              }
+            >
               <legend className="sr-only">
                 {msg.sections.endereco.legend}
               </legend>
@@ -410,7 +552,9 @@ export function CadastroPage() {
                   name="addressCep"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-addressCep">{msg.labels.addressCep}</FormLabel>
+                      <FormLabel htmlFor="cadastro-addressCep">
+                        {msg.labels.addressCep}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-addressCep"
@@ -472,7 +616,9 @@ export function CadastroPage() {
                   name="addressStreet"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-addressStreet">{msg.labels.addressStreet}</FormLabel>
+                      <FormLabel htmlFor="cadastro-addressStreet">
+                        {msg.labels.addressStreet}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-addressStreet"
@@ -499,7 +645,9 @@ export function CadastroPage() {
                     name="addressNumber"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="cadastro-addressNumber">{msg.labels.addressNumber}</FormLabel>
+                        <FormLabel htmlFor="cadastro-addressNumber">
+                          {msg.labels.addressNumber}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             id="cadastro-addressNumber"
@@ -542,7 +690,9 @@ export function CadastroPage() {
                     name="addressCity"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="cadastro-addressCity">{msg.labels.addressCity}</FormLabel>
+                        <FormLabel htmlFor="cadastro-addressCity">
+                          {msg.labels.addressCity}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             id="cadastro-addressCity"
@@ -568,7 +718,9 @@ export function CadastroPage() {
                     name="addressState"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="cadastro-addressState">{msg.labels.addressState}</FormLabel>
+                        <FormLabel htmlFor="cadastro-addressState">
+                          {msg.labels.addressState}
+                        </FormLabel>
                         <Select
                           value={field.value || undefined}
                           onValueChange={(value) => {
@@ -577,7 +729,10 @@ export function CadastroPage() {
                           }}
                         >
                           <FormControl>
-                            <SelectTrigger id="cadastro-addressState" className="h-11">
+                            <SelectTrigger
+                              id="cadastro-addressState"
+                              className="h-11"
+                            >
                               <SelectValue
                                 placeholder={msg.placeholders.addressState}
                               />
@@ -599,7 +754,14 @@ export function CadastroPage() {
               </div>
             </fieldset>
 
-            <fieldset>
+            {/* Bloco 3: Acesso */}
+            <fieldset
+              className={
+                currentStep === 3
+                  ? "block space-y-4 animate-in fade-in-50 duration-150"
+                  : "hidden"
+              }
+            >
               <legend className="sr-only">
                 {msg.sections.acesso.legend}
               </legend>
@@ -614,7 +776,9 @@ export function CadastroPage() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-email">{msg.labels.email}</FormLabel>
+                      <FormLabel htmlFor="cadastro-email">
+                        {msg.labels.email}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-email"
@@ -635,7 +799,9 @@ export function CadastroPage() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="cadastro-password">{msg.labels.password}</FormLabel>
+                        <FormLabel htmlFor="cadastro-password">
+                          {msg.labels.password}
+                        </FormLabel>
                         <FormControl>
                           <div className="relative">
                             <Input
@@ -679,7 +845,9 @@ export function CadastroPage() {
                     name="confirmPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel htmlFor="cadastro-confirmPassword">{msg.labels.confirmPassword}</FormLabel>
+                        <FormLabel htmlFor="cadastro-confirmPassword">
+                          {msg.labels.confirmPassword}
+                        </FormLabel>
                         <FormControl>
                           <div className="relative">
                             <Input
@@ -721,7 +889,14 @@ export function CadastroPage() {
               </div>
             </fieldset>
 
-            <fieldset>
+            {/* Bloco 4: Responsável */}
+            <fieldset
+              className={
+                currentStep === 4
+                  ? "block space-y-4 animate-in fade-in-50 duration-150"
+                  : "hidden"
+              }
+            >
               <legend className="sr-only">
                 {msg.sections.responsavel.legend}
               </legend>
@@ -736,7 +911,9 @@ export function CadastroPage() {
                   name="fullName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-fullName">{msg.labels.fullName}</FormLabel>
+                      <FormLabel htmlFor="cadastro-fullName">
+                        {msg.labels.fullName}
+                      </FormLabel>
                       <FormControl>
                         <Input
                           id="cadastro-fullName"
@@ -754,7 +931,9 @@ export function CadastroPage() {
                   name="segment"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel htmlFor="cadastro-segment">{msg.labels.segment}</FormLabel>
+                      <FormLabel htmlFor="cadastro-segment">
+                        {msg.labels.segment}
+                      </FormLabel>
                       <Select
                         value={field.value || undefined}
                         onValueChange={field.onChange}
@@ -785,20 +964,51 @@ export function CadastroPage() {
               </div>
             </fieldset>
 
-            <Button
-              type="submit"
-              className="min-h-[44px] w-full"
-              disabled={signUp.isPending}
-            >
-              {signUp.isPending ? (
-                <>
-                  <Loader2 className="animate-spin" aria-hidden="true" />
-                  {msg.submitting}
-                </>
+            {/* Ações de Navegação dos Steps */}
+            <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-4 border-t border-border">
+              {currentStep > 1 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePrevStep}
+                  className="min-h-[44px] w-full sm:w-auto"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Voltar
+                </Button>
               ) : (
-                msg.submit
+                <div className="hidden sm:block" />
               )}
-            </Button>
+
+              {currentStep < 4 ? (
+                <Button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="min-h-[44px] w-full sm:w-auto sm:min-w-[160px]"
+                >
+                  Avançar
+                  <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
+
+              <Button
+                type="submit"
+                className={cn(
+                  "min-h-[44px] w-full sm:w-auto sm:min-w-[160px]",
+                  currentStep === 4 ? "inline-flex" : "hidden",
+                )}
+                disabled={signUp.isPending}
+              >
+                {signUp.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                    {msg.submitting}
+                  </>
+                ) : (
+                  msg.submit
+                )}
+              </Button>
+            </div>
           </form>
         </Form>
       </CardContent>

@@ -326,3 +326,40 @@ export function weekRangeOf(
 export function addMinutes(utc: Date, minutes: number): Date {
   return new Date(utc.getTime() + minutes * 60000);
 }
+
+/**
+ * "Hoje" (`YYYY-MM-DD`) **no fuso do tenant** (A6) — nunca o dia UTC
+ * (`new Date().toISOString()`), que erra a borda da virada de dia
+ * (23h30 BRT ainda é "amanhã" em UTC). Componentes que comparam datas de
+ * parede (vigência, janela de conflito, mês inicial) usam isto.
+ */
+export function todayInTimeZone(
+  timeZone: string,
+  now: Date = new Date(),
+): string | null {
+  try {
+    const { year, month, day } = toTenantLocal(now, timeZone);
+    const mm = String(month).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    return `${year}-${mm}-${dd}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Dia de parede (`YYYY-MM-DD` no fuso do tenant) de um instante UTC (A6).
+ * Agrupamentos por dia (contagens do calendário) chamam isto em vez de
+ * `starts_at.slice(0, 10)` — o slice é o dia UTC, que difere do dia de
+ * parede nas horas de madrugada (02:30 UTC = 23:30 BRT do dia anterior).
+ */
+export function tenantDayOfUtc(utcIso: string, timeZone: string): string | null {
+  try {
+    const { year, month, day } = toTenantLocal(utcIso, timeZone);
+    const mm = String(month).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    return `${year}-${mm}-${dd}`;
+  } catch {
+    return null;
+  }
+}

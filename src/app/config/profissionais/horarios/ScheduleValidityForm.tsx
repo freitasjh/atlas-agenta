@@ -23,6 +23,9 @@ import {
   useScheduleValidity,
   useUpdateScheduleValidity,
 } from "@/hooks/useProfessionals";
+import { useTenant } from "@/hooks/useTenant";
+import { todayInTimeZone } from "@/lib/datetime";
+import { isRetroactiveEditBlocked } from "@/app/config/profissionais/horarios/deriveMonthlyGrade";
 
 /** Data `YYYY-MM-DD` ou string vazia (campo opcional da UI). */
 const optionalDate = z.union([
@@ -96,6 +99,8 @@ export function ScheduleValidityForm({
 }: ScheduleValidityFormProps) {
   const validityQuery = useScheduleValidity(professionalId);
   const updateValidity = useUpdateScheduleValidity();
+  const { data: tenant } = useTenant();
+  const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
   const defaults = useMemo<ValidityFormValues>(() => {
     const data = validityQuery.data;
@@ -120,10 +125,24 @@ export function ScheduleValidityForm({
   const hasEndDate = form.watch("hasEndDate");
 
   async function onSubmit(values: ValidityFormValues) {
+    // A2/SPEC §5.5: vigência com início no passado não pode ser salva
+    // (preserva agendamentos passados). "Hoje" no fuso do tenant (A6).
+    const input = toValidityInput(values);
+    const today = todayInTimeZone(timeZone);
+    if (isRetroactiveEditBlocked({ scheduleStartDate: input.scheduleStartDate, today: today ?? undefined })) {
+      form.setError("scheduleStartDate", {
+        message:
+          "A data de início não pode ser no passado. A vigência vale a partir de hoje.",
+      });
+      toast.error(
+        "A data de início não pode ser no passado. Não salvamos a vigência.",
+      );
+      return;
+    }
     try {
       await updateValidity.mutateAsync({
         id: professionalId,
-        ...toValidityInput(values),
+        ...input,
       });
       toast.success("Vigência salva.");
     } catch {

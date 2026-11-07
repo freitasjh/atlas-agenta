@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -36,6 +36,9 @@ import {
   type ScheduleOverrideInput,
 } from "@/lib/validations/schedule";
 import { useUpsertScheduleOverride } from "@/hooks/useScheduleOverrides";
+import { useAppointmentActivityRange } from "@/hooks/useAppointments";
+import { useTenant } from "@/hooks/useTenant";
+import { findOverrideConflict } from "@/app/config/profissionais/horarios/deriveMonthlyGrade";
 import type { ScheduleOverride } from "@/types/domain";
 
 /** `time` do banco (`HH:MM:SS`) → `HH:MM` que a UI edita. */
@@ -45,10 +48,13 @@ function toHourMinute(value: string | null): string | undefined {
 }
 
 /** Monta os valores do form a partir de uma exceção existente (ou vazia). */
-function buildDefaults(override: ScheduleOverride | null): ScheduleOverrideInput {
+function buildDefaults(
+  override: ScheduleOverride | null,
+  initialDate?: string,
+): ScheduleOverrideInput {
   if (!override) {
     return {
-      overrideDate: "",
+      overrideDate: initialDate ?? "",
       isClosed: true,
       startTime: undefined,
       endTime: undefined,
@@ -77,6 +83,8 @@ interface OverrideFormDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Exceção a editar; `null` cria uma nova. */
   override: ScheduleOverride | null;
+  /** Data pré-selecionada ao abrir do calendário mensal (FE-04). */
+  initialDate?: string;
 }
 
 /**
@@ -91,11 +99,17 @@ export function OverrideFormDialog({
   open,
   onOpenChange,
   override,
+  initialDate,
 }: OverrideFormDialogProps) {
   const isEdit = !!override;
   const upsertOverride = useUpsertScheduleOverride(professionalId);
+  const { data: tenant } = useTenant();
+  const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
-  const defaults = useMemo(() => buildDefaults(override), [override]);
+  const defaults = useMemo(
+    () => buildDefaults(override, initialDate),
+    [override, initialDate],
+  );
 
   const form = useForm<ScheduleOverrideInput>({
     resolver: zodResolver(scheduleOverrideSchema),
@@ -104,13 +118,58 @@ export function OverrideFormDialog({
 
   // Ao (re)abrir, sincroniza com a exceção selecionada (ou limpa, ao criar).
   useEffect(() => {
-    if (open) form.reset(defaults);
+    if (open) {
+      form.reset(defaults);
+      setConflict(null);
+    }
   }, [open, defaults, form]);
 
   const isClosed = form.watch("isClosed");
   const hasBreak = form.watch("hasBreak");
+  const watchedDate = form.watch("overrideDate");
+  const [conflict, setConflict] = useState<string | null>(null);
+
+  // Atividade do dia (colunas leves, sem join/PII) só com o dialog aberto
+  // (A6: `enabled: open`) — sem busca com o dialog fechado.
+  const conflictDay = watchedDate || (override?.override_date ?? "");
+  const appointmentsQuery = useAppointmentActivityRange({
+    startDay: conflictDay,
+    endDay: conflictDay,
+    professionalId,
+    enabled: open && conflictDay !== "",
+  });
 
   async function onSubmit(values: ScheduleOverrideInput) {
+    setConflict(null);
+    const day = values.overrideDate || override?.override_date || "";
+    if (day) {
+      // C2: o cache pode estar velho (dia trocado e save sem aguardar a query
+      // do novo dia). `refetch()` antes do check garante o dia submetido.
+      const refetched = await appointmentsQuery.refetch();
+      const appointments = (refetched.data ?? appointmentsQuery.data ?? []).map(
+        (a) => ({
+          id: a.id,
+          startsAt: a.starts_at,
+          endsAt: a.ends_at,
+          status: a.status,
+        }),
+      );
+      const found = findOverrideConflict({
+        overrideDate: day,
+        isClosed: values.isClosed,
+        startTime: values.startTime,
+        endTime: values.endTime,
+        breakStart: values.breakStart ?? null,
+        breakEnd: values.breakEnd ?? null,
+        appointments,
+        timeZone,
+      });
+      if (found) {
+        setConflict(found.message);
+        toast.error(found.message);
+        return;
+      }
+    }
     try {
       await upsertOverride.mutateAsync({ ...values, id: override?.id });
       toast.success("Exceção salva.");
@@ -157,6 +216,19 @@ export function OverrideFormDialog({
                 </FormItem>
               )}
             />
+
+            {conflict ? (
+              <div
+                role="alert"
+                className="flex gap-2 rounded-md border border-amber-600/40 bg-amber-50 p-3 text-sm text-amber-900"
+              >
+                <AlertTriangle
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  aria-hidden="true"
+                />
+                <p>{conflict}</p>
+              </div>
+            ) : null}
 
             <FormField
               control={form.control}
@@ -310,7 +382,10 @@ export function OverrideFormDialog({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={upsertOverride.isPending}>
+              <Button
+                type="submit"
+                disabled={upsertOverride.isPending || appointmentsQuery.isFetching}
+              >
                 {upsertOverride.isPending ? (
                   <>
                     <Loader2 className="animate-spin" aria-hidden="true" />

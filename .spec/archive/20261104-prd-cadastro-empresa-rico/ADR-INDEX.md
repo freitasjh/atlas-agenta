@@ -4,9 +4,9 @@
 
 | order | id | title | status | depends_on | dir | branch | merge |
 |---|---|---|---|---|---|---|---|
-| 1 | ADR-001 | Schema tenants: colunas de endereço + NOT NULL documento/phone | in-progress | — | ADRs/ADR-001-schema-tenants-endereco/ | adr/cadastro-empresa-rico/01-schema-tenants-endereco | — |
-| 2 | ADR-002 | RPC create_tenant_with_admin + Edge signup-tenant: params, validação server, 409 documento | in-progress | ADR-001 | ADRs/ADR-002-rpc-edge-signup/ | adr/cadastro-empresa-rico/02-rpc-edge-signup | — |
-| 3 | ADR-003 | UI CadastroPage + validações cliente + ViaCEP com fallback | in-progress | ADR-002 | ADRs/ADR-003-ui-cadastro-viacep/ | adr/cadastro-empresa-rico/03-ui-cadastro-viacep | — |
+| 1 | ADR-001 | Schema tenants: colunas de endereço + NOT NULL documento/phone | merged | — | ADRs/ADR-001-schema-tenants-endereco/ | adr/cadastro-empresa-rico/01-schema-tenants-endereco | PR #39 |
+| 2 | ADR-002 | RPC create_tenant_with_admin + Edge signup-tenant: params, validação server, 409 documento | merged | ADR-001 | ADRs/ADR-002-rpc-edge-signup/ | adr/cadastro-empresa-rico/02-rpc-edge-signup | PR #40 |
+| 3 | ADR-003 | UI CadastroPage + validações cliente + ViaCEP com fallback | merged | ADR-002 | ADRs/ADR-003-ui-cadastro-viacep/ | adr/cadastro-empresa-rico/03-ui-cadastro-viacep | PR #42 |
 
 > Contrato das colunas (SPEC §4.2): `order` inteiro ≥1 · `status` ∈
 > todo|in-progress|merged|dropped · `depends_on` declarado (`—` quando não há) ·
