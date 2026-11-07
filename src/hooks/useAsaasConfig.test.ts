@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,6 +50,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  onlineManager.setOnline(true);
   cleanup();
 });
 
@@ -90,6 +91,21 @@ describe("useAsaasConfig", () => {
 
     const { result } = renderWithClient(() => useAsaasConfig());
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it("não pausa sob offline (networkMode always) — o capture precisa resolver", async () => {
+    onlineManager.setOnline(false);
+    fromMock.mockReturnValue({
+      select: () => ({
+        maybeSingle: async () => ({ data: ROW, error: null }),
+      }),
+    });
+
+    const { result } = renderWithClient(() => useAsaasConfig());
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(fromMock).toHaveBeenCalledWith("tenant_asaas_config");
+    expect(result.current.fetchStatus).not.toBe("paused");
   });
 });
 

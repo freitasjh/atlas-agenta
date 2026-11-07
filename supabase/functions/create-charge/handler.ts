@@ -1,140 +1,423 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { z } from "npm:zod@3.23.8";
-import { asaasBaseUrl, asaasFetch, decryptText } from "../_shared/asaas.ts";
+import {
+  asaasBaseUrl,
+  cancelPayment,
+  createPixCharge,
+  decryptText,
+  ensureAsaasCustomer,
+  findPaymentByExternalReference,
+} from "../_shared/asaas.ts";
+import { isProfessionalOwner, resolveIdentity, type Identity } from "../_shared/identity.ts";
+import {
+  ApiError,
+  CORS_HEADERS,
+  errorResponse,
+  jsonResponse,
+  logEvent,
+  mapRpcError,
+  messageForCode,
+} from "../_shared/http.ts";
+import {
+  asChargeState,
+  cancelPaymentIfOrphan,
+  ensureSingleGatewayCreation,
+  mergeChargeState,
+  type ChargeState,
+} from "../_shared/gateway-claim.ts";
 import { requestSchema } from "./schemas.ts";
 
-const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-function jsonResponse(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-/**
- * Papéis que concluem atendimento e, portanto, podem gerar a cobrança PIX
- * operacional do agendamento (`admin`, `receptionist`, `professional` — os
- * mesmos de `canManageAppointments`). Leitura de `charges` continua restrita
- * por RLS/papel; esta permissão vale só para a escrita da Edge Function.
- */
-const CHARGE_CREATOR_ROLES = ["admin", "receptionist", "professional"] as const;
-
-type IdentityResult =
-  | { ok: true; userId: string; tenantId: string; role: string }
-  | { ok: false; status: 401 | 403; error: string };
-
-async function resolveIdentity(req: Request, service: SupabaseClient): Promise<IdentityResult> {
-  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
-  const { data, error } = await service.auth.getUser(token);
-  if (error || !data.user) return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
-  const { data: profile } = await service.from("profiles").select("tenant_id, role").eq("id", data.user.id).maybeSingle();
-  const role = (profile?.role ?? "") as string;
-  if (!(CHARGE_CREATOR_ROLES as readonly string[]).includes(role) || !profile?.tenant_id) {
-    return { ok: false, status: 403, error: "Sem permissão para gerar cobrança." };
-  }
-  return { ok: true, userId: data.user.id, tenantId: profile.tenant_id as string, role };
-}
-
 export type HandlerOptions = { createService: () => SupabaseClient };
+
+function successBody(charge: ChargeState): Record<string, unknown> {
+  return {
+    charge_id: charge.charge_id,
+    amount_cents: charge.amount_cents,
+    pix_qr_code: charge.pix_qr_code ?? null,
+    pix_copy_paste: charge.pix_copy_paste ?? null,
+    expires_at: charge.expires_at ?? null,
+    reused: charge.reused,
+    requested_amount_mismatch: charge.requested_amount_mismatch,
+  };
+}
+
 export function createHandler(options: HandlerOptions) {
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-    if (req.method !== "POST") return jsonResponse({ error: "Método não suportado." }, 405);
+    if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+    if (req.method !== "POST") {
+      return jsonResponse(
+        { code: "METHOD_NOT_ALLOWED", message: messageForCode("METHOD_NOT_ALLOWED") },
+        405,
+      );
+    }
+
     let service: SupabaseClient;
-    try { service = options.createService(); } catch { return jsonResponse({ error: "Erro de configuração do servidor." }, 500); }
-    const identity = await resolveIdentity(req, service);
-    if (!identity.ok) return jsonResponse({ error: identity.error }, identity.status);
-    let raw: unknown;
-    try { raw = await req.json(); } catch { return jsonResponse({ error: "Corpo inválido." }, 400); }
-    const parsed = requestSchema.safeParse(raw);
-    if (!parsed.success) return jsonResponse({ error: "Dados inválidos.", issues: parsed.error.issues.map((i) => i.message) }, 400);
-    const appointmentId = parsed.data.appointment_id;
+    try {
+      service = options.createService();
+    } catch {
+      return jsonResponse({ code: "INTERNAL", message: messageForCode("INTERNAL") }, 500);
+    }
 
-    // appointment + posse do profissional ANTES da idempotência: o caminho de
-    // charge existente devolve o payload PIX e não pode escapar do check.
-    const { data: appt } = await service.from("appointments").select("id, price_cents, status, customer_id, professional_id").eq("tenant_id", identity.tenantId).eq("id", appointmentId).maybeSingle();
-    if (!appt) return jsonResponse({ error: "Agendamento não encontrado." }, 404);
+    try {
+      const identity = await resolveIdentity(req, service, [
+        "admin",
+        "receptionist",
+        "professional",
+      ]);
 
-    // Profissional só cobra o próprio atendimento (professionals.profile_id).
-    if (identity.role === "professional") {
-      const { data: professional } = await service.from("professionals").select("id").eq("tenant_id", identity.tenantId).eq("profile_id", identity.userId).maybeSingle();
-      if (!professional || appt.professional_id !== professional.id) {
-        return jsonResponse({ error: "Sem permissão para gerar cobrança deste agendamento." }, 403);
+      let raw: unknown;
+      try {
+        raw = await req.json();
+      } catch {
+        throw new ApiError(400, "INVALID_BODY");
       }
-    }
+      const parsed = requestSchema.safeParse(raw);
+      if (!parsed.success) throw new ApiError(400, "INVALID_BODY");
+      const body = parsed.data;
 
-    // idempotência
-    const { data: existing } = await service.from("charges").select("*").eq("tenant_id", identity.tenantId).eq("appointment_id", appointmentId).maybeSingle();
-    if (existing) {
-      return jsonResponse({ charge_id: existing.id, pix_qr_code: existing.pix_qr_code, pix_copy_paste: existing.pix_copy_paste, expires_at: existing.expires_at }, 200);
-    }
+      const { data: appointment, error: appointmentError } = await service
+        .from("appointments")
+        .select("id, status, customer_id, professional_id")
+        .eq("tenant_id", identity.tenantId)
+        .eq("id", body.appointment_id)
+        .maybeSingle();
+      if (appointmentError) throw new ApiError(500, "INTERNAL");
+      if (!appointment) throw new ApiError(404, "APPOINTMENT_NOT_FOUND");
 
-    // config
-    const { data: cfg } = await service.from("tenant_asaas_config").select("*").eq("tenant_id", identity.tenantId).maybeSingle();
-    if (!cfg || !cfg.active) return jsonResponse({ error: "Asaas não configurado." }, 400);
-    let apiKey: string;
-    try { apiKey = await decryptText(cfg.asaas_api_key_encrypted); } catch { return jsonResponse({ error: "Falha ao decriptar." }, 500); }
-    const baseUrl = asaasBaseUrl(cfg.environment);
+      if (identity.role === "professional") {
+        const owns = await isProfessionalOwner(
+          service,
+          identity.tenantId,
+          identity.userId,
+          appointment.professional_id as string,
+        );
+        if (!owns) throw new ApiError(403, "PROFESSIONAL_NOT_OWNER");
+      }
 
-    if (appt.status !== "concluido") return jsonResponse({ error: "Agendamento não concluído." }, 400);
+      const config = await loadGatewayConfig(service, identity.tenantId);
+      if (!config) throw new ApiError(422, "ASAAS_NOT_CONFIGURED");
 
-    // customer lookup by externalReference before creating
-    const { data: cust } = await service.from("customers").select("name, email, phone").eq("tenant_id", identity.tenantId).eq("id", appt.customer_id).maybeSingle();
-    let asaasCustomerId: string | null = null;
-    const lookupRes = await asaasFetch(baseUrl, apiKey, `/customers?externalReference=${encodeURIComponent(String(appt.customer_id))}`);
-    if (lookupRes.ok && Array.isArray(lookupRes.data?.data) && lookupRes.data.data.length > 0) {
-      asaasCustomerId = lookupRes.data.data[0]?.id ?? null;
-    }
-    if (!asaasCustomerId) {
-      const custRes = await asaasFetch(baseUrl, apiKey, "/customers", "POST", {
-        name: cust?.name ?? "Cliente",
-        email: cust?.email ?? undefined,
-        phone: cust?.phone ?? undefined,
-        externalReference: appt.customer_id,
+      const idempotencyKey = body.idempotency_key ?? crypto.randomUUID();
+      const { data: reservedData, error: reserveError } = await service.rpc(
+        "reserve_appointment_charge",
+        {
+          p_tenant_id: identity.tenantId,
+          p_actor_id: identity.userId,
+          p_appointment_id: body.appointment_id,
+          p_amount_cents: body.amount_cents ?? null,
+          p_idempotency_key: idempotencyKey,
+        },
+      );
+      if (reserveError) throw mapRpcError(reserveError);
+
+      let reserved = asChargeState(reservedData);
+
+      if (reserved.reissue) {
+        const cancellation = await cancelPreviousCharge(
+          service,
+          identity,
+          body.appointment_id,
+          reserved,
+          config,
+        );
+        if (!cancellation.ok) {
+          logEvent("charge_reissue_cancel_failed", {
+            tenant_id: identity.tenantId,
+            actor_id: identity.userId,
+            appointment_id: body.appointment_id,
+            charge_id: reserved.previous_charge_id,
+            code: "GATEWAY_CANCEL_FAILED",
+          });
+          throw new ApiError(422, "GATEWAY_CANCEL_FAILED");
+        }
+
+        const { data: reopened, error: reopenError } = await service.rpc(
+          "reopen_charge_for_reissue",
+          {
+            p_tenant_id: identity.tenantId,
+            p_charge_id: reserved.previous_charge_id,
+            p_expires_at: null,
+          },
+        );
+        if (reopenError) throw mapRpcError(reopenError);
+        reserved = asChargeState(reopened);
+      }
+
+      if (reserved.reused && reserved.pix_qr_code) {
+        logEvent("charge_reused", {
+          tenant_id: identity.tenantId,
+          actor_id: identity.userId,
+          appointment_id: body.appointment_id,
+          charge_id: reserved.charge_id,
+          amount_cents: reserved.amount_cents,
+          replayed: true,
+        });
+        return jsonResponse(successBody(reserved), 200);
+      }
+
+      const claimRef: { token: string | null } = { token: null };
+      try {
+        reserved = await ensureSingleGatewayCreation({
+          service,
+          tenantId: identity.tenantId,
+          charge: reserved,
+          claimTokenRef: claimRef,
+          create: (claimToken) =>
+            attachGatewayData(
+              service,
+              identity,
+              appointment.customer_id as string,
+              reserved,
+              config,
+              claimToken,
+            ),
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "GATEWAY_IN_PROGRESS") {
+          logEvent("charge_gateway_in_progress", {
+            tenant_id: identity.tenantId,
+            actor_id: identity.userId,
+            appointment_id: body.appointment_id,
+            charge_id: reserved.charge_id,
+            code: error.code,
+          });
+          return jsonResponse(
+            {
+              code: error.code,
+              message: messageForCode(error.code),
+              retryable: true,
+            },
+            409,
+          );
+        }
+
+        await cancelReservation(service, identity, reserved.charge_id, claimRef.token);
+        await auditFailure(service, identity, body.appointment_id, reserved.charge_id);
+        const mapped = error instanceof ApiError ? error : new ApiError(422, "GATEWAY_ERROR");
+        logEvent("charge_creation_failed", {
+          tenant_id: identity.tenantId,
+          actor_id: identity.userId,
+          appointment_id: body.appointment_id,
+          charge_id: reserved.charge_id,
+          amount_cents: reserved.amount_cents,
+          code: mapped.code,
+        });
+        throw new ApiError(422, "GATEWAY_ERROR");
+      }
+
+      logEvent("charge_created", {
+        tenant_id: identity.tenantId,
+        actor_id: identity.userId,
+        appointment_id: body.appointment_id,
+        charge_id: reserved.charge_id,
+        amount_cents: reserved.amount_cents,
+        replayed: reserved.reused,
       });
-      asaasCustomerId = custRes.ok ? custRes.data?.id : null;
+      return jsonResponse(successBody(reserved), 200);
+    } catch (error) {
+      return errorResponse(error);
     }
-    if (!asaasCustomerId) return jsonResponse({ error: "Falha ao criar cliente no Asaas." }, 500);
+  };
+}
 
-    const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-    const value = Number(((appt.price_cents ?? 0) / 100).toFixed(2));
-    const paymentRes = await asaasFetch(baseUrl, apiKey, "/payments", "POST", {
-      customer: asaasCustomerId,
-      billingType: "PIX",
-      value,
-      dueDate: expiresAt.slice(0, 10),
-      description: "Cobrança agendamento",
-      externalReference: appointmentId,
-    });
-    if (!paymentRes.ok) return jsonResponse({ error: "Falha ao criar cobrança." }, 500);
-    const paymentId = paymentRes.data?.id;
-    const pixRes = await asaasFetch(baseUrl, apiKey, `/payments/${paymentId}/pixQrCode`);
-    const pixQr = pixRes.ok ? pixRes.data?.encodedImage : null;
-    const pixCopy = pixRes.ok ? pixRes.data?.payload : null;
+async function loadGatewayConfig(
+  service: SupabaseClient,
+  tenantId: string,
+): Promise<{ baseUrl: string; apiKey: string } | null> {
+  const { data: config, error } = await service
+    .from("tenant_asaas_config")
+    .select("active, environment, asaas_api_key_encrypted")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (error) throw new ApiError(500, "INTERNAL");
+  if (!config || config.active !== true || !config.asaas_api_key_encrypted) return null;
+  try {
+    return {
+      baseUrl: asaasBaseUrl(config.environment === "production" ? "production" : "sandbox"),
+      apiKey: await decryptText(config.asaas_api_key_encrypted as string),
+    };
+  } catch {
+    throw new ApiError(500, "INTERNAL");
+  }
+}
 
-    const { data: charge, error: insErr } = await service.from("charges").insert({
-      tenant_id: identity.tenantId,
-      appointment_id: appointmentId,
-      asaas_payment_id: paymentId,
-      status: "pendente",
-      amount_cents: appt.price_cents ?? 0,
-      pix_qr_code: pixQr,
-      pix_copy_paste: pixCopy,
-      expires_at: expiresAt,
-    }).select().single();
-    if (insErr) return jsonResponse({ error: "Falha ao salvar cobrança." }, 500);
+async function cancelPreviousCharge(
+  service: SupabaseClient,
+  identity: Identity,
+  appointmentId: string,
+  reserved: ChargeState,
+  config: { baseUrl: string; apiKey: string },
+): Promise<{ ok: boolean }> {
+  if (!reserved.previous_asaas_payment_id) return { ok: true };
 
-    const { error: auditErr } = await service.from("audit_log").insert({
+  const cancelled = await cancelPayment(
+    config.baseUrl,
+    config.apiKey,
+    reserved.previous_asaas_payment_id,
+  );
+  if (!cancelled.ok && !cancelled.notFound) return { ok: false };
+
+  try {
+    await service.from("audit_log").insert({
       tenant_id: identity.tenantId,
       actor_id: identity.userId,
-      action: "charge_created",
+      action: "charge_previous_cancelled",
       target_type: "charge",
-      target_id: charge.id,
-      metadata: { appointment_id: appointmentId, amount_cents: appt.price_cents },
+      target_id: reserved.previous_charge_id,
+      metadata: {
+        appointment_id: appointmentId,
+        charge_id: reserved.previous_charge_id,
+        had_asaas_payment_id: true,
+        code: "REISSUE",
+      },
     });
-    if (auditErr) return jsonResponse({ error: "Falha ao registrar auditoria." }, 500);
+  } catch {
+    // Auditoria best-effort; a reabertura local abaixo preserva a consistência.
+  }
 
-    return jsonResponse({ charge_id: charge.id, pix_qr_code: pixQr, pix_copy_paste: pixCopy, expires_at: expiresAt }, 200);
-  };
+  return { ok: true };
+}
+
+async function attachGatewayData(
+  service: SupabaseClient,
+  identity: Identity,
+  customerId: string,
+  reserved: ChargeState,
+  config: { baseUrl: string; apiKey: string },
+  claimToken: string,
+): Promise<ChargeState> {
+  const { data: customer, error: customerError } = await service
+    .from("customers")
+    .select("name, email, phone")
+    .eq("tenant_id", identity.tenantId)
+    .eq("id", customerId)
+    .maybeSingle();
+  if (customerError) throw new ApiError(500, "INTERNAL");
+
+  const asaasCustomerId = await ensureAsaasCustomer(config.baseUrl, config.apiKey, {
+    customerId,
+    name: customer?.name ?? "Cliente",
+    email: customer?.email ?? null,
+    phone: customer?.phone ?? null,
+  });
+  if (!asaasCustomerId) throw new ApiError(422, "GATEWAY_ERROR");
+
+  let payment = await findPaymentByExternalReference(
+    config.baseUrl,
+    config.apiKey,
+    reserved.charge_id,
+  );
+  if (!payment) {
+    const created = await createPixCharge(config.baseUrl, config.apiKey, {
+      customerId: asaasCustomerId,
+      amountCents: reserved.amount_cents,
+      externalReference: reserved.charge_id,
+      expiresAt: reserved.expires_at ?? new Date(Date.now() + 3 * 86_400_000).toISOString(),
+      description: "Cobrança de atendimento",
+    });
+    if (!created.ok || !created.paymentId) throw new ApiError(422, "GATEWAY_ERROR");
+    payment = {
+      paymentId: created.paymentId,
+      pixQrCode: created.pixQrCode,
+      pixCopyPaste: created.pixCopyPaste,
+    };
+  }
+
+  const { data: attached, error: attachError } = await service.rpc(
+    "attach_charge_gateway_data",
+    {
+      p_tenant_id: identity.tenantId,
+      p_charge_id: reserved.charge_id,
+      p_claim_token: claimToken,
+      p_asaas_payment_id: payment.paymentId,
+      p_pix_qr_code: payment.pixQrCode,
+      p_pix_copy_paste: payment.pixCopyPaste,
+      p_expires_at: reserved.expires_at,
+    },
+  );
+  if (attachError) {
+    const mapped = mapRpcError(attachError);
+    if (mapped.code === "GATEWAY_CLAIM_LOST") {
+      const resolution = await cancelPaymentIfOrphan({
+        service,
+        tenantId: identity.tenantId,
+        chargeId: reserved.charge_id,
+        paymentId: payment.paymentId,
+        cancel: (paymentId) => cancelPayment(config.baseUrl, config.apiKey, paymentId),
+      });
+      logEvent("charge_claim_lost", {
+        tenant_id: identity.tenantId,
+        actor_id: identity.userId,
+        charge_id: reserved.charge_id,
+        payment_id: payment.paymentId,
+        status: resolution.samePayment ? "reconciled" : (resolution.cancelled ? "cancelled" : "kept"),
+        code: mapped.code,
+      });
+      // O vencedor já anexou ESTE payment: nada a cancelar; a cobrança está correta.
+      if (resolution.samePayment && resolution.charge) {
+        return mergeChargeState(reserved, resolution.charge);
+      }
+      throw new ApiError(409, "GATEWAY_IN_PROGRESS");
+    }
+    await cancelPaymentIfOrphan({
+      service,
+      tenantId: identity.tenantId,
+      chargeId: reserved.charge_id,
+      paymentId: payment.paymentId,
+      cancel: (paymentId) => cancelPayment(config.baseUrl, config.apiKey, paymentId),
+    });
+    throw mapped;
+  }
+
+  const attachedState = asChargeState(attached);
+  return mergeChargeState(reserved, attachedState);
+}
+
+async function cancelReservation(
+  service: SupabaseClient,
+  identity: Identity,
+  chargeId: string,
+  claimToken: string | null,
+): Promise<void> {
+  const { error } = await service.rpc("release_charge_reservation", {
+    p_tenant_id: identity.tenantId,
+    p_charge_id: chargeId,
+    p_actor_id: identity.userId,
+    p_claim_token: claimToken,
+  });
+  if (error) {
+    const mapped = mapRpcError(error);
+    // Claim vivo de outro criador: não é falha de liberação, é fence.
+    if (mapped.code === "GATEWAY_IN_PROGRESS") {
+      logEvent("charge_reservation_claim_held", {
+        tenant_id: identity.tenantId,
+        actor_id: identity.userId,
+        charge_id: chargeId,
+        code: mapped.code,
+      });
+      return;
+    }
+    logEvent("charge_reservation_release_failed", {
+      tenant_id: identity.tenantId,
+      actor_id: identity.userId,
+      charge_id: chargeId,
+      code: "INTERNAL",
+    });
+    throw new ApiError(500, "INTERNAL");
+  }
+}
+
+async function auditFailure(
+  service: SupabaseClient,
+  identity: Identity,
+  appointmentId: string,
+  chargeId: string,
+): Promise<void> {
+  await service.from("audit_log").insert({
+    tenant_id: identity.tenantId,
+    actor_id: identity.userId,
+    action: "charge_creation_failed",
+    target_type: "charge",
+    target_id: chargeId,
+    metadata: { appointment_id: appointmentId, charge_id: chargeId, code: "GATEWAY_ERROR" },
+  });
 }

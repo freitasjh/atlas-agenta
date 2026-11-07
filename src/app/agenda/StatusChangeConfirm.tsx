@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { Loader2, Copy } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -12,13 +12,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PixQrPanel } from "@/app/agenda/pagamentos/PixQrPanel";
+import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 
 import {
   mapSchedulingError,
   useChangeAppointmentStatus,
 } from "@/hooks/useAppointments";
 import { useCreateCharge } from "@/hooks/useCharges";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { getTransitionLabel } from "@/lib/scheduling-status";
@@ -51,8 +53,11 @@ const CONSEQUENCE_COPY: Partial<Record<AppointmentStatus, string>> = {
 /**
  * Confirmação de transição **sensível** (`concluido`, `cancelado`,
  * `nao_compareceu`) com copy pt-BR da consequência. As transições não-sensíveis
- * são aplicadas direto pela agenda, sem este diálogo. A trava real da máquina de
- * estados é o trigger do banco — esta tela é defesa de usabilidade.
+ * são aplicadas direto pela agenda, sem este diálogo.
+ *
+ * Caminho legado (`payments === false`, ex.: clínica): ao concluir, gera a
+ * cobrança PIX e exibe o QR **no mesmo diálogo** — o markup duplicado de QR foi
+ * removido em favor do `PixQrPanel` compartilhado (ADR-004 FE-21).
  */
 export function StatusChangeConfirm({
   change,
@@ -62,15 +67,19 @@ export function StatusChangeConfirm({
   const createCharge = useCreateCharge();
   const { canViewCommission } = usePermissions();
   const { commission: commissionFeature } = useSegmentFeatures();
+  const { tenant } = useCurrentUser();
+  const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
   const [chargeResult, setChargeResult] = React.useState<{
-    pix_qr_code?: string | null;
-    pix_copy_paste?: string | null;
-    expires_at?: string;
+    pix_qr_code: string | null;
+    pix_copy_paste: string | null;
+    expires_at: string | null;
+    amount_cents: number;
   } | null>(null);
 
+  const qrPhase = chargeResult !== null;
+
   // Aviso de comissão só ao concluir, e só para quem veria o valor depois
-  // (ramo libera + papel pode ler). Honesto: a comissão é apurada e registrada
-  // pelo banco ao concluir (trigger da ADR-03) — não promete nada além disso.
+  // (ramo libera + papel pode ler).
   const showCommissionNote =
     change?.to === "concluido" && commissionFeature && canViewCommission;
 
@@ -88,8 +97,12 @@ export function StatusChangeConfirm({
           const res = await createCharge.mutateAsync({
             appointment_id: change.appointment.id,
           });
-          setChargeResult(res);
-          // não fechar ainda: exibir QR
+          setChargeResult({
+            pix_qr_code: res.pix_qr_code,
+            pix_copy_paste: res.pix_copy_paste,
+            expires_at: res.expires_at,
+            amount_cents: res.amount_cents,
+          });
           return;
         } catch {
           // Cobrança é opcional e não bloqueia a conclusão, mas a falha não é
@@ -106,120 +119,93 @@ export function StatusChangeConfirm({
     }
   }
 
+  function handleOpenChange(next: boolean) {
+    if (next) return;
+    setChargeResult(null);
+    onClose();
+  }
+
   return (
-    <>
-    <Dialog
-      open={!!change}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-    >
-      <DialogContent>
+    <Dialog open={!!change || qrPhase} onOpenChange={handleOpenChange}>
+      <DialogContent className={qrPhase ? "max-w-md" : undefined}>
         <DialogHeader>
           <DialogTitle>
-            {change
-              ? `Mudar para "${getTransitionLabel(change.to)}"`
-              : "Mudar status"}
+            {qrPhase
+              ? paymentsMessages.pix.generatedTitle
+              : change
+                ? `Mudar para "${getTransitionLabel(change.to)}"`
+                : "Mudar status"}
           </DialogTitle>
           <DialogDescription>
-            {change ? CONSEQUENCE_COPY[change.to] : null}
+            {qrPhase
+              ? paymentsMessages.pix.dialogDescription
+              : change
+                ? CONSEQUENCE_COPY[change.to]
+                : null}
           </DialogDescription>
         </DialogHeader>
-        {showCommissionNote ? (
-          <p className="text-sm text-muted-foreground">
-            A comissão do profissional será apurada e registrada ao concluir.
-          </p>
-        ) : null}
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={changeStatus.isPending}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void confirm()}
-            disabled={changeStatus.isPending}
-          >
-            {changeStatus.isPending ? (
-              <>
-                <Loader2 className="animate-spin" aria-hidden="true" />
-                Aplicando…
-              </>
-            ) : (
-              "Confirmar"
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
 
-    <Dialog
-      open={!!chargeResult}
-      onOpenChange={(next) => {
-        if (!next) {
-          setChargeResult(null);
-          onClose();
-        }
-      }}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Cobrança PIX gerada</DialogTitle>
-          <DialogDescription>
-            Exiba o QR Code ou copie o código para o cliente.
-          </DialogDescription>
-        </DialogHeader>
-        {chargeResult?.pix_qr_code ? (
-          <div className="flex justify-center">
-            <img
-              src={
-                chargeResult.pix_qr_code.startsWith("data:")
-                  ? chargeResult.pix_qr_code
-                  : `data:image/png;base64,${chargeResult.pix_qr_code}`
-              }
-              alt="QR Code PIX"
-              className="h-40 w-40"
-            />
-          </div>
+        {qrPhase ? (
+          <PixQrPanel
+            qrCode={chargeResult?.pix_qr_code ?? null}
+            copyPaste={chargeResult?.pix_copy_paste ?? null}
+            expiresAt={chargeResult?.expires_at ?? null}
+            amountCents={chargeResult?.amount_cents ?? 0}
+            messages={paymentsMessages}
+            timeZone={timeZone}
+            onCopyResult={(result) => {
+              if (result === "ok") toast.success(paymentsMessages.actions.copied);
+              else toast.error(paymentsMessages.actions.copyFailed);
+            }}
+          />
+        ) : (
+          <>
+            {showCommissionNote ? (
+              <p className="text-sm text-muted-foreground">
+                A comissão do profissional será apurada e registrada ao concluir.
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleOpenChange.bind(null, false)}
+                disabled={changeStatus.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void confirm()}
+                disabled={changeStatus.isPending}
+              >
+                {changeStatus.isPending ? (
+                  <>
+                    <Loader2 className="animate-spin" aria-hidden="true" />
+                    Aplicando…
+                  </>
+                ) : (
+                  "Confirmar"
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {qrPhase ? (
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => {
+                setChargeResult(null);
+                onClose();
+              }}
+            >
+              {paymentsMessages.actions.close}
+            </Button>
+          </DialogFooter>
         ) : null}
-        <div className="flex gap-2">
-          <Input readOnly value={chargeResult?.pix_copy_paste ?? ""} />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={async () => {
-              if (chargeResult?.pix_copy_paste) {
-                try {
-                  await navigator.clipboard.writeText(chargeResult.pix_copy_paste);
-                  toast.success("Código copiado.");
-                } catch {
-                  toast.error("Não foi possível copiar.");
-                }
-              }
-            }}
-            aria-label="Copiar"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
-        <DialogFooter>
-          <Button
-            type="button"
-            onClick={() => {
-              setChargeResult(null);
-              onClose();
-            }}
-          >
-            Fechar
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
-    </>
   );
 }

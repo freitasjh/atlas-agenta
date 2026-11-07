@@ -38,6 +38,17 @@ Status de assinatura do tenant: `trial`, `ativo`, `pendente`, `bloqueado`, `canc
 Regras de acesso devem respeitar o status (ex.: `bloqueado` redireciona para tela de quitação;
 `cancelado` arquiva dados e suspende disparos).
 
+## Pagamentos e recebimento (v1)
+
+- Formas: dinheiro, cartão de crédito/débito e PIX da maquininha (declaração do operador, com
+  confirmação), PIX do sistema (gateway Asaas, QR + copia e cola).
+- Visível só em salão/barbearia (`payments`); clínica/legado mantém o fluxo antigo.
+- Fechamento parcial com confirmação explícita; total zero conclui quitado sem linhas.
+- Gorjeta explícita por linha, fora da receita e da comissão. PIX só por escolha, no valor da
+  parcela, máx 1 por atendimento (mesmo após pago).
+- Saldo, histórico e relatórios restritos ao admin; recepção registra sem ler faturamento;
+  profissional só o próprio atendimento.
+
 ## Convenções de linguagem
 
 - **Idioma do produto e da UI: português do Brasil.** Textos, labels, mensagens de erro e

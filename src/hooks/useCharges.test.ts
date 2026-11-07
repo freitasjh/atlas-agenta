@@ -10,6 +10,7 @@ import {
   useCreateCharge,
   chargeRowSchema,
 } from "@/hooks/useCharges";
+import { SETTLEMENT_KEY } from "@/hooks/useAppointmentPayments";
 
 const { fromMock, invokeMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
@@ -111,6 +112,25 @@ describe("useCreateCharge", () => {
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: CHARGES_KEY }),
     );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: SETTLEMENT_KEY });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["agenda-payment-flags"],
+    });
+  });
+
+  it("normaliza erro do invoke em PaymentApiError (código estável)", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: { code: "FORBIDDEN", status: 403 },
+    });
+
+    const { result } = renderWithClient(() => useCreateCharge());
+    await expect(
+      result.current.mutateAsync({ appointment_id: "a-1" }),
+    ).rejects.toMatchObject({
+      name: "PaymentApiError",
+      code: "FORBIDDEN",
+    });
   });
 
   it("propaga erro do invoke", async () => {
@@ -120,5 +140,95 @@ describe("useCreateCharge", () => {
     await expect(
       result.current.mutateAsync({ appointment_id: "a-1" }),
     ).rejects.toBeTruthy();
+  });
+
+  it("input novo com amount envia appointment_id, amount_cents e idempotency_key", async () => {
+    invokeMock.mockResolvedValue({
+      data: { charge_id: "c-3", amount_cents: 3000, pix_qr_code: null },
+      error: null,
+    });
+    const { result } = renderWithClient(() => useCreateCharge());
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        appointmentId: "a-1",
+        amountCents: 3000,
+        idempotencyKey: "key-3",
+      });
+    });
+
+    expect(invokeMock.mock.calls[0]?.[1]).toEqual({
+      body: {
+        appointment_id: "a-1",
+        amount_cents: 3000,
+        idempotency_key: "key-3",
+      },
+    });
+  });
+
+  it("aceita snake_case com amount", async () => {
+    invokeMock.mockResolvedValue({
+      data: { charge_id: "c-4", amount_cents: 2000 },
+      error: null,
+    });
+    const { result } = renderWithClient(() => useCreateCharge());
+    await act(async () => {
+      await result.current.mutateAsync({
+        appointment_id: "a-2",
+        amount_cents: 2000,
+        idempotency_key: "key-4",
+      });
+    });
+    expect(invokeMock.mock.calls[0]?.[1]).toEqual({
+      body: {
+        appointment_id: "a-2",
+        amount_cents: 2000,
+        idempotency_key: "key-4",
+      },
+    });
+  });
+
+  it("legado sem amount mantém o body {appointment_id}", async () => {
+    invokeMock.mockResolvedValue({
+      data: { charge_id: "c-5" },
+      error: null,
+    });
+    const { result } = renderWithClient(() => useCreateCharge());
+    await act(async () => {
+      await result.current.mutateAsync({ appointment_id: "a-3" });
+    });
+    expect(invokeMock.mock.calls[0]?.[1]).toEqual({
+      body: { appointment_id: "a-3" },
+    });
+  });
+
+  it("amountCents=0 falha antes do invoke", async () => {
+    const { result } = renderWithClient(() => useCreateCharge());
+    await expect(
+      result.current.mutateAsync({ appointmentId: "a-1", amountCents: 0 }),
+    ).rejects.toBeTruthy();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("normaliza charge_id → id", async () => {
+    invokeMock.mockResolvedValue({
+      data: {
+        charge_id: "c-6",
+        amount_cents: 3000,
+        pix_qr_code: "qr",
+        expires_at: "2026-12-01T00:00:00.000Z",
+      },
+      error: null,
+    });
+    const { result } = renderWithClient(() => useCreateCharge());
+    await act(async () => {
+      const response = await result.current.mutateAsync({
+        appointmentId: "a-1",
+        amountCents: 3000,
+        idempotencyKey: "key-6",
+      });
+      expect(response.id).toBe("c-6");
+      expect(response.pix_qr_code).toBe("qr");
+    });
   });
 });

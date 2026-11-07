@@ -1,10 +1,10 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,147 +15,166 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "sonner";
-import { Copy, QrCode } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { QrCode } from "lucide-react";
 
+import { PixQrDialog } from "@/app/cobrancas/PixQrDialog";
+import { RecebimentosTab } from "@/app/cobrancas/RecebimentosTab";
+import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import { useCharges, type Charge, type ChargeStatus } from "@/hooks/useCharges";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { formatDateInTenantTz, formatTimeInTenantTz } from "@/lib/datetime";
+import { formatCentsToBRL } from "@/lib/money";
 
-const STATUS_LABELS: Record<ChargeStatus | "todos", string> = {
-  todos: "Todos",
-  pendente: "Pendente",
-  pago: "Pago",
-  expirado: "Expirado",
-  cancelado: "Cancelado",
-};
+const messages = paymentsMessages.chargesPage;
+const STATUS_KEYS = ["todos", "pendente", "pago", "expirado", "cancelado"] as const;
 
-function formatCents(cents: number): string {
-  return (cents / 100).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-}
-
-function formatDate(iso: string | null): string {
+function formatCreatedAt(iso: string | null, timeZone: string): string {
   if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("pt-BR");
-  } catch {
-    return iso;
-  }
-}
-
-export function PixQrDialog({
-  charge,
-  open,
-  onClose,
-}: {
-  charge: Charge | null;
-  open: boolean;
-  onClose: () => void;
-}) {
-  async function copy(text: string | null) {
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Código copiado.");
-    } catch {
-      toast.error("Não foi possível copiar.");
-    }
-  }
-  return (
-    <Dialog open={open} onOpenChange={(n) => !n && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>PIX — Copia e cola</DialogTitle>
-        </DialogHeader>
-        {charge ? (
-          <div className="space-y-4">
-            {charge.pix_qr_code ? (
-              <div className="flex justify-center">
-                <img
-                  src={
-                    charge.pix_qr_code.startsWith("data:")
-                      ? charge.pix_qr_code
-                      : `data:image/png;base64,${charge.pix_qr_code}`
-                  }
-                  alt="QR Code PIX"
-                  className="h-48 w-48"
-                />
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">QR Code indisponível.</p>
-            )}
-            <div className="space-y-2">
-              <Label>Código copia-e-cola</Label>
-              <div className="flex gap-2">
-                <Input readOnly value={charge.pix_copy_paste ?? ""} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => void copy(charge.pix_copy_paste)}
-                  aria-label="Copiar código"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Expira em: {formatDate(charge.expires_at)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Status: {STATUS_LABELS[charge.status]} · Valor: {formatCents(charge.amount_cents)}
-            </p>
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return iso;
+  return `${formatDateInTenantTz(iso, timeZone)} ${formatTimeInTenantTz(iso, timeZone)}`;
 }
 
 export function CobrancasPage() {
+  const { tenant } = useCurrentUser();
+  const { canViewFinancials } = usePermissions();
+  const { payments } = useSegmentFeatures();
+  const showReceipts = canViewFinancials && payments === true;
+  const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const aba = showReceipts && searchParams.get("aba") === "recebimentos" ? "recebimentos" : "pix";
   const [status, setStatus] = React.useState<ChargeStatus | "todos">("todos");
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
   const [selected, setSelected] = React.useState<Charge | null>(null);
 
-  const chargesQuery = useCharges({ status, from: from || undefined, to: to || undefined });
+  const chargesQuery = useCharges({
+    status,
+    from: from || undefined,
+    to: to || undefined,
+  });
+
+  function setAba(next: string) {
+    const params = new URLSearchParams(searchParams);
+    params.set("aba", next);
+    setSearchParams(params, { replace: true });
+  }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        titulo="Cobranças"
-        descricao="Cobranças PIX pós-atendimento e baixa automática."
-      />
+      <PageHeader titulo={messages.title} descricao={messages.description} />
 
+      <Tabs value={aba} onValueChange={setAba}>
+        <TabsList aria-label={messages.title}>
+          <TabsTrigger value="pix" className="min-h-[44px]">{paymentsMessages.receipts.tabPix}</TabsTrigger>
+          {showReceipts ? (
+            <TabsTrigger value="recebimentos" className="min-h-[44px]">{paymentsMessages.receipts.tabReceipts}</TabsTrigger>
+          ) : null}
+        </TabsList>
+
+        <TabsContent value="pix">
+          <PixContent
+            status={status}
+            onStatusChange={setStatus}
+            from={from}
+            onFromChange={setFrom}
+            to={to}
+            onToChange={setTo}
+            chargesQuery={chargesQuery}
+            timeZone={timeZone}
+            onSelect={setSelected}
+          />
+        </TabsContent>
+
+        {showReceipts ? (
+          <TabsContent value="recebimentos">
+            <RecebimentosTab messages={paymentsMessages} />
+          </TabsContent>
+        ) : null}
+      </Tabs>
+
+      <PixQrDialog
+        charge={selected}
+        open={!!selected}
+        onClose={() => setSelected(null)}
+      />
+    </div>
+  );
+}
+
+function PixContent({
+  status,
+  onStatusChange,
+  from,
+  onFromChange,
+  to,
+  onToChange,
+  chargesQuery,
+  timeZone,
+  onSelect,
+}: {
+  status: ChargeStatus | "todos";
+  onStatusChange: (value: ChargeStatus | "todos") => void;
+  from: string;
+  onFromChange: (value: string) => void;
+  to: string;
+  onToChange: (value: string) => void;
+  chargesQuery: ReturnType<typeof useCharges>;
+  timeZone: string;
+  onSelect: (charge: Charge) => void;
+}) {
+  return (
+    <div className="space-y-6">
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="space-y-1">
-            <Label>Status</Label>
+            <Label htmlFor="cobrancas-status">{messages.filters.status}</Label>
             <Select
               value={status}
-              onValueChange={(v) => setStatus(v as ChargeStatus | "todos")}
+              onValueChange={(value) =>
+                onStatusChange(value as ChargeStatus | "todos")
+              }
             >
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger id="cobrancas-status" className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>
-                    {v}
+                {STATUS_KEYS.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {messages.status[key]}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>De</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Label htmlFor="cobrancas-from">{messages.filters.from}</Label>
+            <Input
+              id="cobrancas-from"
+              type="date"
+              value={from}
+              onChange={(event) => onFromChange(event.target.value)}
+            />
           </div>
           <div className="space-y-1">
-            <Label>Até</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Label htmlFor="cobrancas-to">{messages.filters.to}</Label>
+            <Input
+              id="cobrancas-to"
+              type="date"
+              value={to}
+              onChange={(event) => onToChange(event.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
@@ -164,40 +183,51 @@ export function CobrancasPage() {
         <Skeleton className="h-64 w-full" />
       ) : chargesQuery.isError ? (
         <StatePanel
-          titulo="Não foi possível carregar as cobranças"
-          descricao="Verifique sua conexão e tente novamente."
-        />
+          titulo={messages.errorTitle}
+          descricao={messages.errorDescription}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void chargesQuery.refetch()}
+          >
+            {messages.retry}
+          </Button>
+        </StatePanel>
       ) : (chargesQuery.data ?? []).length === 0 ? (
         <StatePanel
-          titulo="Nenhuma cobrança encontrada"
-          descricao="As cobranças PIX aparecerão aqui após a conclusão de agendamentos."
+          titulo={messages.emptyTitle}
+          descricao={messages.emptyDescription}
         />
       ) : (
         <Card>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Status</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Criada em</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead>{messages.table.status}</TableHead>
+                <TableHead>{messages.table.value}</TableHead>
+                <TableHead>{messages.table.createdAt}</TableHead>
+                <TableHead className="text-right">
+                  {messages.table.actions}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(chargesQuery.data ?? []).map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell>{STATUS_LABELS[c.status]}</TableCell>
-                  <TableCell>{formatCents(c.amount_cents)}</TableCell>
-                  <TableCell>{formatDate(c.created_at)}</TableCell>
+              {(chargesQuery.data ?? []).map((charge) => (
+                <TableRow key={charge.id}>
+                  <TableCell>{messages.status[charge.status]}</TableCell>
+                  <TableCell>{formatCentsToBRL(charge.amount_cents)}</TableCell>
+                  <TableCell>{formatCreatedAt(charge.created_at, timeZone)}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelected(c)}
+                      onClick={() => onSelect(charge)}
+                      className="h-11 min-h-[44px]"
                     >
-                      <QrCode className="mr-1 h-4 w-4" />
-                      QR
+                      <QrCode className="mr-1 h-4 w-4" aria-hidden="true" />
+                      {messages.actionQr}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -206,12 +236,6 @@ export function CobrancasPage() {
           </Table>
         </Card>
       )}
-
-      <PixQrDialog
-        charge={selected}
-        open={!!selected}
-        onClose={() => setSelected(null)}
-      />
     </div>
   );
 }

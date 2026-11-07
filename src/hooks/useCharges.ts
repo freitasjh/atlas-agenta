@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
+import { toPaymentApiError, type PaymentApiError } from "@/lib/payment-errors";
+import { SETTLEMENT_KEY } from "@/hooks/useAppointmentPayments";
 
 /**
  * Hooks de dados das cobranças PIX do tenant (ADR-20). Leitura sob RLS;
@@ -64,32 +66,89 @@ export function useCharges(filters?: ChargeFilters) {
 export const createChargeInputSchema = z.object({
   appointment_id: z.string().min(1).optional(),
   appointmentId: z.string().min(1).optional(),
+  amountCents: z.number().int().positive().optional(),
+  amount_cents: z.number().int().positive().optional(),
+  idempotencyKey: z.string().min(1).optional(),
+  idempotency_key: z.string().min(1).optional(),
 });
 
-export type CreateChargeInput = z.infer<typeof createChargeInputSchema>;
+/**
+ * Entrada do `create-charge` (ADR-003/ADR-004). Aceita camelCase (novo) e
+ * snake_case (compat) para a janela de rollout. Quando `amountCents`/
+ * `amount_cents` está presente, o body leva a parcela + `idempotency_key`;
+ * sem amount, mantém o contrato legado `{ appointment_id }` (RNF-11).
+ */
+export interface CreateChargeInput {
+  appointmentId?: string;
+  appointment_id?: string;
+  amountCents?: number;
+  amount_cents?: number;
+  idempotencyKey?: string;
+  idempotency_key?: string;
+}
 
-export const createChargeResponseSchema = z.object({
-  charge_id: z.string(),
-  pix_qr_code: z.string().nullable().optional(),
-  pix_copy_paste: z.string().nullable().optional(),
-  expires_at: z.string().optional(),
-});
+export const createChargeResponseSchema = z
+  .object({
+    charge_id: z.string(),
+    amount_cents: z.number().int().optional(),
+    pix_qr_code: z.string().nullable().optional(),
+    pix_copy_paste: z.string().nullable().optional(),
+    expires_at: z.string().nullable().optional(),
+    reused: z.boolean().optional(),
+  })
+  .passthrough();
+
+/** Cobrança normalizada (`charge_id` → `id`) para consumo da UI. */
+export interface CreateChargeResponse {
+  id: string;
+  amount_cents: number;
+  pix_qr_code: string | null;
+  pix_copy_paste: string | null;
+  expires_at: string | null;
+  reused: boolean;
+}
 
 export function useCreateCharge() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: CreateChargeInput) => {
-      const parsed = createChargeInputSchema.parse(input);
-      const appointment_id = parsed.appointment_id ?? parsed.appointmentId;
-      if (!appointment_id) throw new Error("appointment_id obrigatório.");
+  return useMutation<
+    CreateChargeResponse,
+    PaymentApiError,
+    CreateChargeInput
+  >({
+    mutationFn: async (input: CreateChargeInput): Promise<CreateChargeResponse> => {
+      const appointmentId = input.appointmentId ?? input.appointment_id;
+      if (!appointmentId) throw new Error("appointment_id obrigatório.");
+
+      const amountCents = input.amountCents ?? input.amount_cents;
+      const body: Record<string, unknown> = { appointment_id: appointmentId };
+
+      if (amountCents !== undefined) {
+        if (!Number.isInteger(amountCents) || amountCents <= 0) {
+          throw new Error("amount_cents inválido.");
+        }
+        body.amount_cents = amountCents;
+        body.idempotency_key =
+          input.idempotencyKey ?? input.idempotency_key ?? crypto.randomUUID();
+      }
+
       const { data, error } = await supabase.functions.invoke("create-charge", {
-        body: { appointment_id },
+        body,
       });
-      if (error) throw error;
-      return createChargeResponseSchema.parse(data);
+      if (error) throw await toPaymentApiError(error);
+      const parsed = createChargeResponseSchema.parse(data);
+      return {
+        id: parsed.charge_id,
+        amount_cents: parsed.amount_cents ?? amountCents ?? 0,
+        pix_qr_code: parsed.pix_qr_code ?? null,
+        pix_copy_paste: parsed.pix_copy_paste ?? null,
+        expires_at: parsed.expires_at ?? null,
+        reused: parsed.reused ?? false,
+      };
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CHARGES_KEY });
+      void queryClient.invalidateQueries({ queryKey: SETTLEMENT_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["agenda-payment-flags"] });
     },
   });
 }

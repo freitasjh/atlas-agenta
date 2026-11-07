@@ -179,6 +179,36 @@ describe("RQ-15 migrações aplicadas não foram editadas", () => {
     ).toEqual([]);
   });
 
+  it("ADR-003: processed_at de webhook_events perdeu o default", () => {
+    const columnDefault = sql(
+      `select coalesce(column_default, '<null>') from information_schema.columns
+        where table_schema = 'public' and table_name = 'webhook_events'
+          and column_name = 'processed_at';`,
+    );
+    expect(columnDefault).toBe("<null>");
+  });
+
+  it("ADR-003: source de webhook_events aceita evolution e asaas", () => {
+    const definition = sql(
+      `select pg_get_constraintdef(oid) from pg_constraint
+        where conrelid = 'public.webhook_events'::regclass
+          and conname = 'webhook_events_source_check';`,
+    );
+    expect(definition).toContain("'evolution'");
+    expect(definition).toContain("'asaas'");
+  });
+
+  it("ADR-003: índice parcial de eventos Asaas pendentes existe e ignora WhatsApp", () => {
+    const definition = sql(
+      `select indexdef from pg_indexes
+        where schemaname = 'public' and tablename = 'webhook_events'
+          and indexname = 'webhook_events_asaas_pending_idx';`,
+    );
+    expect(definition).toContain("'asaas'");
+    expect(definition).toContain("source");
+    expect(definition).toContain("processed_at IS NULL");
+  });
+
   it("migração sem correção posterior é idêntica ao commit que a criou", () => {
     const drifted: string[] = [];
 

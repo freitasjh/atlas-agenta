@@ -1,18 +1,18 @@
 {
-  "current_feature": "gestao-usuarios-tenant",
+  "current_feature": "cobranca-formas-pagamento",
   "current_phase": "Testing",
-  "previous_phase": "Execution",
+  "previous_phase": "Completed",
   "next_phase": "Completed",
   "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-04T00:00:00+00:00",
+    "last_invoked_at": "2026-11-07T02:09:20+00:00",
     "last_status": "passed",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "APPROVED pos-correcao: cross-tenant guard 409, limit + periodo server-side, CSV anti-injection, isAllowedForRole alinhado; 430 unit + 80 integration + 262 functions + build verdes."
+    "reviewer_notes": "ADR-005 aprovado + fixes + E2E 10/10 (round2 P2/P3 corrigidos). 742 unit, 271 integração."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-04T00:00:00+00:00",
+  "last_update": "2026-11-07T02:09:20+00:00",
   "code_review_status": "passed",
   "pendencies": [
     {
@@ -39,24 +39,23 @@
     }
   ],
   "artifacts": {
-    "prd": ".spec/prd/gestao-usuarios-tenant/PRD.md",
-    "research": ".spec/prd/gestao-usuarios-tenant/RESEARCH.md",
-    "adr_index": ".spec/prd/gestao-usuarios-tenant/ADR-INDEX.md",
-    "spec": ".spec/frontend/gestao-usuarios-tenant-adr-006/SPEC.md",
-    "plan": ".spec/frontend/gestao-usuarios-tenant-adr-006/PLAN.md",
-    "tasks": ".spec/frontend/gestao-usuarios-tenant-adr-006/TASKS.md"
+    "prd": ".spec/prd/cobranca-formas-pagamento/PRD.md",
+    "research": ".spec/prd/cobranca-formas-pagamento/RESEARCH.md",
+    "adr_index": ".spec/prd/cobranca-formas-pagamento/ADR-INDEX.md",
+    "spec": null,
+    "plan": null,
+    "tasks": null
   },
   "prd_adr": {
-    "prd_id": "gestao-usuarios-tenant",
+    "prd_id": "cobranca-formas-pagamento",
     "prd_status": "approved",
-    "active_adr": "ADR-006",
+    "active_adr": "ADR-005",
     "adr_order": [
       "ADR-001",
       "ADR-002",
       "ADR-003",
       "ADR-004",
-      "ADR-005",
-      "ADR-006"
+      "ADR-005"
     ],
     "snapshots": []
   }

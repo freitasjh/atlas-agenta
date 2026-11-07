@@ -1,0 +1,279 @@
+/**
+ * Catálogo local tipado do domínio de pagamentos (ADR-004, D4 / RNF-03).
+ *
+ * O repo não tem `react-i18next`; o padrão aceito é catálogo de mensagens
+ * tipado (mesmo desvio declarado de `cadastro-messages.ts`). Componentes de
+ * apresentação recebem `messages` por prop — nenhum importa este módulo
+ * diretamente, exceto as shells que o repassam.
+ *
+ * Nenhum literal de UI pode existir fora daqui.
+ */
+
+export const paymentsMessages = {
+  gating: {
+    loading: "Carregando…",
+    resolving: "Verificando formas de pagamento…",
+  },
+  method: {
+    dinheiro: "Dinheiro",
+    cartao_credito: "Cartão de crédito",
+    cartao_debito: "Cartão de débito",
+    pix_sistema: "PIX do sistema",
+    pix_maquininha: "PIX da maquininha",
+  },
+  dialog: {
+    title: "Fechar atendimento",
+    subtitle: "Registre como o cliente pagou.",
+    total: "Total do atendimento",
+    remaining: "Falta para quitar",
+    paid: "Já pago",
+    appointmentSummary: "{cliente} · {servico} · {profissional}",
+    emptyLines: "Nenhuma forma de pagamento adicionada ainda.",
+    loading: "Carregando atendimento…",
+    receiptTitle: "Pagamento registrado",
+  },
+  fields: {
+    amount: "Valor",
+    cashReceived: "Valor recebido",
+    change: "Troco",
+    tip: "Gorjeta",
+    tipHint: "A gorjeta não entra na receita do serviço nem na comissão.",
+    cardConfirmed: "Confirmei na maquininha",
+  },
+  actions: {
+    addMethod: "Adicionar forma",
+    addMethodNamed: "Adicionar {metodo}",
+    removeLine: "Remover forma de pagamento",
+    registerLater: "Registrar depois",
+    confirm: "Confirmar",
+    back: "Voltar",
+    cancel: "Cancelar",
+    close: "Fechar",
+    retry: "Tentar de novo",
+    finishWithoutPix: "Fechar sem o PIX",
+    finishWithoutPayment: "Concluir sem pagamento",
+    copy: "Copiar",
+    copied: "Código copiado.",
+    copyFailed: "Não foi possível copiar.",
+    reissue: "Reemitir PIX",
+  },
+  status: {
+    sem_pagamento: "Sem pagamento",
+    parcial: "Parcial",
+    quitado: "Quitado",
+    aguardando_pix: "Aguardando PIX",
+  },
+  partial: {
+    warning: "O atendimento ficará com saldo em aberto. Confirmar?",
+    confirm: "Confirmar pagamento parcial",
+  },
+  discard: {
+    warning: "Há dados não salvos. Descartar e fechar?",
+    confirm: "Descartar e fechar",
+  },
+  registerLater: {
+    warning: "O atendimento será concluído sem pagamento registrado. Confirmar?",
+  },
+  error: {
+    exceeds: "O valor excede o que falta. O adicional só pode ser gorjeta.",
+    gateway: "Não foi possível gerar o PIX. Tente de novo ou continue sem o PIX.",
+    pendingExists: "Este atendimento já tem um PIX pendente. Reexiba o QR existente.",
+    pixUsed: "O PIX deste atendimento já foi utilizado. Use outra forma ou registre depois.",
+    idempotency: "Os dados mudaram desde a última tentativa. Revise e confirme de novo.",
+    cashShort: "O valor recebido é menor que o valor da linha.",
+    cardNotConfirmed: "Confirme o pagamento na maquininha antes de registrar.",
+    noAsaas: "O PIX do sistema não está disponível: configure o Asaas.",
+    network: "Falha de conexão. Verifique a rede e tente de novo.",
+    forbidden: "Você não tem permissão para esta ação.",
+    generic: "Não foi possível concluir a operação. Tente de novo.",
+  },
+  receipt: {
+    title: "Comprovante",
+    paid: "Pago",
+    methods: "Formas de pagamento",
+    date: "Data e hora",
+    tip: "Gorjeta",
+    change: "Troco",
+    note: "Comprovante operacional, sem valor fiscal.",
+    issuedAt: "Emitido em",
+  },
+  badge: {
+    pending: "Pagamento pendente",
+    pendingAria: "Pagamento pendente ({status})",
+    awaitingPix: "Aguardando PIX",
+  },
+  void: {
+    title: "Estornar recebimento",
+    reason: "Motivo do estorno",
+    reasonPlaceholder: "Descreva o motivo do estorno",
+    refundWarning: "O dinheiro não volta pelo sistema. A conciliação no Asaas é manual.",
+    confirm: "Confirmar estorno",
+    done: "Recebimento estornado.",
+  },
+  settlement: {
+    title: "Pagamento do atendimento",
+    subtitle: "{cliente} · {servico} · {profissional}",
+    loading: "Carregando pagamento…",
+    empty: "Nenhum recebimento registrado.",
+    error: "Não foi possível carregar o pagamento.",
+    errorDescription: "Verifique sua conexão e tente novamente.",
+    retry: "Tentar novamente",
+    total: "Total",
+    paid: "Pago",
+    tip: "Gorjeta",
+    pending: "A receber",
+    balance: "Saldo",
+    paymentsTitle: "Recebimentos",
+    chargesTitle: "Cobranças PIX",
+    registerPayment: "Registrar pagamento",
+    confirmManual: "Dar baixa manual",
+    cancelCharge: "Cancelar PIX",
+    showQr: "Reexibir QR",
+    noQr: "PIX não gerado",
+    expired: "Expirado",
+    originManual: "Manual",
+    originAsaas: "PIX",
+    voided: "Estornada",
+    voidReason: "Motivo: {motivo}",
+    reissue: "Reemitir PIX",
+    ownOnly: "Você só pode acessar os próprios atendimentos.",
+    staleTitle: "Cobranças anteriores",
+    status: "Status",
+  },
+  agenda: {
+    filterPending: "Pagamento pendente ({count})",
+    filterPendingAria: "Filtrar atendimentos com pagamento pendente",
+    actionPayment: "Pagamento",
+    actionPaymentAria: "Abrir pagamento do atendimento de {cliente}",
+    concludeLoading: "Carregando…",
+  },
+  pix: {
+    title: "PIX",
+    generatedTitle: "Cobrança PIX gerada",
+    dialogDescription: "Exiba o QR Code ou copie o código para o cliente.",
+    qrAlt: "QR Code PIX",
+    copyLabel: "Código copia-e-cola",
+    expiresAt: "Expira em {data}",
+    unavailable: "QR Code indisponível.",
+    close: "Fechar",
+  },
+  chargesPage: {
+    title: "Cobranças",
+    description: "Cobranças PIX dos atendimentos e baixa pela confirmação do gateway.",
+    filters: {
+      status: "Status",
+      from: "De",
+      to: "Até",
+    },
+    status: {
+      todos: "Todos",
+      pendente: "Pendente",
+      pago: "Pago",
+      expirado: "Expirado",
+      cancelado: "Cancelado",
+    },
+    table: {
+      status: "Status",
+      value: "Valor",
+      createdAt: "Criada em",
+      actions: "Ações",
+    },
+    actionQr: "QR",
+    errorTitle: "Não foi possível carregar as cobranças",
+    errorDescription: "Verifique sua conexão e tente novamente.",
+    retry: "Tentar novamente",
+    emptyTitle: "Nenhuma cobrança encontrada",
+    emptyDescription: "As cobranças PIX aparecerão aqui quando forem geradas.",
+  },
+  financialSummary: {
+    title: "Financeiro",
+    description: "Recebido, gorjeta, a receber e em aberto por período.",
+    groupReceived: "Recebido",
+    groupReceivedBase: "Recebido no período (caixa)",
+    cardService: "Recebido (serviço)",
+    cardTips: "Gorjeta",
+    totalLine: "Recebido total",
+    groupPending: "Pendências",
+    groupPendingBase: "A receber agora · Em aberto no período",
+    cardReceivable: "A receber",
+    cardOpen: "Em aberto",
+    byMethodTitle: "Por forma de pagamento",
+    byMethodCountHeader: "Recebimentos",
+    cashNote: "Comissão é por competência (concluído); este painel é caixa (recebido).",
+    commissionsLink: "Ver comissões",
+    hubTitle: "Financeiro",
+    hubDescription: "Recebido por forma, gorjeta, a receber e em aberto.",
+    invalidPeriod: "Período inválido.",
+    noAccessTitle: "Acesso indisponível",
+    noAccessDescription: "Você não tem acesso a este relatório.",
+    segmentOnlyTitle: "Relatório financeiro",
+    segmentOnlyDescription: "Este relatório está disponível apenas para salões e barbearias.",
+    errorTitle: "Não foi possível carregar o relatório",
+    errorDescription: "Verifique sua conexão e tente novamente.",
+    retry: "Tentar novamente",
+    emptyTitle: "Nenhum recebimento no período.",
+    emptyDescription: "Assim que houver recebimentos no período, eles aparecem aqui.",
+  },
+  receipts: {
+    tabPix: "Cobranças PIX",
+    tabReceipts: "Recebimentos",
+    filters: {
+      method: "Forma",
+      situation: "Situação",
+      from: "De",
+      to: "Até",
+      all: "Todos",
+    },
+    situacao: {
+      todos: "Todos",
+      ativos: "Ativos",
+      estornados: "Estornados",
+    },
+    table: {
+      receivedAt: "Data/hora",
+      customer: "Cliente",
+      method: "Forma",
+      value: "Valor",
+      tip: "Gorjeta",
+      operator: "Operador/origem",
+      status: "Status",
+      link: "Vínculo PIX",
+    },
+    active: "Ativo",
+    voided: "Estornada",
+    originManual: "Manual",
+    originAsaas: "PIX",
+    pixBadge: "PIX",
+    prevPage: "Anterior",
+    nextPage: "Próxima",
+    pageLabel: "Página {atual} de {total}",
+    errorTitle: "Não foi possível carregar os recebimentos",
+    errorDescription: "Verifique sua conexão e tente novamente.",
+    retry: "Tentar novamente",
+    emptyTitle: "Nenhum recebimento no período.",
+    emptyDescription: "Ajuste o período ou os filtros para ver outros recebimentos.",
+  },
+} as const;
+
+/** Remove literais/readonly das folhas — componentes aceitam qualquer catálogo. */
+type Mutable<T> = {
+  -readonly [K in keyof T]: T[K] extends string ? string : Mutable<T[K]>;
+};
+
+export type PaymentsMessages = Mutable<typeof paymentsMessages>;
+
+/**
+ * Substitui placeholders `{chave}` presentes em `values`. Placeholder
+ * desconhecido permanece literal (nunca vira `undefined`).
+ */
+export function formatMessage(
+  template: string,
+  values?: Record<string, string | number>,
+): string {
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) => {
+    if (!Object.prototype.hasOwnProperty.call(values, key)) return whole;
+    const value = values[key];
+    return value === undefined || value === null ? whole : String(value);
+  });
+}

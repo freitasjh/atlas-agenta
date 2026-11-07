@@ -32,30 +32,46 @@ export interface SegmentFeatures {
    * barbearia, clínica e legado (`null`) não veem nenhum ponto de entrada.
    */
   combos: boolean;
+  /**
+   * Fechamento com captura de forma de pagamento (ADR-004). `true` em salão e
+   * barbearia; `false` em clínica/legado. `null` = tenant **ainda não
+   * resolvido** — NUNCA tratar como `false` (cair no fluxo legado durante o
+   * load criaria cobrança automática indevida).
+   */
+  payments: boolean | null;
 }
 
 /** Flags com tudo desligado — fallback para legado/valor sujo. */
 const NO_FEATURES: SegmentFeatures = {
   commission: false,
   combos: false,
+  payments: false,
 };
 
 /**
  * Resolve as features de um ramo. Liga `commission` só para `barbearia` e
- * `combos` só para `salao`; para qualquer outro ramo conhecido,
- * `null`/`undefined` ou valor fora do enum, devolve tudo desligado.
+ * `combos` só para `salao`; `payments` para salão/barbearia.
+ *
+ * `tenantResolved=false` devolve `payments: null` (estado "não resolvido"),
+ * preservando `commission`/`combos` do mapeamento atual. Com o tenant
+ * resolvido, clínica/`null`/valor sujo desligam `payments`.
  *
  * Função pura: **nunca lança, nunca devolve `undefined`** — a UI sempre recebe
  * um objeto de flags completo, cobrindo tenant legado e qualquer valor sujo.
  */
 export function resolveFeatures(
   segment: BusinessSegment | null | undefined,
+  tenantResolved: boolean = true,
 ): SegmentFeatures {
+  if (!tenantResolved) {
+    const base = resolveFeatures(segment, true);
+    return { ...base, payments: null };
+  }
   if (segment === "barbearia") {
-    return { commission: true, combos: false };
+    return { commission: true, combos: false, payments: true };
   }
   if (segment === "salao") {
-    return { commission: false, combos: true };
+    return { commission: false, combos: true, payments: true };
   }
   return NO_FEATURES;
 }

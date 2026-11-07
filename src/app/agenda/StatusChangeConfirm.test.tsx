@@ -31,6 +31,10 @@ vi.mock("@/hooks/useSegmentFeatures", () => ({
   useSegmentFeatures: () => ({ commission: false }),
 }));
 
+vi.mock("@/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({ tenant: { timezone: "America/Sao_Paulo" } }),
+}));
+
 vi.mock("@/hooks/useAppointments", () => ({
   mapSchedulingError: (error: unknown) => String(error),
   useChangeAppointmentStatus: () => ({
@@ -44,6 +48,7 @@ vi.mock("@/hooks/useCharges", () => ({
 }));
 
 import { StatusChangeConfirm } from "@/app/agenda/StatusChangeConfirm";
+import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import type { AppointmentWithRelations } from "@/types/domain";
 
 const APPOINTMENT = {
@@ -93,7 +98,7 @@ describe("StatusChangeConfirm — cobrança PIX", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
 
-    await screen.findByText("Cobrança PIX gerada");
+    await screen.findByText(paymentsMessages.pix.generatedTitle);
     expect(warningMock).not.toHaveBeenCalled();
   });
 });

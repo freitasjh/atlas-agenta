@@ -58,4 +58,17 @@ describe("tenantRangeUtc", () => {
     const nextDayStart = tenantDateTimeToUtc("2025-08-18", "00:00", TZ);
     expect(atEnd).toBe(nextDayStart?.getTime());
   });
+
+  it("ADR-005: atravessa transição de DST por calendário (71h, não 72h)", () => {
+    // America/New_York adianta o relógio em 2026-03-08 (00:00 EST → 00:00 EDT).
+    const range = tenantRangeUtc("2026-03-07", "2026-03-09", "America/New_York");
+    expect(range).not.toBeNull();
+    const durationHours =
+      (range!.endUtc.getTime() - range!.startUtc.getTime()) / 3_600_000;
+    expect(durationHours).toBe(71);
+    const expectedStart = tenantDateTimeToUtc("2026-03-07", "00:00", "America/New_York");
+    const expectedEnd = tenantDateTimeToUtc("2026-03-10", "00:00", "America/New_York");
+    expect(range?.startUtc.getTime()).toBe(expectedStart?.getTime());
+    expect(range?.endUtc.getTime()).toBe(expectedEnd?.getTime());
+  });
 });

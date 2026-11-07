@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "demand": "cobranca-formas-pagamento-adr-003",
+  "agent": "developer-engineer",
+  "phase": "Testing",
+  "gitSha": "83633c7f1b9862a11fcf2eeb2acf1ae87febb451",
+  "timestamp": "2026-11-06T22:55:00.000Z",
+  "worktreeDirty": true,
+  "commands": [
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 33168,
+      "stdoutHash": "sha256:e16a62205a9f974b3ea7af0415a30907fc96bee52b779236171c921acedbeac5"
+    },
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 33885,
+      "stdoutHash": "sha256:e16a62205a9f974b3ea7af0415a30907fc96bee52b779236171c921acedbeac5"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 91271,
+      "stdoutHash": "sha256:4c66f90179090e2b9078307952463334f2bb485d49f12648cb12798b71603823"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 9917,
+      "stdoutHash": "sha256:b3c08e76789fb4e081c6cdce5a4767ca9efe3e2218e0653f1fd2db2882bc9b6b"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 8915,
+      "stdoutHash": "sha256:0f9609ef1975ded1377b1ef6dde3024f5224e6a2f911b992849956b28ca887e5"
+    },
+    {
+      "cmd": "npm run check:functions",
+      "exitCode": 0,
+      "durationMs": 1123,
+      "stdoutHash": "sha256:9e8e866ce121580887af3f24c50bf8d1a67709d99491fa5ad93467bc0decdaf7"
+    },
+    {
+      "cmd": "npm run typecheck",
+      "exitCode": 0,
+      "durationMs": 556,
+      "stdoutHash": "sha256:1f6b841af581ee09486001b6778984578b0b064857267bf33ee81494753af4de"
+    },
+    {
+      "cmd": "psql $SUPABASE_DB_URL -X -q -A -t -v ON_ERROR_STOP=1 -c 'select public.reconcile_appointment_payments_backfill();'",
+      "exitCode": 0,
+      "durationMs": 66,
+      "stdoutHash": "sha256:4aed6c7edce6a5daecb94322a33609b4b81d3043e7607fe9d7f8cfa33b054b58"
+    },
+    {
+      "cmd": "psql $SUPABASE_DB_URL -X -q -A -t -v ON_ERROR_STOP=1 -c 'select public.reconcile_appointment_payments_backfill();'",
+      "exitCode": 0,
+      "durationMs": 57,
+      "stdoutHash": "sha256:4aed6c7edce6a5daecb94322a33609b4b81d3043e7607fe9d7f8cfa33b054b58"
+    }
+  ],
+  "counts": {
+    "unit": {
+      "passed": 344,
+      "failed": 0,
+      "skipped": 0
+    },
+    "it": {
+      "passed": 242,
+      "failed": 0,
+      "skipped": 0
+    },
+    "frontend": {
+      "passed": 526,
+      "failed": 0,
+      "skipped": 0
+    },
+    "gate": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "evaluation": {
+    "telas": "n/a — ADR sem UI (frontend ADR-004)",
+    "negocio": "ok — processed_at só vira now() depois do efeito; asaas-subscription-webhook grava source='asaas' e processed_at após o efeito; índice de pendentes e query do runbook restritos a source='asaas'; cutover exige inserted=candidates e missing_after=0 com skipped_invalid_amount à parte.",
+    "logica": "ok — retry de overdue/deleted grava a auditoria faltante uma vez por event_id sem repetir o update; 23505 sem o par (event_id,payment_id) relê por event_id e trata como duplicata, só faz takeover se nada existir; erro genérico do settle mantém processed_at nulo e responde 500.",
+    "perf": "ok — índice parcial mais seletivo (source='asaas'); no caminho feliz zero I/O extra de auditoria. No retry de overdue/deleted há 1 leitura em audit_log por action+target_type+target_id+metadata->>event_id usando select id com limit(1): aceita N linhas do filtro (sem unique) e responde 200 mesmo com auditoria duplicada de takeover concorrente, sem 500 nem evento pendente.",
+    "brain": "ok — sessão 2026-11-06 e decisão arquitetural do ADR-003 gravadas (ver brainStore)."
+  },
+  "brainStore": [
+    "sessoes/atlas-agenda/2026-11-06-adr-003-webhook-cutover",
+    "arquitetura/projetos/atlas-agenda/cobranca-formas-pagamento-adr-003-webhook-cutover"
+  ],
+  "cleanup": {
+    "ports": [],
+    "note": "Nenhum `supabase functions serve` iniciado pela suíte de integração ficou vivo (teardown do global setup). O stack local `supabase` foi iniciado para a verificação e permaneceu ativo; `infra.ports` do harness.config.json é null."
+  },
+  "selfReported": false
+}

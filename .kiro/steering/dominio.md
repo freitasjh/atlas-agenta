@@ -42,10 +42,24 @@ de negócio pertence a um tenant e carrega `tenant_id` (uuid) indexado.
 - **Prevenção de conflito (RF06):** não permitir sobreposição `[starts_at, ends_at)` para o
   mesmo `professional_id`. Validar no banco (constraint de exclusão/`tstzrange`) e na aplicação.
 
-### charges (cobranças PIX)
-- `id`, `tenant_id`, `appointment_id`, `amount_cents`, `gateway` (`asaas`),
-  `gateway_charge_id`, `pix_payload` (copia e cola), `pix_qr_code`,
-  `status` (`pendente|pago|expirado|cancelado`), `paid_at`, `created_at`.
+### charges (cobranças PIX do gateway)
+- `id`, `tenant_id`, `appointment_id` (opcional), `asaas_payment_id`, `amount_cents`,
+  `pix_qr_code`, `pix_copy_paste` (copia e cola), `expires_at`,
+  `status` (`pendente|pago|expirado|cancelado`), `paid_at`, `idempotency_key`, `created_at`.
+- **Gateway-only**: representa a intenção/reserva (“a receber”), não receita. No máximo 1
+  cobrança PIX por atendimento, **para sempre** (inclusive após paga).
+
+### appointment_payments (ledger de recebimento)
+- `id`, `tenant_id`, `appointment_id`, `charge_id` (opcional, só em `pix_sistema`), `method`
+  (`dinheiro|cartao_credito|cartao_debito|pix_sistema|pix_maquininha`), `amount_cents`,
+  `tip_cents`, `source` (`manual|asaas`), `idempotency_key`, `line_index`, `received_at`,
+  `received_by`, `voided_at`, `voided_by`, `void_reason`, `created_at`.
+- **Fonte única de receita**: receita = `sum(amount_cents)` das linhas com `voided_at is null`
+  por `received_at` (caixa). Correção é estorno lógico (`voided_*`); update de valor e delete
+  são proibidos.
+- `tip_cents` (gorjeta) fica fora da receita de serviço e da base de comissão.
+- Estados de pagamento do atendimento: `sem_pagamento|parcial|quitado|aguardando_pix`; total
+  zero = `quitado` sem linhas. Invariante de parcela: `pago + reservado + novo <= price_cents`.
 
 ### messages (log de disparos WhatsApp)
 - `id`, `tenant_id`, `customer_id`, `appointment_id` (opcional), `channel` (`whatsapp`),
@@ -65,10 +79,17 @@ qualquer ──> cancelado
 confirmado/pendente ──(não veio)──> nao_compareceu
 ```
 
-- Ao entrar em `concluido`: dispara geração de cobrança PIX + mensagem de cobrança (RF13).
-- Pagamento confirmado por webhook: `charges.status = pago` + mensagem de comprovante (RF15).
+- Ao entrar em `concluido`: **não** cria cobrança PIX. O PIX do sistema só existe por escolha na
+  parcela e no máximo 1 por atendimento, para sempre (inclusive após paga).
+- Pagamento confirmado por webhook: `charges.status = pago` + linha em `appointment_payments`
+  (`source = asaas`) + mensagem de comprovante (RF15).
 
 ## Regras de dinheiro e tempo
 
 - Dinheiro em **centavos inteiros** (`*_cents`). Nunca float.
 - Timestamps em **timestamptz (UTC)**. Conversão para o fuso do tenant só na exibição.
+- **Receita** vem só de `appointment_payments` (`voided_at is null`, por `received_at` —
+  caixa); “a receber” = snapshot de `charges.status = 'pendente'` com `asaas_payment_id` e não
+  expirada. Cobrança paga nunca é somada como receita; nunca somar receita + a receber.
+- `tip_cents` (gorjeta) fica fora da receita de serviço e da base de comissão.
+- **Comissão inalterada**: continua no trigger de `concluido` sobre `appointments.price_cents`.

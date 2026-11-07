@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
+import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { toTenantLocal } from "@/lib/datetime";
 import type {
   AppointmentWithRelations,
@@ -60,6 +62,14 @@ interface AgendaCalendarDayProps {
   onOpenAppointment: (appointment: AppointmentWithRelations) => void;
   /** Criar a partir de uma faixa vazia: profissional + `HH:MM` do clique. */
   onCreateAt?: (professionalId: string | null, time: string) => void;
+  /** Flags de pagamento por atendimento (pass-through, sem lógica). */
+  paymentFlags?: ReadonlyMap<string, AgendaPaymentFlag>;
+  /** Abre o settlement do atendimento. */
+  onOpenPayment?: (appointment: AppointmentWithRelations) => void;
+  /** Catálogo de mensagens repassado aos blocos. */
+  paymentsMessages?: PaymentsMessages;
+  /** Capacidade do cliente de registrar pagamentos (ação "Pagamento"). */
+  canRegisterPayments?: boolean;
 }
 
 /**
@@ -84,6 +94,10 @@ export function AgendaCalendarDay({
   showCommission = false,
   onOpenAppointment,
   onCreateAt,
+  paymentFlags,
+  onOpenPayment,
+  paymentsMessages,
+  canRegisterPayments = false,
 }: AgendaCalendarDayProps) {
   // Janela de horas a renderizar: do primeiro expediente/agendamento ao último.
   const { startHour, endHour } = useMemo(() => {
@@ -306,6 +320,10 @@ export function AgendaCalendarDay({
                     compact={rawHeight < FULL_CONTENT_MIN_HEIGHT}
                     showCommission={showCommission}
                     onOpen={onOpenAppointment}
+                    paymentFlag={paymentFlags?.get(appointment.id)}
+                    onOpenPayment={onOpenPayment}
+                    messages={paymentsMessages}
+                    canRegisterPayments={canRegisterPayments}
                   />
                 </div>
               );

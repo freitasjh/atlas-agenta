@@ -62,4 +62,59 @@ describe("resolveFeatures", () => {
       expect(features.commission && features.combos).toBe(false);
     }
   });
+
+  describe("ADR-004: gating tri-state de pagamentos", () => {
+    it("salão e barbearia habilitam o fechamento com pagamento", () => {
+      expect(resolveFeatures("salao").payments).toBe(true);
+      expect(resolveFeatures("barbearia").payments).toBe(true);
+    });
+
+    it("clínica, null, undefined e valor sujo desligam o pagamento", () => {
+      expect(resolveFeatures("clinica").payments).toBe(false);
+      expect(resolveFeatures(null).payments).toBe(false);
+      expect(resolveFeatures(undefined).payments).toBe(false);
+      expect(
+        resolveFeatures("xpto" as unknown as BusinessSegment).payments,
+      ).toBe(false);
+    });
+
+    it("tenant não resolvido devolve payments null (nunca false)", () => {
+      expect(resolveFeatures("salao", false).payments).toBeNull();
+      expect(resolveFeatures("clinica", false).payments).toBeNull();
+      expect(resolveFeatures(null, false).payments).toBeNull();
+    });
+
+    it("commission/combos não mudam com o estado de resolução", () => {
+      expect(resolveFeatures("barbearia", false).commission).toBe(true);
+      expect(resolveFeatures("salao", false).combos).toBe(true);
+      expect(resolveFeatures("clinica", false)).toMatchObject({
+        commission: false,
+        combos: false,
+        payments: null,
+      });
+    });
+
+    it("ADR-005 §6: payments por ramo com commission/combos inalterados", () => {
+      expect(resolveFeatures("salao")).toMatchObject({
+        commission: false,
+        combos: true,
+        payments: true,
+      });
+      expect(resolveFeatures("barbearia")).toMatchObject({
+        commission: true,
+        combos: false,
+        payments: true,
+      });
+      expect(resolveFeatures("clinica")).toMatchObject({
+        commission: false,
+        combos: false,
+        payments: false,
+      });
+      expect(resolveFeatures(null)).toMatchObject({
+        commission: false,
+        combos: false,
+        payments: false,
+      });
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Coins, type LucideIcon } from "lucide-react";
+import { Coins, Wallet, type LucideIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
+import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import { cn } from "@/lib/utils";
 
 interface ReportShortcut {
@@ -33,8 +34,8 @@ interface ReportShortcut {
  * por segmento/RBAC — a trava real de dados é o RLS.
  */
 export function RelatoriosHubPage() {
-  const { canViewCommission } = usePermissions();
-  const { commission } = useSegmentFeatures();
+  const { canViewCommission, canViewFinancials } = usePermissions();
+  const { commission, payments } = useSegmentFeatures();
 
   const shortcuts: ReportShortcut[] = [
     {
@@ -42,7 +43,14 @@ export function RelatoriosHubPage() {
       titulo: "Comissões",
       descricao: "Quanto cada barbeiro recebeu de comissão por período.",
       icon: Coins,
-      visible: commission && canViewCommission,
+      visible: commission === true && canViewCommission,
+    },
+    {
+      to: "/app/relatorios/financeiro",
+      titulo: paymentsMessages.financialSummary.hubTitle,
+      descricao: paymentsMessages.financialSummary.hubDescription,
+      icon: Wallet,
+      visible: canViewFinancials && payments === true,
     },
   ];
 

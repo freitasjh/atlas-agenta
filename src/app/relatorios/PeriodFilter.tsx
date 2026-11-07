@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function PeriodFilter({
   onPresetChange,
   onStartChange,
   onEndChange,
+  idPrefix,
 }: {
   preset: PeriodPreset;
   start: string;
@@ -36,7 +38,14 @@ export function PeriodFilter({
   onPresetChange: (preset: PeriodPreset) => void;
   onStartChange: (value: string) => void;
   onEndChange: (value: string) => void;
+  /** Prefixo dos ids dos inputs (QA-ADR005-02: ids únicos por página). */
+  idPrefix?: string;
 }) {
+  // Sem prefixo explícito, deriva um estável por instância (sem colisão).
+  const autoId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const prefix = idPrefix ?? `periodo-${autoId}`;
+  const startId = `${prefix}-inicio`;
+  const endId = `${prefix}-fim`;
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -70,9 +79,9 @@ export function PeriodFilter({
         )}
       >
         <div className="space-y-1">
-          <Label htmlFor="relatorio-inicio">Início</Label>
+          <Label htmlFor={startId}>Início</Label>
           <Input
-            id="relatorio-inicio"
+            id={startId}
             type="date"
             value={start}
             max={end || undefined}
@@ -81,9 +90,9 @@ export function PeriodFilter({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="relatorio-fim">Fim</Label>
+          <Label htmlFor={endId}>Fim</Label>
           <Input
-            id="relatorio-fim"
+            id={endId}
             type="date"
             value={end}
             min={start || undefined}
