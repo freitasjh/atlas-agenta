@@ -30,6 +30,25 @@ const COMPANY = { email: "e2e.empresa@atlas.test", password: "Empresa@2026", tra
 const RIVAL = { email: "e2e.rival@atlas.test", password: "Rival@2026", trade: "Atlas QA Rival", segment: "Barbearia" };
 const SUPER = { email: "admin@neox.com.br", provisional: "AtlasAgenda@123", password: "NeoX@Segura#2026" };
 
+/** CPF válido e único por execução (ADR-002 exige DV; reuso cairia em 409). */
+let cpfCounter = 0;
+function uniqueValidCpf() {
+  cpfCounter += 1;
+  const base = `${Date.now() % 1_000_000_000}${cpfCounter}`
+    .replace(/[^0-9]/g, "")
+    .padStart(9, "3")
+    .slice(-9);
+  const digit = (seed, weight) => {
+    let sum = 0;
+    for (let i = 0; i < seed.length; i += 1) sum += Number(seed[i]) * (weight - i);
+    const rem = sum % 11;
+    return rem < 2 ? 0 : 11 - rem;
+  };
+  const d1 = digit(base, 10);
+  const d2 = digit(`${base}${d1}`, 11);
+  return `${base}${d1}${d2}`;
+}
+
 const report = {
   startedAt: new Date().toISOString(),
   base: BASE, api: API,
@@ -568,7 +587,13 @@ async function main() {
   await step("10", "RLS: admin de empresa x super admin (isolamento e visão ampla)", async (e) => {
     const rivalSignup = await api("/functions/v1/signup-tenant", {
       method: "POST",
-      body: { email: RIVAL.email, password: RIVAL.password, trade_name: RIVAL.trade, segment: "barbearia" },
+      body: {
+        email: RIVAL.email, password: RIVAL.password, trade_name: RIVAL.trade,
+        document: uniqueValidCpf(), phone_empresa: "(11) 98765-4321",
+        address_cep: "01310-100", address_street: "Avenida Paulista", address_number: "1000",
+        address_city: "Sao Paulo", address_state: "SP", full_name: "Dono Rival",
+        segment: "barbearia",
+      },
     });
     e.rivalSignup = { status: rivalSignup.status, body: rivalSignup.json };
     check(e, "rival_created", rivalSignup.status === 201, rivalSignup.status);

@@ -17,10 +17,19 @@ import { useProfessionals } from "@/hooks/useProfessionals";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useWorkingHours } from "@/hooks/useWorkingHours";
+import { useScheduleValidity } from "@/hooks/useProfessionals";
+import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
+import { useAppointmentActivityRange } from "@/hooks/useAppointments";
+import { useTenant } from "@/hooks/useTenant";
+import { tenantDayOfUtc, todayInTimeZone } from "@/lib/datetime";
+import { isActiveAppointmentStatus } from "@/lib/scheduling-status";
 
 import { WeekScheduleForm } from "@/app/config/profissionais/horarios/WeekScheduleForm";
 import { ScheduleValidityForm } from "@/app/config/profissionais/horarios/ScheduleValidityForm";
 import { ScheduleOverridesSection } from "@/app/config/profissionais/horarios/ScheduleOverridesSection";
+import { MonthlyGradeView } from "@/app/config/profissionais/horarios/MonthlyGradeView";
+import { OverrideFormDialog } from "@/app/config/profissionais/horarios/OverrideFormDialog";
+import { deriveMonthlyGrade } from "@/app/config/profissionais/horarios/deriveMonthlyGrade";
 
 const PROFISSIONAIS_HREF = "/app/config/profissionais";
 
@@ -74,8 +83,36 @@ export function HorariosPage() {
   const { canEditAnySchedule, canEditOwnSchedule, isAdmin } = usePermissions();
 
   const professionalsQuery = useProfessionals();
-  const { userId } = useCurrentUser();
+  const { userId, subscriptionStatus } = useCurrentUser();
   const workingHoursQuery = useWorkingHours(profissionalId ?? null);
+  const validityQuery = useScheduleValidity(profissionalId ?? null);
+  const overridesQuery = useScheduleOverrides(profissionalId ?? null);
+
+  const { data: tenant } = useTenant();
+  const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
+
+  // Mês inicial no fuso do tenant (A6), não UTC (virada de mês 23h BRT).
+  const [month, setMonth] = React.useState(() => {
+    const today = todayInTimeZone(timeZone);
+    return today ? today.slice(0, 7) : new Date().toISOString().slice(0, 7);
+  });
+  const [exceptionDate, setExceptionDate] = React.useState<string | null>(null);
+  const [exceptionOpen, setExceptionOpen] = React.useState(false);
+
+  // Contagem de appointments ativos do mês (escopada por profissional+mês,
+  // nunca todo o tenant) para o calendário mensal — colunas leves (A6).
+  const monthStart = `${month}-01`;
+  const monthEnd = (() => {
+    const [y, m] = month.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m, 0));
+    return d.toISOString().slice(0, 10);
+  })();
+  const monthAppointmentsQuery = useAppointmentActivityRange({
+    startDay: monthStart,
+    endDay: monthEnd,
+    professionalId: profissionalId ?? undefined,
+    enabled: !!profissionalId,
+  });
 
   const professional = professionalsQuery.data?.find(
     (item) => item.id === profissionalId,
@@ -88,6 +125,12 @@ export function HorariosPage() {
   // sua. Caso contrário, leitura. (A escrita de fato é barrada pelo RLS.)
   const canEdit =
     canEditAnySchedule || (canEditOwnSchedule && isOwnSchedule);
+
+  // Assinatura bloqueado/cancelado nega a escrita operacional (SPEC §3 /
+  // seguranca-multitenant): toda a escrita desta tela vira leitura.
+  const writeBlockedBySubscription =
+    subscriptionStatus === "bloqueado" || subscriptionStatus === "cancelado";
+  const effectiveCanEdit = canEdit && !writeBlockedBySubscription;
 
   const isLoading =
     professionalsQuery.isLoading || workingHoursQuery.isLoading;
@@ -151,10 +194,22 @@ export function HorariosPage() {
             </div>
           ) : null}
 
+          {writeBlockedBySubscription ? (
+            <div
+              role="alert"
+              className="rounded-md border border-amber-600/40 bg-amber-50 p-3 text-sm text-amber-900"
+            >
+              A assinatura está {subscriptionStatus} — a escrita operacional
+              está bloqueada. Regularize a assinatura para voltar a editar.
+            </div>
+          ) : null}
+
           <WeekScheduleForm
             professionalId={professional.id}
             workingHours={workingHoursQuery.data ?? []}
-            readOnly={!canEdit}
+            overrides={overridesQuery.data ?? []}
+            readOnly={!effectiveCanEdit}
+            writeBlockedBySubscription={writeBlockedBySubscription}
           />
 
           <Card>
@@ -184,10 +239,82 @@ export function HorariosPage() {
             <CardContent>
               <ScheduleOverridesSection
                 professionalId={professional.id}
-                readOnly={!canEdit}
+                readOnly={!effectiveCanEdit}
               />
             </CardContent>
           </Card>
+
+          <MonthlyGradeView
+            days={deriveMonthlyGrade({
+              month,
+              workingHours: workingHoursQuery.data ?? [],
+              overrides: overridesQuery.data ?? [],
+              scheduleStartDate:
+                validityQuery.data?.schedule_start_date ?? null,
+              scheduleEndDate: validityQuery.data?.schedule_end_date ?? null,
+            })}
+            month={month}
+            validityLabel={
+              validityQuery.data
+                ? `${
+                    validityQuery.data.schedule_start_date
+                      ? `a partir de ${validityQuery.data.schedule_start_date}`
+                      : "sem início"
+                  } · ${
+                    validityQuery.data.schedule_end_date
+                      ? `até ${validityQuery.data.schedule_end_date}`
+                      : "sem término"
+                  }`
+                : "sem início · sem término"
+            }
+            isLoading={
+              workingHoursQuery.isLoading ||
+              overridesQuery.isLoading ||
+              validityQuery.isLoading
+            }
+            isError={
+              workingHoursQuery.isError ||
+              overridesQuery.isError ||
+              validityQuery.isError
+            }
+            onRetry={() => {
+              void workingHoursQuery.refetch();
+              void overridesQuery.refetch();
+              void validityQuery.refetch();
+            }}
+            appointmentCounts={(() => {
+              const counts = new Map<string, number>();
+              for (const appointment of monthAppointmentsQuery.data ?? []) {
+                if (!isActiveAppointmentStatus(appointment.status)) continue;
+                // Dia de parede no fuso do tenant (A6) — o slice UTC erra de
+                // dia nas horas de madrugada (02:30 UTC = 23:30 BRT prévio).
+                const day = tenantDayOfUtc(appointment.starts_at, timeZone);
+                if (!day) continue;
+                counts.set(day, (counts.get(day) ?? 0) + 1);
+              }
+              return counts;
+            })()}
+            readOnly={!effectiveCanEdit}
+            onMonthChange={setMonth}
+            onDayClick={(date) => {
+              setExceptionDate(date);
+              setExceptionOpen(true);
+            }}
+          />
+
+          {effectiveCanEdit ? (
+            <OverrideFormDialog
+              professionalId={professional.id}
+              open={exceptionOpen}
+              onOpenChange={setExceptionOpen}
+              override={
+                overridesQuery.data?.find(
+                  (item) => item.override_date === exceptionDate,
+                ) ?? null
+              }
+              initialDate={exceptionDate ?? undefined}
+            />
+          ) : null}
         </>
       )}
     </div>

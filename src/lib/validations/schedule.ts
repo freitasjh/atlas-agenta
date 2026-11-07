@@ -73,6 +73,27 @@ export const scheduleOverrideSchema = z
       .optional(),
   })
   .superRefine((value, ctx) => {
+    // Reason não-PII (SPEC §8): telefone/documento no motivo é vazamento de
+    // PII para log/UI. Heurística (A3) cobre, além dos formatos com
+    // separador (CPF 000.000.000-00, CNPJ 00.000.000/0000-00, telefone
+    // 00 00000-0000), as burlas sem separador: (DDD) com parênteses colados
+    // e número contínuo de 9–14 dígitos (telefone/CPF/CNPJ sem pontuação).
+    // Datas com hífen (2025-03-15) não casam: os trechos são < 9 dígitos
+    // contínuos. É heurística de UX — a trava real de exposição é não
+    // logar o campo (SPEC §8) — e o aviso orienta a descrever sem PII.
+    if (
+      value.reason &&
+      /(?:\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\(\d{2}\)\s?\d{4,5}-?\d{4}|\b\d{2}\s?\d{4,5}-?\d{4}\b|\b\d{9,14}\b)/.test(
+        value.reason,
+      )
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "O motivo não pode conter telefone ou documento. Descreva a exceção sem dados pessoais.",
+        path: ["reason"],
+      });
+    }
     if (value.isClosed) return;
     refineScheduleWindow(value, ctx);
   });

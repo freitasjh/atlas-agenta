@@ -39,6 +39,29 @@ const DEMO = {
   sandboxCpf: "39053344705",
 };
 
+/**
+ * CPF válido e único por execução (base em timestamp + contador, DVs calculados).
+ * A Edge `signup-tenant` (ADR-002) exige documento com DV; reusar o mesmo CPF
+ * entre execuções cairia em 409 `document_ja_cadastrado`.
+ */
+let cpfCounter = 0;
+function uniqueValidCpf() {
+  cpfCounter += 1;
+  const base = `${Date.now() % 1_000_000_000}${cpfCounter}`
+    .replace(/[^0-9]/g, "")
+    .padStart(9, "3")
+    .slice(-9);
+  const digit = (seed, weight) => {
+    let sum = 0;
+    for (let i = 0; i < seed.length; i += 1) sum += Number(seed[i]) * (weight - i);
+    const rem = sum % 11;
+    return rem < 2 ? 0 : 11 - rem;
+  };
+  const d1 = digit(base, 10);
+  const d2 = digit(`${base}${d1}`, 11);
+  return `${base}${d1}${d2}`;
+}
+
 const steps = [];
 
 function mark(name, ok, detail = "", opts = {}) {
@@ -287,6 +310,16 @@ async function main() {
       email: signupEmail,
       password: signupPassword,
       trade_name: `Smoke ${stamp}`,
+      legal_name: `Smoke ${stamp} LTDA`,
+      // ADR-002 (cadastro rico): documento, telefone, endereço e nome são obrigatórios.
+      document: uniqueValidCpf(),
+      phone_empresa: "(11) 98765-4321",
+      address_cep: "01310-100",
+      address_street: "Avenida Paulista",
+      address_number: "1000",
+      address_city: "Sao Paulo",
+      address_state: "SP",
+      full_name: "Dono Smoke",
       segment: "barbearia",
     }),
   });

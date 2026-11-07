@@ -4,6 +4,10 @@ Padrões de codificação para o frontend Atlas ECM (React 18+ + TypeScript + sh
 
 > Espelho React do padrão Vue/shadcn-vue. **Vuetify/PrimeVue proibidos** neste projeto — usar shadcn/ui (Radix UI + Tailwind CSS).
 
+## Guia Canônico de Componentes UI
+Para padrões de anatomia, acessibilidade (WCAG 2.1 AA), design tokens e templates de implementação de cada componente visual (Card, Input, Modal/Dialog, Drawer/Sheet, etc.), consulte:
+- [`docs/FRONTEND_COMPONENTS_GUIDE.md`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/docs/FRONTEND_COMPONENTS_GUIDE.md)
+
 ## Stack definitiva
 
 | Camada | Tecnologia | Obs |

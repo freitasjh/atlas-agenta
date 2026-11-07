@@ -329,3 +329,71 @@ describe("CadastroPage — a11y e autocompletes", () => {
     expect(screen.getByText(cadastroMessages.lgpdHelper)).toBeDefined();
   });
 });
+
+describe("CadastroPage — navegação por steps (Wizard)", () => {
+  it("renderiza o stepper com 4 etapas e inicia na Etapa 1", () => {
+    const { container } = renderCadastro();
+    const nav = screen.getByRole("navigation", { name: "Etapas do cadastro" });
+    expect(nav).toBeDefined();
+
+    // Etapa 1 está visível (não tem classe hidden)
+    const fieldsets = container.querySelectorAll("fieldset");
+    expect(fieldsets[0].className).toContain("block");
+    expect(fieldsets[1].className).toContain("hidden");
+    expect(fieldsets[2].className).toContain("hidden");
+    expect(fieldsets[3].className).toContain("hidden");
+
+    // Botão Voltar não aparece na Etapa 1
+    expect(screen.queryByRole("button", { name: /Voltar/i })).toBeNull();
+    // Botão Avançar está presente
+    expect(screen.getByRole("button", { name: /Avançar/i })).toBeDefined();
+  });
+
+  it("não avança para o Passo 2 com campos vazios inválidos no Passo 1", async () => {
+    const { container } = renderCadastro();
+    const btnAvancar = screen.getByRole("button", { name: /Avançar/i });
+    fireEvent.click(btnAvancar);
+
+    // Permanece na Etapa 1
+    const fieldsets = container.querySelectorAll("fieldset");
+    expect(fieldsets[0].className).toContain("block");
+    expect(fieldsets[1].className).toContain("hidden");
+  });
+
+  it("avança para Passo 2 com dados válidos e botão Voltar retorna preservando dados", async () => {
+    const { container } = renderCadastro();
+
+    const tradeName = container.querySelector(
+      "#cadastro-tradeName",
+    ) as HTMLInputElement;
+    const document = container.querySelector(
+      "#cadastro-document",
+    ) as HTMLInputElement;
+    const phone = container.querySelector(
+      "#cadastro-phoneEmpresa",
+    ) as HTMLInputElement;
+
+    fireEvent.change(tradeName, { target: { value: "Studio Belle" } });
+    fireEvent.change(document, { target: { value: "529.982.247-25" } });
+    fireEvent.change(phone, { target: { value: "(11) 98765-4321" } });
+
+    const btnAvancar = screen.getByRole("button", { name: /Avançar/i });
+    fireEvent.click(btnAvancar);
+
+    await waitFor(() => {
+      const fieldsets = container.querySelectorAll("fieldset");
+      expect(fieldsets[0].className).toContain("hidden");
+      expect(fieldsets[1].className).toContain("block");
+    });
+
+    // Clica em Voltar
+    const btnVoltar = screen.getByRole("button", { name: /Voltar/i });
+    fireEvent.click(btnVoltar);
+
+    // Retornou para o Passo 1 com os dados intactos
+    const fieldsets = container.querySelectorAll("fieldset");
+    expect(fieldsets[0].className).toContain("block");
+    expect(tradeName.value).toBe("Studio Belle");
+  });
+});
+

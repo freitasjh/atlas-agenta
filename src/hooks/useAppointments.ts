@@ -260,6 +260,73 @@ export function useAppointmentsRange({
   });
 }
 
+/**
+ * Shape leve de "atividade" (`id` + janela + status) — só o que as checagens
+ * de conflito e as contagens do calendário precisam (A6: over-fetch).
+ * O `APPOINTMENT_SELECT` completo (join com nomes legíveis) fica para as
+ * listas; nada aqui vaza dado financeiro ou de cliente.
+ */
+const appointmentActivitySchema = z.object({
+  id: z.string(),
+  starts_at: z.string(),
+  ends_at: z.string(),
+  status: z.enum(APPOINTMENT_STATUSES),
+});
+
+const appointmentActivityListSchema = z.array(appointmentActivitySchema);
+
+export type AppointmentActivity = z.infer<typeof appointmentActivitySchema>;
+
+/** Colunas leves (sem join) — a busca de conflito/contagem nunca traz PII. */
+export const APPOINTMENT_ACTIVITY_SELECT = "id, starts_at, ends_at, status";
+
+/**
+ * Appointments ativos numa faixa de dias (`startDay`..`endDay` inclusivos,
+ * `YYYY-MM-DD` no fuso do tenant) com colunas leves — para `findBatchConflicts`,
+ * `findOverrideConflict` e contagens do calendário mensal. Escopado por
+ * profissional (nunca todo o tenant); `enabled` permite adiar a busca
+ * (ex.: dialog fechado, tela em leitura). Isolamento por tenant: sempre RLS.
+ */
+export function useAppointmentActivityRange({
+  startDay,
+  endDay,
+  professionalId,
+  enabled,
+}: {
+  startDay: string;
+  endDay: string;
+  professionalId?: string;
+  enabled?: boolean;
+}) {
+  const { data: tenant } = useTenant();
+  const timeZone = tenant?.timezone;
+
+  return useQuery<AppointmentActivity[]>({
+    queryKey: [
+      ...APPOINTMENTS_KEY,
+      "activity",
+      { startDay, endDay, professionalId },
+    ],
+    enabled: !!timeZone && (enabled ?? true),
+    queryFn: async () => {
+      const range = tenantRangeUtc(startDay, endDay, timeZone as string);
+      if (!range) throw new Error("Faixa inválida.");
+
+      let query = supabase
+        .from("appointments")
+        .select(APPOINTMENT_ACTIVITY_SELECT)
+        .gte("starts_at", range.startUtc.toISOString())
+        .lt("starts_at", range.endUtc.toISOString())
+        .order("starts_at", { ascending: true });
+      if (professionalId) query = query.eq("professional_id", professionalId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return appointmentActivityListSchema.parse(data);
+    },
+  });
+}
+
 export function useCreateAppointment() {
   const queryClient = useQueryClient();
   return useMutation({
