@@ -46,6 +46,9 @@ import {
 } from "@/hooks/useAdminUsageMetrics";
 import { getPlanLabel, getSubscriptionTransitionLabel } from "@/lib/subscription-status";
 import { PLAN_SLUGS, type PlanSlug } from "@/lib/plans";
+import { currentTelemetryMonth, useQuotaUtilization } from "@/hooks/usePlanTelemetry";
+import { PlanAnalyticsCard } from "@/admin/metricas/PlanAnalyticsCard";
+import { QuotaHotTable } from "@/admin/metricas/QuotaHotTable";
 import { useAdminTenants } from "@/hooks/useAdminTenants";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "@/types/domain";
@@ -66,11 +69,14 @@ export function MetricasPage() {
   const [bucket, setBucket] = useState<UsageBucket>("day");
   const [planFilter, setPlanFilter] = useState<PlanSlug | "todos">("todos");
   const [statusFilter, setStatusFilter] = useState<SubscriptionStatus | "todos">("todos");
+  const [telemetryMonth, setTelemetryMonth] = useState<string>(() => currentTelemetryMonth());
+  const [telemetryPlan, setTelemetryPlan] = useState<PlanSlug | "todos">("todos");
 
   const overviewQuery = useAdminUsageOverview(start, end);
   const seriesQuery = useAdminUsageSeries(start, end, bucket);
   const tenantsUsageQuery = useAdminUsageTenants(start, end);
   const tenantsQuery = useAdminTenants();
+  const quotaHotQuery = useQuotaUtilization(0.8);
 
   const kpis = useMemo(
     () => computeUsageKpis(overviewQuery.data ?? null),
@@ -88,13 +94,20 @@ export function MetricasPage() {
     [tenantsUsageQuery.data, tenantsQuery.data, statusFilter, planFilter],
   );
 
+  const quotaHotRows = useMemo(() => {
+    const rows = quotaHotQuery.data ?? [];
+    if (telemetryPlan === "todos") return rows;
+    return rows.filter((r) => r.plan === telemetryPlan);
+  }, [quotaHotQuery.data, telemetryPlan]);
+
   const dateRangeValid = isDateRangeValid(start, end);
 
   const isError =
     overviewQuery.isError ||
     seriesQuery.isError ||
     tenantsUsageQuery.isError ||
-    tenantsQuery.isError;
+    tenantsQuery.isError ||
+    quotaHotQuery.isError;
 
   const statusCounts = useMemo(() => {
     const counts = SUBSCRIPTION_STATUSES.reduce(
@@ -111,7 +124,10 @@ export function MetricasPage() {
   }, [tenantsQuery.data]);
 
   const isLoading =
-    overviewQuery.isLoading || seriesQuery.isLoading || tenantsUsageQuery.isLoading;
+    overviewQuery.isLoading ||
+    seriesQuery.isLoading ||
+    tenantsUsageQuery.isLoading ||
+    quotaHotQuery.isLoading;
 
   const points: UsageSeriesPoint[] = seriesQuery.data ?? [];
 
@@ -291,6 +307,52 @@ export function MetricasPage() {
                 </p>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Telemetria de planos (Arquétipo A — Card 2 + tabela quente) */}
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="w-full sm:w-56">
+                <Label htmlFor="telemetria-mes">Mês</Label>
+                <Input
+                  id="telemetria-mes"
+                  type="month"
+                  value={telemetryMonth}
+                  onChange={(e) => setTelemetryMonth(e.target.value)}
+                />
+              </div>
+              <div className="w-full sm:w-56">
+                <Label htmlFor="telemetria-plano">Plano</Label>
+                <Select
+                  value={telemetryPlan}
+                  onValueChange={(v) => setTelemetryPlan(v as PlanSlug | "todos")}
+                >
+                  <SelectTrigger id="telemetria-plano">
+                    <SelectValue placeholder="Filtrar por plano" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os planos</SelectItem>
+                    {PLAN_SLUGS.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {getPlanLabel(p)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <PlanAnalyticsCard
+              month={telemetryMonth}
+              start=""
+              end=""
+              plan={telemetryPlan}
+            />
+            <QuotaHotTable
+              rows={quotaHotRows}
+              isLoading={quotaHotQuery.isLoading}
+              isError={quotaHotQuery.isError}
+              onRetry={() => void quotaHotQuery.refetch()}
+            />
           </div>
 
           {/* Contagem por status */}

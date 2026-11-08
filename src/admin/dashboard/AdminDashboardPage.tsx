@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { StatusBadge, getSubscriptionStatusLabel } from "@/components/StatusBadge";
 import { getPlanLabel } from "@/lib/subscription-status";
 import { PLAN_SLUGS } from "@/lib/plans";
@@ -28,6 +30,8 @@ import {
   type AdminTenantPlanFilter,
   type AdminTenantStatusFilter,
 } from "@/hooks/useAdminDashboard";
+import { currentTelemetryMonth } from "@/hooks/usePlanTelemetry";
+import { PlanMrrCard } from "@/admin/dashboard/PlanMrrCard";
 
 function displayName(tenant: TenantListItem): string {
   const trade = tenant.trade_name?.trim();
@@ -51,6 +55,7 @@ export function AdminDashboardPage() {
 
   const [statusFilter, setStatusFilter] = useState<AdminTenantStatusFilter>("todos");
   const [planFilter, setPlanFilter] = useState<AdminTenantPlanFilter>("todos");
+  const [telemetryMonth, setTelemetryMonth] = useState<string>(() => currentTelemetryMonth());
 
   const tenants = useMemo(() => tenantsQuery.data ?? [], [tenantsQuery.data]);
   const instances = useMemo(() => instancesQuery.data ?? [], [instancesQuery.data]);
@@ -152,6 +157,20 @@ export function AdminDashboardPage() {
                 </p>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Telemetria de planos (Arquétipo A — Card 1: MRR + quota) */}
+          <div className="space-y-2">
+            <div className="w-full sm:w-56">
+              <Label htmlFor="telemetria-mes-dashboard">Mês da telemetria</Label>
+              <Input
+                id="telemetria-mes-dashboard"
+                type="month"
+                value={telemetryMonth}
+                onChange={(e) => setTelemetryMonth(e.target.value)}
+              />
+            </div>
+            <PlanMrrCard month={telemetryMonth} />
           </div>
 
           {/* Filtros */}

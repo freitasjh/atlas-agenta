@@ -1,18 +1,18 @@
 {
-  "current_feature": "grade-horarios-profissionais",
+  "current_feature": "plan-telemetry-pacote",
   "current_phase": "Completed",
   "previous_phase": "Testing",
   "next_phase": null,
   "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-07T19:03:14.245934+00:00",
+    "last_invoked_at": "2026-11-08T22:43:59.039462+00:00",
     "last_status": "passed",
     "critical_issues": 0,
-    "attention_issues": 4,
-    "reviewer_notes": "Loop2 APPROVED 0 critical, 4 yellow follow-up (fail-open refetch, ScheduleValidity readOnly, snapshot log, harness caveat). 815/815 testes."
+    "attention_issues": 6,
+    "reviewer_notes": "Loop1 APPROVED 0 critical, 6 yellow follow-up (mes ignorado MRR, zod silencioso, erro global quota, ancora morta, fallback trial, parity CI). 881 vitest, 20/20 pgTAP."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-07T20:15:51.531336+00:00",
+  "last_update": "2026-11-08T22:51:12.602767+00:00",
   "code_review_status": "passed",
   "pendencies": [
     {
@@ -42,9 +42,9 @@
     "prd": null,
     "research": null,
     "adr_index": null,
-    "spec": ".spec/frontend/grade-horarios-profissionais/SPEC.md",
-    "plan": ".spec/frontend/grade-horarios-profissionais/PLAN.md",
-    "tasks": ".spec/frontend/grade-horarios-profissionais/TASKS.md"
+    "spec": ".spec/archive/20261108-plan-telemetry-pacote/SPEC.md",
+    "plan": ".spec/archive/20261108-plan-telemetry-pacote/PLAN.md",
+    "tasks": ".spec/archive/20261108-plan-telemetry-pacote/TASKS.md"
   },
   "prd_adr": {
     "prd_id": "cobranca-formas-pagamento",
@@ -71,6 +71,22 @@
       "progress": 100,
       "done": 5,
       "total": 5,
+      "status": "completed"
+    },
+    {
+      "name": "backoffice-plan-control",
+      "stage": "Testing",
+      "progress": 80,
+      "done": 5,
+      "total": 6,
+      "status": "active"
+    },
+    {
+      "name": "plan-telemetry-pacote",
+      "stage": "Completed",
+      "progress": 100,
+      "done": 6,
+      "total": 6,
       "status": "completed"
     }
   ]
