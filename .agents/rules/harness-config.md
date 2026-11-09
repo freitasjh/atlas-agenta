@@ -136,7 +136,8 @@ não que suíte vermelha seja negada — `runContraprova` compara o `exitCode`
 > Débito conhecido: `.harness-install.json` (`answers.suiteCommand`) ainda diz
 > `npm run test:run`. É manifesto estático do instalador e não há caminho de
 > regeneração neste repo — regenerar exige re-executar o instalador na origem.
-> Não editar à mão.
+> Não editar à mão. Canônico é `harness.config.json` `commands.suiteFull`
+> (`npm test && node --test ...`); runtime/guard ignoram o manifesto.
 
 ### Selo publicado (ADR-002/U6=b)
 

@@ -37,9 +37,9 @@ create schema if not exists tests;
 revoke all on schema tests from public, anon, authenticated;
 
 -- Cria usuário em auth.users + profile ligado a um tenant com um papel de app.
--- O trigger `on_auth_user_created` (migration de signup) cria, ao inserir em auth.users, uma
--- empresa nova e um profile admin. O helper troca esse profile pelo tenant e papel pedidos e
--- remove a empresa órfã criada pelo trigger, para que o banco de teste fique só com o fixture.
+-- (ADR-02 removeu o trigger on_auth_user_created: o profile é gravado aqui
+-- direto, como owner, em vez de depender do trigger. Sem isso, profiles fica
+-- vazio e current_role_name()/current_tenant_id() voltam NULL em todo teste.)
 create or replace function tests.create_user(
   p_user_id   uuid,
   p_tenant_id uuid,
@@ -50,8 +50,6 @@ returns uuid
 language plpgsql
 set search_path = public
 as $$
-declare
-  v_auto_tenant uuid;
 begin
   insert into tenants (id, legal_name, owner_email)
   values (p_tenant_id, 'Empresa de teste ' || p_tenant_id::text, 'tenant-' || p_tenant_id::text || '@teste.invalido')
@@ -64,17 +62,20 @@ begin
     'authenticated',
     'usuario-' || p_user_id::text || '@teste.invalido',
     '{}'::jsonb
-  );
+  )
+  on conflict (id) do nothing;
 
-  select tenant_id into v_auto_tenant from profiles where id = p_user_id;
-
-  update profiles
-     set tenant_id = p_tenant_id,
-         role      = p_role,
-         full_name = p_full_name
-   where id = p_user_id;
-
-  delete from tenants where id = v_auto_tenant and id <> p_tenant_id;
+  insert into public.profiles (id, tenant_id, role, full_name)
+  values (
+    p_user_id,
+    case when p_role = 'super_admin' then null else p_tenant_id end,
+    p_role,
+    p_full_name
+  )
+  on conflict (id) do update
+     set tenant_id = excluded.tenant_id,
+         role = excluded.role,
+         full_name = excluded.full_name;
 
   return p_user_id;
 end;

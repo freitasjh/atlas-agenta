@@ -15,8 +15,7 @@ o agente — então o registro é sempre o agente chamando `brain_store` (MCP).
 
 ## Antes de qualquer mudança de código (obrigatório)
 
-Rodar `brain_search` com `project: "atlas-agenda"` para recuperar contexto e evitar
-reinventar decisões já tomadas. Buscar pelo assunto da demanda. Se houver demanda
+Rodar `brain_search` em 3 passes (nunca só com project): 1) sem filtro `brain_search("<assunto>", top_k=10)` varredura larga; 2) `scope: "global"` para padrões reutilizáveis (micro-saas, backoffice, RLS, Supabase); 3) `project: "atlas-agenda"` para contexto específico. Ler integral com `brain_read(path)` nos hits. Se houver demanda
 roteada ao `dev-pipeline`, essa busca também vale como contexto do planejador.
 
 ## Depois de cada demanda que gerou aprendizado (obrigatório)
@@ -31,9 +30,12 @@ Gravar com `brain_store` (MCP) quando a execução produziu algo durável:
 
 Não gravar quando foi só leitura, pergunta respondida ou mudança trivial.
 
-### Onde gravar (layer / path / scope)
+### Onde gravar (layer / path / scope vs project)
 
-Sempre `project: "atlas-agenda"` e `scope: "projetos"`.
+`scope` = eixo universal vs específico. `project` = dono + link. Não confundir.
+
+- Específico atlas-agenda → `scope: "projetos"`, `project: "atlas-agenda"`, `path: "atlas-agenda/<assunto>"`.
+- Reutilizável micro-saas/backoffice/infra → `scope: "global"`, `project` omitido, `path: "<dominio>/<assunto>"` sem prefixo de projeto, `tags` para busca. Depois linkar com `brain_project_link(note_path, "atlas-agenda")` — sem link, filtro `project` não enxerga global de outro projeto.
 
 **Importante:** `brain_store` já prefixa `layer/scope/` automaticamente no caminho
 final. O parâmetro `path` deve ser **relativo**, começando direto no projeto — não
@@ -49,6 +51,13 @@ e gera `regras/projetos/regras/projetos/atlas-agenda/...`).
 
 Conteúdo conciso e específico: **o que** foi decidido/descoberto e **por quê**.
 Preferir atualizar uma nota existente do mesmo assunto a criar duplicatas.
+
+### Piso de densidade (anti-aprendizado-ralo)
+Runtime só valida forma (layer/path/scope/≤256KiB/≤64 chunks). Densidade é processo:
+- `regras`/`arquitetura`: mínimo 800 chars + `## Contexto` + `## Decisão` + `## Motivo` + ≥1 tag.
+- `estudos`: mínimo 1500 chars + Resumo + Conceitos + código real + Armadilhas + Referências + frontmatter `tags/topico/fonte`.
+- `sessoes`: máximo 1200 chars, só handoff. Conhecimento vai para `regras/arquitetura/estudos`.
+- Preferir 1 nota densa global linkada a 5 finas duplicadas.
 
 ## Encadeamento com o dev-pipeline
 
