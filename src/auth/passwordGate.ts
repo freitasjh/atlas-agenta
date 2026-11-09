@@ -37,7 +37,7 @@ export interface PasswordGateInput {
 
 /**
  * Decide o que o guard de troca obrigatória faz na rota atual. A flag vale para
- * a conta, não para o papel: o mesmo resultado vale em `/app` e `/admin`.
+ * a conta, não para o papel: o mesmo resultado vale em `/app` e `/internal-admin`.
  */
 export function decidePasswordGate({
   isLoadingAuth,

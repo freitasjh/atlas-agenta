@@ -18,7 +18,7 @@ import type { SubscriptionStatus } from "@/types/domain";
  *   liberar: senão um tenant `bloqueado`/`cancelado` cuja leitura falhe ganharia
  *   o app (anti "fail-open", CA-08.5).
  * - `super_admin` (sem tenant por construção) → passa. O router nunca roteia
- *   super_admin para `/app`; o acesso dele é decidido pelo RBAC de `/admin`.
+ *   super_admin para `/app`; o acesso dele é decidido pelo RBAC de `/internal-admin`.
  *   Liberar aqui é defensivo e não quebra com `tenant` null.
  * - `trial`/`ativo`/`pendente` → acesso normal (sem gating inventado para
  *   `pendente`).

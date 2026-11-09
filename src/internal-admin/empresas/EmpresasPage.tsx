@@ -58,9 +58,9 @@ function buildSignature(tenants: TenantListItem[]): string {
 }
 
 /**
- * Tela de Empresas do painel do super admin (`/admin/empresas`). Lista todas as
+ * Tela de Empresas da área interna (`/internal-admin/empresas`). Lista todas as
  * empresas assinantes cross-tenant (a trava é o RLS `tenants_super_admin`; o
- * guard de rota já barra quem não é `super_admin`), com busca por nome, filtro
+ * guard de rota já barra quem não é operador interno), com busca por nome, filtro
  * por status e resumo de contagem. Busca e filtro são estado de UI client-side
  * sobre o resultado único da query (`useAdminTenants`) — combinam por AND e não
  * disparam novas requisições (volume baixo no MVP). Estados loading/vazio(2

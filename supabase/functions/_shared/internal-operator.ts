@@ -110,6 +110,22 @@ export async function isActiveInternalOperator(
 }
 
 /**
+ * Métrica `internal_admin_denies_total` (SPEC G10, MIG-BE-04): incrementa o
+ * contador de negas BOLA/AAL2. Best-effort: nunca lança (fakes sem `rpc` e
+ * falhas de rede são ignoradas). Sem PII.
+ */
+export async function countInternalAdminDeny(service: SupabaseClient): Promise<void> {
+  try {
+    const rpc = (service as unknown as { rpc?: unknown }).rpc;
+    if (typeof rpc === "function") {
+      await (rpc as (fn: string) => Promise<unknown>).call(service, "internal_admin_deny");
+    }
+  } catch {
+    // best-effort: a negação já foi devolvida; a métrica não pode quebrá-la.
+  }
+}
+
+/**
  * Verificação completa por request: JWT -> getUser -> operador ativo + AAL2
  * (assurance da sessão + enrollment do factor). Falha fechada: token
  * ausente/inválido, sem operador, sessão sem `aal==="aal2"` ou sem factor

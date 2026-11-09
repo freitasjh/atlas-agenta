@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-import { PlanMrrCardView } from "@/admin/dashboard/PlanMrrCard";
+import { PlanMrrCardView } from "@/internal-admin/dashboard/PlanMrrCard";
 
 afterEach(() => cleanup());
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { parseInviteBody, type InviteBody } from "./schemas.ts";
+import { countInternalAdminDeny, verifyInternalOperator } from "../_shared/internal-operator.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +82,8 @@ interface Identity {
   userId: string;
   tenantId: string | null;
   role: string;
+  /** Valor CRU de `app_metadata.must_change_password`; `undefined` quando ausente. */
+  mustChangePassword: unknown;
 }
 
 async function resolveIdentity(service: SupabaseClient, token: string): Promise<Identity | null> {
@@ -93,10 +96,16 @@ async function resolveIdentity(service: SupabaseClient, token: string): Promise<
     .maybeSingle();
   if (profileErr || !profile) return null;
   if (profile.active !== true) return null;
+  const rawAppMetadata = (data.user as { app_metadata?: unknown }).app_metadata;
+  const appMetadata: Record<string, unknown> =
+    typeof rawAppMetadata === "object" && rawAppMetadata !== null
+      ? (rawAppMetadata as Record<string, unknown>)
+      : {};
   return {
     userId: data.user.id,
     tenantId: (profile.tenant_id as string | null) ?? null,
     role: profile.role as string,
+    mustChangePassword: appMetadata.must_change_password,
   };
 }
 
@@ -129,6 +138,34 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
     if (!parsed.ok) return errorResponse(parsed.code);
     const body: InviteBody = parsed.body;
 
+    // Caminho do operador interno (MIG-BE-02, `/internal-admin/convites`):
+    // prova server-side por request (operador ativo + AAL2); OK + sem
+    // must_change → executa com service_role, ignora `profiles.role`; o alvo
+    // vem OBRIGATORIAMENTE do corpo (`tenant_id`, nunca implícito). Falha na
+    // prova cai no legado abaixo (compat: fluxos de tenant inalterados).
+    // must_change_password=true continua negando (403) com métrica de nega.
+    let operatorMode = false;
+    try {
+      await verifyInternalOperator(service, token);
+      operatorMode = true;
+    } catch {
+      operatorMode = false;
+    }
+    if (operatorMode) {
+      if (identity.mustChangePassword === true) {
+        console.warn("invite-member: operator must_change_password blocked");
+        await countInternalAdminDeny(service);
+        return errorResponse("forbidden");
+      }
+      const rawTenantId = (rawBody as { tenant_id?: unknown }).tenant_id;
+      if (typeof rawTenantId !== "string" || rawTenantId.length === 0) {
+        return errorResponse("invalid_body");
+      }
+      const tenantId: string | null = rawTenantId;
+      console.warn("invite-member: operator create");
+      return await createInvitation(service, identity.userId, tenantId, body);
+    }
+
     // Permissões: super_admin convida super_admin; admin do tenant convida admin/professional/receptionist.
     let tenantId: string | null;
     if (identity.role === "super_admin") {
@@ -142,6 +179,15 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
       return errorResponse("forbidden");
     }
 
+    return await createInvitation(service, identity.userId, tenantId, body);
+}
+
+async function createInvitation(
+  service: SupabaseClient,
+  actorUserId: string,
+  tenantId: string | null,
+  body: InviteBody,
+): Promise<Response> {
     // Validação opcional de professional_id (ADR-002).
     let professionalId: string | null = body.professional_id ?? null;
     if (professionalId) {
@@ -181,7 +227,7 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
         token_hash: tokenHash,
         status: "pending",
         expires_at: expiresAt,
-        created_by: identity.userId,
+        created_by: actorUserId,
         professional_id: professionalId,
       })
       .select("id")
@@ -194,7 +240,7 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
 
     const { error: auditErr } = await service.from("audit_log").insert({
       tenant_id: tenantId,
-      actor_id: identity.userId,
+      actor_id: actorUserId,
       action: "invitation.created",
       target_type: "invitation",
       target_id: invitation.id as string,
@@ -231,5 +277,6 @@ export function createInviteMemberHandler(options: InviteMemberHandlerOptions) {
     }
 
     return okResponse({ ok: true, invitation_id: invitation.id, expires_at: expiresAt });
-  };
 }
+}
+

@@ -26,7 +26,7 @@ interface DashboardShellProps {
 }
 
 /**
- * Casca responsiva compartilhada por `/app` e `/admin`.
+ * Casca responsiva compartilhada por `/app` (o shell interno tem casca própria).
  *
  * - Em ≥768px (md): sidebar fixa à esquerda, conteúdo à direita.
  * - No mobile: sidebar vira um `Sheet` acionado por botão de menu acessível.

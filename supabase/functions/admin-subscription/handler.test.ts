@@ -34,7 +34,21 @@ type FakeOptions = {
   tenant?: FakeTenant | null;
   tenantError?: FakeError;
   rpc?: { data?: unknown; error?: FakeError };
+  /** MIG-BE-02: operador ativo em `internal_operators` (default false). */
+  isOperator?: boolean;
+  /** MIG-BE-02: factors MFA verificados (default 0). */
+  verifiedFactors?: number;
 };
+
+/** JWT mínimo com claim `aal` (lido server-side por `readJwtAal`). */
+function jwtWithAal(aal: string): string {
+  const b64 = (v: unknown) =>
+    btoa(JSON.stringify(v)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none", typ: "JWT" })}.${b64({ aal, sub: USER_ID })}.sig`;
+}
+
+const OPERATOR_AAL2_TOKEN = jwtWithAal("aal2");
+const OPERATOR_AAL1_TOKEN = jwtWithAal("aal1");
 
 type FakeCalls = {
   getUser: string[];
@@ -56,6 +70,14 @@ function fakeService(options: FakeOptions): { service: SupabaseClient; calls: Fa
         if (options.getUserError) return { data: { user: null }, error: options.getUserError };
         return { data: { user }, error: null };
       },
+      admin: {
+        mfa: {
+          listFactors: async (_args: { userId: string }) => ({
+            data: Array.from({ length: options.verifiedFactors ?? 0 }, (_, i) => ({ id: `f-${i}`, status: "verified" })),
+            error: null,
+          }),
+        },
+      },
     },
     from: (table: string) => ({
       select: (columns: string) => {
@@ -63,12 +85,27 @@ function fakeService(options: FakeOptions): { service: SupabaseClient; calls: Fa
         if (table === "tenants") calls.tenantSelect.push(columns);
         return {
           eq: (_column: string, _value: string) => ({
+            is: (_icol: string, _ival: unknown) => ({
+              maybeSingle: async () => {
+                if (table === "internal_operators") {
+                  return options.isOperator
+                    ? { data: { user_id: USER_ID }, error: null }
+                    : { data: null, error: null };
+                }
+                return { data: null, error: null };
+              },
+            }),
             maybeSingle: async () => {
               if (table === "profiles") {
                 return { data: options.profile ?? null, error: options.profileError ?? null };
               }
               if (table === "tenants") {
                 return { data: options.tenant ?? null, error: options.tenantError ?? null };
+              }
+              if (table === "internal_operators") {
+                return options.isOperator
+                  ? { data: { user_id: USER_ID }, error: null }
+                  : { data: null, error: null };
               }
               return { data: null, error: null };
             },
@@ -143,9 +180,11 @@ Deno.test("flag true booleana: 403 password_change_required sem ler tenants nem 
   strictEqual(body.error, "Troque sua senha antes de operar o painel.");
   strictEqual(body.message, body.error);
 
-  // Bloqueado não toca no tenant alvo nem chama a RPC de escrita.
+  // Bloqueado não toca no tenant alvo nem chama a RPC de escrita;
+  // a nega é contabilizada em `internal_admin_denies_total` (BE-04).
   deepStrictEqual(calls.tenantSelect, []);
-  deepStrictEqual(calls.rpc, []);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
 });
 
 Deno.test("identidade lê profiles só com tenant_id e role (sem must_change_password)", async () => {
@@ -185,6 +224,7 @@ Deno.test("flag false: segue e grava via RPC com changed_by do JWT", async () =>
     p_changed_by: USER_ID,
     p_reason: null,
   });
+  strictEqual(calls.rpc.some((c) => c.name === "internal_admin_deny"), false);
 });
 
 Deno.test("flag ausente: segue e grava via RPC", async () => {
@@ -227,11 +267,12 @@ Deno.test("papel admin: 403 de permissão sem ler tenants nem gravar", async () 
     error: "Você não tem permissão para alterar o status de assinatura.",
   });
   deepStrictEqual(calls.tenantSelect, []);
-  deepStrictEqual(calls.rpc, []);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
 });
 
 Deno.test("papel admin com flag true: recusa é de permissão, não de senha", async () => {
-  const { handler } = build({
+  const { handler, calls } = build({
     user: { id: USER_ID, app_metadata: { must_change_password: true } },
     profile: { tenant_id: TENANT_ID, role: "professional" },
   });
@@ -241,6 +282,8 @@ Deno.test("papel admin com flag true: recusa é de permissão, não de senha", a
   strictEqual(response.status, 403);
   const body = (await response.json()) as { code?: string };
   strictEqual(body.code, undefined);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
 });
 
 Deno.test("sem token: 401 e nada é lido no Auth", async () => {
@@ -335,4 +378,87 @@ Deno.test("OPTIONS: 200 de preflight sem criar client", async () => {
 
   strictEqual(response.status, 200);
   strictEqual(created, 0);
+});
+
+// MIG-BE-02: caminho do operador interno (ignora profiles.role).
+Deno.test("operador+AAL2 com role professional executa (ignora role)", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: { tenant_id: null, role: "professional" },
+    tenant: TRIAL_TENANT,
+    isOperator: true,
+    verifiedFactors: 1,
+  });
+
+  const response = await call(handler, { token: OPERATOR_AAL2_TOKEN });
+
+  strictEqual(response.status, 200);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], {
+    name: "admin_set_subscription_status",
+    p_tenant_id: TENANT_ID,
+    p_new_status: "ativo",
+    p_changed_by: USER_ID,
+    p_reason: null,
+  });
+  strictEqual(calls.rpc.some((c) => c.name === "internal_admin_deny"), false);
+});
+
+Deno.test("operador sem AAL2 cai no legado e nega (professional -> 403)", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: { tenant_id: null, role: "professional" },
+    tenant: TRIAL_TENANT,
+    isOperator: true,
+    verifiedFactors: 1,
+  });
+
+  const response = await call(handler, { token: OPERATOR_AAL1_TOKEN });
+
+  strictEqual(response.status, 403);
+  deepStrictEqual(calls.tenantSelect, []);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
+});
+
+Deno.test("nao-operador com role professional nega sem ler tenant (403) e conta deny", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: { tenant_id: null, role: "professional" },
+    tenant: TRIAL_TENANT,
+    isOperator: false,
+    verifiedFactors: 0,
+  });
+
+  const response = await call(handler, { token: OPERATOR_AAL2_TOKEN });
+
+  strictEqual(response.status, 403);
+  deepStrictEqual(calls.tenantSelect, []);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
+});
+
+Deno.test("operador com must_change_password=true nega 403 e conta deny", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: { must_change_password: true } },
+    profile: { tenant_id: null, role: "professional" },
+    tenant: TRIAL_TENANT,
+    isOperator: true,
+    verifiedFactors: 1,
+  });
+
+  const response = await call(handler, { token: OPERATOR_AAL2_TOKEN });
+
+  strictEqual(response.status, 403);
+  const body = (await response.json()) as {
+    error?: string;
+    code?: string;
+    message?: string;
+  };
+  strictEqual(body.code, "password_change_required");
+  strictEqual(body.error, "Troque sua senha antes de operar o painel.");
+  strictEqual(body.message, body.error);
+  deepStrictEqual(calls.tenantSelect, []);
+  strictEqual(calls.rpc.length, 1);
+  deepStrictEqual(calls.rpc[0], { name: "internal_admin_deny" });
 });

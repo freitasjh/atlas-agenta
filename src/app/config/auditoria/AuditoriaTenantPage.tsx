@@ -45,7 +45,7 @@ function targetLabel(entry: UserAuditLogEntry): string {
 /**
  * Auditoria do tenant (`/app/config/auditoria`, admin). Lista ações de
  * usuário do próprio tenant sob RLS — sem filtro de `tenant_id` do cliente.
- * Não confundir com a AuditoriaPage do super_admin (`/admin/auditoria`).
+ * Não confundir com a AuditoriaPage da área interna (`/internal-admin/auditoria`).
  */
 export function AuditoriaTenantPage() {
   const [action, setAction] = useState<string>("todas");

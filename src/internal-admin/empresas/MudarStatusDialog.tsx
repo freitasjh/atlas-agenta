@@ -59,12 +59,12 @@ interface MudarStatusDialogProps {
 
 /**
  * Ação "Mudar status" por empresa (ADR-07): um gatilho abre um dialog com
- * react-hook-form + zod para o super_admin escolher um `subscription_status`
+ * react-hook-form + zod para o operador interno escolher um `subscription_status`
  * destino (+ motivo opcional ≤280) e consumir a Edge Function `admin-subscription`
  * via `useChangeSubscriptionStatus`.
  *
  * Segurança/contrato: a escrita de status **só** passa pela Edge Function (o
- * `tenantId` vai como alvo, nunca como credencial — o JWT do super_admin é a
+ * `tenantId` vai como alvo, nunca como credencial — o JWT do operador é a
  * credencial, validada no servidor). Não há UPDATE direto de
  * `tenants.subscription_status` pelo cliente nesta tela.
  *

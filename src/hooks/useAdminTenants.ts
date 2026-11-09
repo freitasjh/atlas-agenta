@@ -16,7 +16,9 @@ import type { SubscriptionStatus, TenantListItem } from "@/types/domain";
  *
  * Ponto de segurança: a leitura **não** filtra por `tenant_id` (`.eq`) — o RLS
  * `tenants_super_admin_select` (ADR-02) é a trava: super_admin lê tudo, qualquer
- * outro papel lê zero. Na escrita, `tenantId` vai no corpo como **alvo**, nunca
+ * outro papel lê zero. Reads diretos seguem RLS legada (operador puro sem
+ * profiles.super_admin lê zero); agregados vão por RPCs 02b com OR operador;
+ * ver decisão A1. Na escrita, `tenantId` vai no corpo como **alvo**, nunca
  * como credencial (o JWT é a credencial; a Edge Function `admin-subscription`
  * valida permissão e transição). Toda resposta — PostgREST ou Edge Function — é
  * dado não confiável, validado por zod antes do uso.
@@ -50,7 +52,7 @@ export function useAdminTenants() {
 }
 
 /**
- * Guarda do `:id` da rota `/admin/tenants/:id/plano` (follow-up loop 1/3):
+ * Guarda do `:id` da rota `/internal-admin/tenants/:id/plano` (follow-up loop 1/3):
  * só UUID chega ao banco. Slug/injeção cai em "Empresa inválida" sem query.
  */
 export function isValidTenantId(raw: string | null | undefined): raw is string {

@@ -12,6 +12,10 @@ export const inviteSchema = z
     email: z.string().email(),
     role: z.enum(INVITE_ROLES),
     professional_id: z.string().uuid().optional(),
+    // MIG-BE-02: alvo obrigatório no caminho do operador interno (TenantPlano/
+    // Convites sob `/internal-admin`). Opcional p/ compat: o legado deriva o
+    // tenant do perfil; o operador informa o alvo no corpo.
+    tenant_id: z.string().uuid().optional(),
   })
   .strict();
 

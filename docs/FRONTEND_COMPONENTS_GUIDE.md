@@ -649,7 +649,7 @@ Utiliza as primitivas de [`src/components/ui/dialog.tsx`](file:///home/joao/fusi
 
 #### ⚠️ Padrão 1: Confirmação Destrutiva / Transição Sensível
 
-Inspirado em [`StatusChangeConfirm.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/app/agenda/StatusChangeConfirm.tsx) e [`MudarStatusDialog.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/admin/empresas/MudarStatusDialog.tsx):
+Inspirado em [`StatusChangeConfirm.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/app/agenda/StatusChangeConfirm.tsx) e [`MudarStatusDialog.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/internal-admin/empresas/MudarStatusDialog.tsx):
 
 * **Copy Transparente:** O texto em `DialogDescription` deve descrever **exatamente** o impacto prático (ex.: *"Esta é uma etapa final e liberará o horário do profissional"*).
 * **Ação Negativa com Destaque:** O botão destrutivo utiliza `variant="destructive"`.
@@ -1024,7 +1024,7 @@ O **Select** é o componente oficial de seleção de valor único em um menu sus
 #### ✅ Quando Usar `Select`
 * Para escolha de uma opção entre 4 a 15 alternativas previsíveis (ex.: status de agendamento, filtro por filial, categoria de serviço, intervalo de datas).
 * Em formulários operacionais onde o espaço horizontal é limitado.
-* Em barras de ferramentas e filtros de listagens (ex.: [`EmpresasFilters.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/admin/empresas/EmpresasFilters.tsx)).
+* Em barras de ferramentas e filtros de listagens (ex.: [`EmpresasFilters.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/internal-admin/empresas/EmpresasFilters.tsx)).
 
 #### ❌ Quando NÃO Usar `Select`
 * Para escolhas binárias (Sim/Não, Ativo/Inativo) — use `Switch` ou `Checkbox`.
@@ -1102,7 +1102,7 @@ Quando utilizado dentro de um formulário Zod, o `Select` é conectado via `Form
   * `Space` ou `Enter` ou `ArrowDown` abre o menu.
   * `ArrowUp` e `ArrowDown` navegam entre os itens.
   * `Escape` fecha o menu sem alterar o valor e restaura o foco no gatilho.
-* **Label Obrigatório:** Sempre vincule um label ao gatilho via `id` ou envolva-o no `FormItem`. Em barras de filtro, se o rótulo não for visível, inclua-o com `.sr-only` (conforme padrão em [`EmpresasFilters.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/admin/empresas/EmpresasFilters.tsx)).
+* **Label Obrigatório:** Sempre vincule um label ao gatilho via `id` ou envolva-o no `FormItem`. Em barras de filtro, se o rótulo não for visível, inclua-o com `.sr-only` (conforme padrão em [`EmpresasFilters.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/internal-admin/empresas/EmpresasFilters.tsx)).
 
 ---
 
@@ -1137,7 +1137,7 @@ A **Table** é o componente de exibição tabular de dados homogêneos de alta d
 
 > [!IMPORTANT]
 > **Proibição de rolagem horizontal forçada no mobile para listagens principais.**
-> No Atlas Agenda, adota-se o padrão canônico estabelecido em [`EmpresasTable.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/admin/empresas/EmpresasTable.tsx):
+> No Atlas Agenda, adota-se o padrão canônico estabelecido em [`EmpresasTable.tsx`](file:///home/joao/fusionlf/wsProjeto/atlas-agenda/src/internal-admin/empresas/EmpresasTable.tsx):
 > * **Desktop e Tablets (≥md):** Exibe a tabela tradicional (`Table`).
 > * **Smartphones (<md):** O layout é automaticamente substituído por uma lista de Cards semânticos (`<ul className="space-y-3 md:hidden">`), garantindo legibilidade perfeita sem scroll horizontal quebrado.
 
