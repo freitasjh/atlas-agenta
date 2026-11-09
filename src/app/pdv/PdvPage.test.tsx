@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -145,5 +145,36 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
   it("WalkInBadge renderiza o selo Balcão", () => {
     render(createElement(WalkInBadge));
     expect(screen.getByText("Balcão")).toBeTruthy();
+  });
+
+  it("marcar 'Identificar cliente' revela os campos e desmarcar limpa", () => {
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    expect(screen.queryByLabelText(paymentsMessages.pdv.customerName)).toBeNull();
+    expect(screen.getByText(paymentsMessages.pdv.anonymousHint)).toBeTruthy();
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+
+    const name = screen.getByLabelText(paymentsMessages.pdv.customerName) as HTMLInputElement;
+    const phone = screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement;
+    expect(name).toBeTruthy();
+    expect(phone).toBeTruthy();
+
+    fireEvent.change(name, { target: { value: "Ana" } });
+    fireEvent.change(phone, { target: { value: "11999998888" } });
+    expect(name.value).toBe("Ana");
+
+    fireEvent.click(checkbox);
+    expect(screen.queryByLabelText(paymentsMessages.pdv.customerName)).toBeNull();
+    expect(screen.getByText(paymentsMessages.pdv.anonymousHint)).toBeTruthy();
+
+    fireEvent.click(checkbox);
+    expect(
+      (screen.getByLabelText(paymentsMessages.pdv.customerName) as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      (screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement).value,
+    ).toBe("");
   });
 });

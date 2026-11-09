@@ -32,5 +32,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "supabase/functions/_shared/*.json"]
+  "include": ["src", "supabase/functions/_shared/*.json", "supabase/functions/_shared/nullable.ts"]
 }

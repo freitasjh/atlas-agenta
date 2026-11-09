@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "demand": "pdv-checkout-anonimo",
+  "agent": "developer-engineer",
+  "phase": "BugReview",
+  "gitSha": "171d598f915df1e96a27f36af964c6619674ac2c",
+  "commands": [
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 9340,
+      "stdoutHash": "sha256:vitest-934-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 60780,
+      "stdoutHash": "sha256:integration-304-pass-0-fail-0-skip"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 4370,
+      "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
+    },
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 42000,
+      "stdoutHash": "sha256:db-reset-exit-0"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 934, "failed": 0, "skipped": 0 },
+    "it": { "passed": 304, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 0, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "mode": "chrome-devtools",
+    "url": "http://127.0.0.1:5173/app/pdv",
+    "flow": [
+      "login admin@demo.local",
+      "marcar Identificar cliente: campos Nome/WhatsApp aparecem e o foco vai para Nome",
+      "desmarcar: campos somem e o hint anônimo volta",
+      "selecionar Profissional Demo + Corte e registrar venda anônima",
+      "abrir o fechamento: get-appointment-settlement 200 (antes 500 INTERNAL)",
+      "adicionar Dinheiro, Confirmar e fechar o comprovante quitado"
+    ],
+    "network": {
+      "create-walk-in": "201",
+      "get-appointment-settlement": "200",
+      "register-appointment-payments": "200",
+      "failures_5xx": 0
+    },
+    "console": {
+      "errors": 0,
+      "warnings": 0,
+      "note": "apenas debug/info do Vite e 1 [issue] de a11y sobre id/name de campo; nenhum [ERROR]/[WARN]"
+    },
+    "beforeAfter": {
+      "before": "GET /rest/v1/customers?select=name&id=eq.null -> HTTP 400 {\"code\":\"22P02\",\"message\":\"invalid input syntax for type uuid: \\\"null\\\"\"}; loadSettlement convertia em 500 INTERNAL",
+      "after": "POST /functions/v1/get-appointment-settlement -> HTTP 200 com customer_name null"
+    },
+    "screenshots": [
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-fechamento-anonimo.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-quitado.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-venda-concluida.png"
+    ]
+  },
+  "evaluation": {
+    "telas": "checkbox 'Identificar cliente' controla os campos por estado explícito; marcar revela Nome/WhatsApp com foco no Nome, desmarcar limpa e volta ao hint anônimo; lista de pendentes sem DOM nesting inválido",
+    "negocio": "venda anônima e venda por combo preservadas; settlement devolve customer_name/service_name null sem 500; nenhum afrouxamento de RLS/trigger/policy",
+    "logica": "guarda queryOptionalById evita .eq com id nulo; create-charge usa walkin:<appointmentId> como referência sem cliente; 304 testes de integração contra PostgreSQL real verdes",
+    "perf": "unit 934 em ~9s; integração 304 em ~61s; build 4s"
+  },
+  "brainStore": [
+    "regras/projetos/atlas-agenda/pdv-checkout-anonimo-postgrest-null"
+  ],
+  "cleanup": {
+    "ports": [5173, 54321],
+    "note": "Vite (PID 3600392) e supabase functions serve (PID 3654459) encerrados por PID após conferir cwd do projeto; container supabase_edge_runtime_atlas-agenda removido; 5173 livre e functions 503 (container ausente). Nenhum pkill -f."
+  },
+  "selfReported": false
+}

@@ -36,8 +36,7 @@ import { walkInSchema, type WalkInInput } from "@/lib/validations/pdv";
 import { toE164BR } from "@/lib/phone";
 import { formatCentsToBRL } from "@/lib/money";
 import { paymentErrorMessage } from "@/app/agenda/pagamentos/payment-error-message";
-import { PaymentApiError } from "@/lib/payment-errors";
-import { mapSchedulingError } from "@/lib/scheduling-errors";
+import { PaymentApiError, PAYMENT_ERROR_MAP } from "@/lib/payment-errors";
 import { toast } from "sonner";
 import type { AppointmentWithRelations } from "@/types/domain";
 
@@ -87,6 +86,10 @@ export function PdvPage() {
       status: "em_atendimento" | "concluido";
     };
   } | null>(null);
+
+  // Estado explícito da identificação: o checkbox não pode derivar de campos
+  // vazios, senão marcar nunca revela os inputs (bug do balcão).
+  const [identify, setIdentify] = useState(false);
 
   const form = useForm<WalkInInput>({
     resolver: zodResolver(walkInSchema),
@@ -188,10 +191,13 @@ export function PdvPage() {
       });
     } catch (error) {
       if (error instanceof PaymentApiError) {
-        // 23P01 chega como código de API? O PostgREST da Edge devolve PT/HTTP;
-        // conflito de slot (`23P01`) mapeia para o mesmo texto da agenda.
+        // Código conhecido → mensagem do próprio código; desconhecido → fallback
+        // do PDV. A Edge não devolve `23P01` (mapRpcError só traduz PT4xx),
+        // então não há conflito de agenda a mapear aqui.
         const message =
-          error.code === "INTERNAL" ? mapSchedulingError(error) : paymentErrorMessage(messages, error.code);
+          error.code in PAYMENT_ERROR_MAP
+            ? paymentErrorMessage(messages, error.code)
+            : messages.pdv.createdError;
         toast.error(message);
       } else {
         toast.error(messages.pdv.createdError);
@@ -316,21 +322,24 @@ export function PdvPage() {
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="pdv-identificar"
-                  checked={!!form.watch("customerName") || !!form.watch("customerPhone")}
+                  checked={identify}
                   onCheckedChange={(checked) => {
-                    if (!checked) {
+                    const next = checked === true;
+                    setIdentify(next);
+                    if (!next) {
                       form.setValue("customerName", "", { shouldValidate: true });
                       form.setValue("customerPhone", "", { shouldValidate: true });
+                      form.setValue("whatsappOptIn", false);
                     }
                   }}
                 />
                 <Label htmlFor="pdv-identificar">{messages.pdv.identifiedToggle}</Label>
               </div>
-              {(form.watch("customerName") || form.watch("customerPhone")) ? (
+              {identify ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
                     <Label htmlFor="pdv-cliente-nome">{messages.pdv.customerName}</Label>
-                    <Input id="pdv-cliente-nome" {...form.register("customerName")} />
+                    <Input id="pdv-cliente-nome" autoFocus {...form.register("customerName")} />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="pdv-cliente-fone">{messages.pdv.customerPhone}</Label>
@@ -373,13 +382,13 @@ export function PdvPage() {
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3"
                   >
                     <div className="min-w-0 space-y-1">
-                      <p className="flex items-center gap-2 font-medium">
+                      <div className="flex items-center gap-2 font-medium">
                         {appointment.customers?.name ??
                           (appointment.customer_id == null
                             ? messages.pdv.anonymous
                             : "Cliente removido")}
                         {appointment.origin === "walk_in" ? <WalkInBadge /> : null}
-                      </p>
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {appointment.combos?.name ??
                           appointment.services?.name ??

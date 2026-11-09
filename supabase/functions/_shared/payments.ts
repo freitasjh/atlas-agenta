@@ -4,6 +4,7 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import type { Identity } from "./identity.ts";
 import { ApiError } from "./http.ts";
+import { queryOptionalById } from "./nullable.ts";
 
 export const PAYMENT_METHODS = [
   "dinheiro",
@@ -124,18 +125,26 @@ export async function loadSettlement(
 
   const [customerResult, serviceResult, professionalResult, paymentsResult, chargesResult] =
     await Promise.all([
-      service
-        .from("customers")
-        .select("name")
-        .eq("tenant_id", identity.tenantId)
-        .eq("id", appointment.customer_id)
-        .maybeSingle(),
-      service
-        .from("services")
-        .select("name")
-        .eq("tenant_id", identity.tenantId)
-        .eq("id", appointment.service_id)
-        .maybeSingle(),
+      // `customer_id` é NULL em walk-in anônimo: `.eq("id", null)` vira
+      // `id=eq.null` e o PostgREST responde 22P02 (400). Id opcional só consulta
+      // quando existe.
+      queryOptionalById(appointment.customer_id, () =>
+        service
+          .from("customers")
+          .select("name")
+          .eq("tenant_id", identity.tenantId)
+          .eq("id", appointment.customer_id)
+          .maybeSingle(),
+      ),
+      // `service_id` é NULL em venda por combo (XOR service_id/combo_id).
+      queryOptionalById(appointment.service_id, () =>
+        service
+          .from("services")
+          .select("name")
+          .eq("tenant_id", identity.tenantId)
+          .eq("id", appointment.service_id)
+          .maybeSingle(),
+      ),
       service
         .from("professionals")
         .select("name")
