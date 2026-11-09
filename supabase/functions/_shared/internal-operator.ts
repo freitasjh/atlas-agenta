@@ -22,9 +22,30 @@ export async function readVerifiedFactorsCount(
   }).admin;
   const { data, error } = await admin.mfa.listFactors({ userId });
   if (error) throw new ApiError(500, "INTERNAL");
-  const factors = (data as { totp?: unknown[]; phone?: unknown[] } | { all?: unknown[] } | null) ?? null;
-  if (!factors) return 0;
+  // GoTrue Admin real (supabase-js) retorna { data: { factors: [...] } };
+  // array puro e objeto ({ all | totp | phone }) mantidos por compat legada.
+  if (Array.isArray(data)) {
+    let verified = 0;
+    for (const f of data) {
+      const status = (f as { status?: string }).status;
+      const flag = (f as { verified?: boolean }).verified;
+      if (status === "verified" || flag === true) verified += 1;
+    }
+    return verified;
+  }
+  const factors = (data as { factors?: unknown; totp?: unknown[]; phone?: unknown[] } | { all?: unknown[] } | null) ?? null;
+  if (!factors || typeof factors !== "object") return 0;
   const lists: unknown[][] = [];
+  if (Array.isArray((factors as { factors?: unknown }).factors)) {
+    const raw = (factors as { factors: unknown }).factors as unknown[];
+    let verified = 0;
+    for (const f of raw) {
+      const status = (f as { status?: string }).status;
+      const flag = (f as { verified?: boolean }).verified;
+      if (status === "verified" || flag === true) verified += 1;
+    }
+    return verified;
+  }
   if (Array.isArray((factors as { all?: unknown[] }).all)) lists.push((factors as { all: unknown[] }).all);
   if (Array.isArray((factors as { totp?: unknown[] }).totp)) lists.push((factors as { totp: unknown[] }).totp!);
   if (Array.isArray((factors as { phone?: unknown[] }).phone)) lists.push((factors as { phone: unknown[] }).phone!);
