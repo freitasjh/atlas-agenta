@@ -39,6 +39,38 @@ export async function createPaymentsTenant(prefix: string): Promise<PaymentsTena
   return { admin, tenantId: await tenantIdOf(admin.id) };
 }
 
+/**
+ * Garante que o plano do tenant não bloqueie as fixtures que abrem mais de um profissional.
+ *
+ * O cadastro (`create_tenant_with_admin`) nasce no plano `individual`, cujo
+ * `professionals_plan_limit_trg` permite 1 profissional ativo (e `appointments_plan_limit_trg`
+ * limita 150 agendamentos/mês). As fixtures abrem vários profissionais no mesmo tenant, então
+ * fazem o upgrade legítimo para `pro` (sem limite) pela RPC auditada `admin_set_tenant_plan`
+ * (service role), nunca desabilitando o trigger nem afrouxando a regra de negócio.
+ */
+export async function ensureUnlimitedPlan(tenantId: string): Promise<void> {
+  const admin = serviceClient();
+  const { data, error } = await admin
+    .from("tenants")
+    .select("plan")
+    .eq("id", tenantId)
+    .single();
+  if (error || !data) {
+    throw new Error(`Leitura do plano do tenant falhou (código ${error?.code ?? "vazio"}).`);
+  }
+  if (data.plan === "pro") return;
+  const { error: rpcError } = await admin.rpc("admin_set_tenant_plan", {
+    p_tenant_id: tenantId,
+    p_new_plan: "pro",
+    p_changed_by: null,
+    p_reason: "fixture de integração: plano pro sem limite de profissionais/agendamentos",
+    p_override: false,
+  });
+  if (rpcError) {
+    throw new Error(`Ajuste de plano do tenant falhou (código ${rpcError.code ?? "vazio"}).`);
+  }
+}
+
 /** Cria serviço, profissional (opcionalmente ligado a um profile), cliente e atendimento. */
 export async function seedAppointment(
   tenantId: string,
@@ -49,6 +81,8 @@ export async function seedAppointment(
   } = {},
 ): Promise<AppointmentFixture> {
   const admin = serviceClient();
+  // Vários profissionais no mesmo tenant exigem plano sem limite de profissionais.
+  await ensureUnlimitedPlan(tenantId);
   const suffix = randomUUID().slice(0, 8);
   const priceCents = options.priceCents ?? 10_000;
 
@@ -267,6 +301,150 @@ export async function getAppointmentStatus(appointmentId: string): Promise<strin
     .maybeSingle();
   if (error) throw new Error(`Leitura de appointment falhou (código ${error.code ?? "vazio"}).`);
   return (data?.status as string | undefined) ?? null;
+}
+
+/** Catálogo mínimo do PDV balcão: serviço, profissional e cliente opcional. */
+export interface WalkInCatalog {
+  serviceId: string;
+  professionalId: string;
+  customerId: string | null;
+}
+
+/**
+ * Cria serviço + profissional (+ vínculo N:N e cliente opcionais) para a venda walk-in.
+ * O vínculo `service_professionals` só é exigido pelo caminho da Edge `create-walk-in`.
+ */
+export async function seedWalkInCatalog(
+  tenantId: string,
+  options: {
+    priceCents?: number;
+    durationMinutes?: number;
+    professionalProfileId?: string;
+    linkService?: boolean;
+    withCustomer?: boolean;
+  } = {},
+): Promise<WalkInCatalog> {
+  const admin = serviceClient();
+  // Vários profissionais no mesmo tenant exigem plano sem limite de profissionais.
+  await ensureUnlimitedPlan(tenantId);
+  const suffix = randomUUID().slice(0, 8);
+
+  const service = must(
+    "walk-in service",
+    await admin
+      .from("services")
+      .insert({
+        tenant_id: tenantId,
+        name: `Serviço balcão ${suffix}`,
+        duration_minutes: options.durationMinutes ?? 30,
+        price_cents: options.priceCents ?? 10_000,
+      })
+      .select("id")
+      .single(),
+  ) as { id: string };
+
+  // Um login liga a no máximo um profissional por tenant; reutiliza o existente.
+  let professional: { id: string } | undefined;
+  if (options.professionalProfileId !== undefined) {
+    const { data } = await admin
+      .from("professionals")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("profile_id", options.professionalProfileId)
+      .maybeSingle();
+    professional = data ?? undefined;
+  }
+  if (!professional) {
+    const row: Record<string, unknown> = {
+      tenant_id: tenantId,
+      name: `Profissional balcão ${suffix}`,
+    };
+    if (options.professionalProfileId !== undefined) row.profile_id = options.professionalProfileId;
+    professional = must(
+      "walk-in professional",
+      await admin.from("professionals").insert(row).select("id").single(),
+    ) as { id: string };
+  }
+
+  if (options.linkService === true) {
+    const { error } = await admin.from("service_professionals").insert({
+      tenant_id: tenantId,
+      service_id: service.id,
+      professional_id: professional.id,
+    });
+    if (error) {
+      throw new Error(`Fixture service_professionals falhou (código ${error.code ?? "vazio"}).`);
+    }
+  }
+
+  let customerId: string | null = null;
+  if (options.withCustomer === true) {
+    const customer = must(
+      "walk-in customer",
+      await admin
+        .from("customers")
+        .insert({ tenant_id: tenantId, name: `Cliente balcão ${suffix}`, phone: "11987654321" })
+        .select("id")
+        .single(),
+    ) as { id: string };
+    customerId = customer.id;
+  }
+
+  return { serviceId: service.id, professionalId: professional.id, customerId };
+}
+
+/** Resultado cru da RPC `create_walk_in_appointment` (o caso negativo precisa do código). */
+export interface WalkInRpcResult {
+  data: Record<string, unknown> | null;
+  error: { code?: string; message?: string } | null;
+}
+
+/** Chama a RPC de criação walk-in pela service role, sem mascarar o erro. */
+export async function callCreateWalkIn(params: {
+  tenantId: string;
+  actorId: string;
+  professionalId: string;
+  serviceId: string;
+  customerId?: string | null;
+  creationIdempotencyKey?: string | null;
+}): Promise<WalkInRpcResult> {
+  const { data, error } = await serviceClient().rpc("create_walk_in_appointment", {
+    p_tenant_id: params.tenantId,
+    p_actor_id: params.actorId,
+    p_professional_id: params.professionalId,
+    p_service_id: params.serviceId,
+    p_combo_id: null,
+    p_customer_id: params.customerId ?? null,
+    p_creation_idempotency_key: params.creationIdempotencyKey ?? null,
+  });
+  return {
+    data: (data as Record<string, unknown> | null) ?? null,
+    error: error ? { code: error.code, message: error.message } : null,
+  };
+}
+
+/** Ajusta o ramo do tenant (gate de produto do PDV; não é fronteira de segurança). */
+export async function setTenantSegment(
+  tenantId: string,
+  segment: "salao" | "barbearia" | "clinica" | null,
+): Promise<void> {
+  const { error } = await serviceClient().from("tenants").update({ segment }).eq("id", tenantId);
+  if (error) throw new Error(`Ajuste de segmento falhou (código ${error.code ?? "vazio"}).`);
+}
+
+/** Define a taxa de comissão corrente do profissional (snapshot da conclusão). */
+export async function seedCommissionPct(
+  tenantId: string,
+  professionalId: string,
+  commissionPct: number,
+): Promise<void> {
+  const { error } = await serviceClient()
+    .from("professional_commissions")
+    .upsert(
+      { tenant_id: tenantId, professional_id: professionalId, commission_pct: commissionPct },
+      { onConflict: "tenant_id,professional_id" },
+    );
+  if (error) throw new Error(`Fixture professional_commissions falhou (código ${error.code ?? "vazio"}).`);
 }
 
 /**

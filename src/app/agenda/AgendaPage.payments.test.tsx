@@ -136,15 +136,35 @@ vi.mock("@/app/agenda/AppointmentFormDialog", () => ({
   AppointmentFormDialog: () => null,
 }));
 
+const TENANT_TIMEZONE = "America/Sao_Paulo";
+
+/**
+ * Hoje ao meio-dia no fuso do tenant, em ISO. Datas fixas (ex.: 2026-11-06) caem fora da
+ * semana corrente e a visão Semana deixa de renderizar o card, quebrando o teste por
+ * calendário — não por regressão. Derivar de "hoje" mantém a fixture sempre dentro da semana.
+ */
+function todayNoonTenant(): { start: string; end: string } {
+  const localDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TENANT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const start = `${localDate}T12:00:00.000-03:00`;
+  const end = new Date(new Date(start).getTime() + 60 * 60 * 1000).toISOString();
+  return { start, end };
+}
+
 function appointment(overrides: Record<string, unknown> = {}) {
+  const { start, end } = todayNoonTenant();
   return {
     id: "ap-1",
     customer_id: "c-1",
     professional_id: "pr-1",
     service_id: "s-1",
     combo_id: null,
-    starts_at: "2026-11-06T12:00:00.000Z",
-    ends_at: "2026-11-06T13:00:00.000Z",
+    starts_at: start,
+    ends_at: end,
     price_cents: 10000,
     status: "concluido",
     confirmed_at: null,

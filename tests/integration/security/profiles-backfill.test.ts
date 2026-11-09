@@ -62,9 +62,16 @@ describe("IT-03 backfill de email em profiles (ADR-001)", () => {
   it("backfill de email popula profiles.email a partir de auth.users", () => {
     const id = randomUUID();
     const email = `backfill-${randomUUID()}@example.invalid`;
+    // Profile de empresa (admin + tenant) em vez de super_admin: o trigger
+    // `freeze_super_admin_role` bloqueia novos super_admin quando já existe operador interno
+    // (a seed cria um). O backfill de e-mail independe do papel; usar admin mantém a regra intacta.
     const query = `begin;
       insert into auth.users (id, email, is_sso_user, is_anonymous) values (:'id'::uuid, :'email', false, false);
-      insert into public.profiles (id, role, email) values (:'id'::uuid, 'super_admin', null);
+      with new_tenant as (
+        insert into public.tenants (legal_name, owner_email) values ('Backfill Teste', :'email') returning id
+      )
+      insert into public.profiles (id, tenant_id, role, email)
+      select :'id'::uuid, t.id, 'admin', null from new_tenant t;
       update public.profiles set email = null where id = :'id'::uuid;
       update public.profiles p set email = u.email from auth.users u where p.id = u.id and p.email is null;
       select email from public.profiles where id = :'id'::uuid;
