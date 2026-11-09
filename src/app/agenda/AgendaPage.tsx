@@ -187,7 +187,10 @@ function AgendaItem({
           </div>
           <div className="min-w-0 space-y-1">
             <p className="break-words font-medium text-foreground">
-              {appointment.customers?.name ?? "Cliente removido"}
+              {appointment.customers?.name ??
+                (appointment.customer_id == null
+                  ? "Cliente de balcão"
+                  : "Cliente removido")}
             </p>
             <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
               <span
@@ -948,7 +951,7 @@ export function AgendaPage() {
         />
       ) : null}
 
-      {canSendWhatsAppMessage && messageTarget ? (
+      {canSendWhatsAppMessage && messageTarget && messageTarget.customer_id ? (
         <SendMessageDialog
           open={!!messageTarget}
           onOpenChange={(open) => {

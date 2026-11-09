@@ -8,6 +8,7 @@ import { isTransitionAllowed } from "@/lib/scheduling-status";
 import { useTenant } from "@/hooks/useTenant";
 import {
   APPOINTMENT_CONFIRMED_VIA,
+  APPOINTMENT_ORIGINS,
   APPOINTMENT_STATUSES,
   type AppointmentStatus,
   type AppointmentWithRelations,
@@ -59,7 +60,9 @@ export const appointmentRowSchema = z
   .object({
     id: z.string(),
     tenant_id: z.string(),
-    customer_id: z.string(),
+    // 1R (PDV balcão): walk-in pode ser anônimo; agendado exige cliente (banco).
+    origin: z.enum(APPOINTMENT_ORIGINS).optional().transform((o) => o ?? ("agendado" as const)),
+    customer_id: z.string().nullable(),
     professional_id: z.string(),
     // XOR com `combo_id` (ADR-03): exatamente um vem preenchido. Ambos nullable
     // no shape lido; a garantia de "exatamente um" é do CHECK no banco.
@@ -109,7 +112,7 @@ export const appointmentListSchema = z.array(appointmentRowSchema);
  * extra (reusa o cache da agenda) e é recortado pelo RLS financeiro da ADR-02:
  * receptionist não recebe a relação, professional só a própria. */
 export const APPOINTMENT_SELECT =
-  "id, tenant_id, customer_id, professional_id, service_id, combo_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents)";
+  "id, tenant_id, origin, customer_id, professional_id, service_id, combo_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents)";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 
