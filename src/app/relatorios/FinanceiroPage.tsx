@@ -19,6 +19,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useFinancialSummary } from "@/hooks/useFinancialSummary";
+import { FechamentoBalcao } from "@/app/relatorios/FechamentoBalcao";
 import { formatCentsToBRL } from "@/lib/money";
 import { resolvePresetRange, todayIsoInTenantTz } from "@/lib/period-presets";
 import {
@@ -253,8 +254,7 @@ export function FinanceiroPage({
           <Card>
             <CardHeader>
               <CardTitle>{t.byMethodTitle}</CardTitle>
-            </CardHeader>
-            <CardContent>
+            </CardHeader>            <CardContent>
               {summary.received_service_cents === 0 &&
               summary.received_tips_cents === 0 ? (
                 <p className="text-sm text-muted-foreground">{t.emptyTitle}</p>
@@ -298,6 +298,8 @@ export function FinanceiroPage({
               </Table>
             </CardContent>
           </Card>
+
+          <FechamentoBalcao start={start} end={end} messages={messages} />
         </>
       )}
     </div>
