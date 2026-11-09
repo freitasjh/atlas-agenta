@@ -86,6 +86,21 @@ export const PAYMENT_ERROR_MAP: Readonly<Record<string, PaymentErrorInfo>> = {
     retryable: true,
     action: "retry",
   },
+  SEGMENT_NOT_ENABLED: {
+    messageKey: "payments.error.segmentNotEnabled",
+    retryable: false,
+    action: "none",
+  },
+  SERVICE_NOT_OFFERED: {
+    messageKey: "payments.error.serviceNotOffered",
+    retryable: false,
+    action: "review",
+  },
+  PROFESSIONAL_NOT_AVAILABLE: {
+    messageKey: "payments.error.professionalBusy",
+    retryable: false,
+    action: "review",
+  },
 };
 
 export interface PaymentApiErrorOptions {
