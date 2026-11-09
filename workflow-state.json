@@ -1,18 +1,18 @@
 {
-  "current_feature": "bootstrap-operator-backfill",
+  "current_feature": "seed-superadmin-default",
   "current_phase": "Completed",
   "previous_phase": "Testing",
   "next_phase": null,
   "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-09T12:06:02.084511+00:00",
+    "last_invoked_at": "2026-11-09T18:04:44.855918+00:00",
     "last_status": "passed",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Loop2 APPROVED 0 critical. 44 Deno + 26 hook regressão. Hook diff separado p/ commit próprio."
+    "reviewer_notes": "Loop1 APPROVED 0 débito. Diff 1 arquivo SQL, 92 linhas."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-09T12:44:16.480774+00:00",
+  "last_update": "2026-11-09T18:34:46.367382+00:00",
   "code_review_status": "passed",
   "pendencies": [
     {
@@ -42,9 +42,9 @@
     "prd": null,
     "research": null,
     "adr_index": null,
-    "spec": ".spec/archive/20261109-bootstrap-operator-backfill/SPEC.md",
-    "plan": ".spec/archive/20261109-bootstrap-operator-backfill/PLAN.md",
-    "tasks": ".spec/archive/20261109-bootstrap-operator-backfill/TASKS.md"
+    "spec": ".spec/archive/20261109-seed-superadmin-default/SPEC.md",
+    "plan": ".spec/archive/20261109-seed-superadmin-default/PLAN.md",
+    "tasks": ".spec/archive/20261109-seed-superadmin-default/TASKS.md"
   },
   "prd_adr": {
     "prd_id": "cobranca-formas-pagamento",
@@ -107,6 +107,22 @@
     },
     {
       "name": "bootstrap-operator-backfill",
+      "stage": "Completed",
+      "progress": 100,
+      "done": 6,
+      "total": 6,
+      "status": "completed"
+    },
+    {
+      "name": "internal-admin-migracao-telas",
+      "stage": "Completed",
+      "progress": 100,
+      "done": 6,
+      "total": 6,
+      "status": "completed"
+    },
+    {
+      "name": "seed-superadmin-default",
       "stage": "Completed",
       "progress": 100,
       "done": 6,
