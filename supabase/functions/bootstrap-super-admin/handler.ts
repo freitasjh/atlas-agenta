@@ -59,6 +59,7 @@ type ErrorCode =
   | "email_com_outro_papel"
   | "usuario_sem_profile"
   | "bootstrap_em_andamento"
+  | "bootstrap_bloqueado"
   | "internal_error";
 
 const ERROR_STATUS: Record<ErrorCode, number> = {
@@ -68,6 +69,7 @@ const ERROR_STATUS: Record<ErrorCode, number> = {
   email_com_outro_papel: 409,
   usuario_sem_profile: 409,
   bootstrap_em_andamento: 409,
+  bootstrap_bloqueado: 403,
   internal_error: 500,
 };
 
@@ -80,6 +82,8 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
     "Este usuário existe no Auth sem profile. Remova o usuário pela Admin API e repita o bootstrap.",
   bootstrap_em_andamento:
     "A criação do super admin está em andamento em outra chamada. Aguarde alguns segundos e tente novamente.",
+  bootstrap_bloqueado:
+    "Novos super admins estão bloqueados. Operadores internos já existem.",
   internal_error: "Não foi possível criar o super admin. Tente novamente.",
 };
 
@@ -347,8 +351,20 @@ export function createBootstrapHandler(
         case "sem_profile":
           console.error("bootstrap-super-admin: usuário do Auth sem profile; recuperação manual necessária");
           return errorResponse("usuario_sem_profile");
-        case "criado":
+        case "criado": {
+          // Freeze BE-03: com operadores internos já existentes, novos bootstraps
+          // são recusados (tabela ausente em ambiente antigo = permite o primeiro).
+          try {
+            const { data } = await service.from("internal_operators").select("user_id").limit(1);
+            if (Array.isArray(data) && data.length > 0) {
+              console.warn("bootstrap-super-admin: blocked, operators exist");
+              return errorResponse("bootstrap_bloqueado");
+            }
+          } catch {
+            // Tabela ainda não migrada: segue o fluxo legado de criação.
+          }
           return await createSuperAdmin(service);
+        }
       }
     } catch (err) {
       console.error("handler", err instanceof Error ? err.message : "erro inesperado");

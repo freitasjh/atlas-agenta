@@ -2,6 +2,7 @@
 // `tenant_id` e `role` NUNCA vêm do corpo (ADR-002 §3 e I2).
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { ApiError } from "./http.ts";
+import { isActiveInternalOperator, readVerifiedFactorsCount } from "./internal-operator.ts";
 
 export interface Identity {
   userId: string;
@@ -45,6 +46,27 @@ export async function resolveIdentity(
   }
 
   return { userId: data.user.id, tenantId: profile.tenant_id as string, role };
+}
+
+/**
+ * Gate de operador interno (BE-03): super_admin só opera com registro ativo em
+ * `internal_operators` + factor MFA verificado (AAL2 server-side por request).
+ * Fail-closed: qualquer falha nega com 403 FORBIDDEN (sem distinguir o motivo).
+ */
+export async function requireInternalOperator(
+  service: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const operator = await isActiveInternalOperator(service, userId);
+  if (!operator) {
+    console.warn("identity: deny non-operator");
+    throw new ApiError(403, "FORBIDDEN");
+  }
+  const verified = await readVerifiedFactorsCount(service, userId);
+  if (verified <= 0) {
+    console.warn("identity: deny without aal2");
+    throw new ApiError(403, "FORBIDDEN");
+  }
 }
 
 /** true quando o profissional autenticado é o responsável pelo atendimento. */

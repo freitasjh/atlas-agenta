@@ -158,3 +158,9 @@ verify_jwt = false
 
 [functions.asaas-subscription-webhook]
 verify_jwt = false
+
+# Prova de operador interno (internal-operators-mfa, BE-02): exige JWT de usuário
+# (verify_jwt=true); a prova real é server-side via Auth API + factors AAL2 por
+# request. Cache do cliente nunca vale como prova.
+[functions.verify-operator]
+verify_jwt = true
