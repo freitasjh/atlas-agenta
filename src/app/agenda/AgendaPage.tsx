@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   CalendarDays,
   ChevronLeft,
@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Pencil,
   Plus,
+  ShoppingCart,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -37,6 +38,7 @@ import { toast } from "sonner";
 
 import { AppointmentFormDialog } from "@/app/agenda/AppointmentFormDialog";
 import { StatusChangeConfirm } from "@/app/agenda/StatusChangeConfirm";
+import { WalkInBadge } from "@/app/pdv/WalkInBadge";
 import { PaymentCaptureDialog } from "@/app/agenda/pagamentos/PaymentCaptureDialog";
 import { AppointmentSettlementDialog } from "@/app/agenda/pagamentos/AppointmentSettlementDialog";
 import { PaymentStatusBadge } from "@/app/agenda/pagamentos/PaymentStatusBadge";
@@ -228,6 +230,7 @@ function AgendaItem({
         <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-col sm:items-end">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <StatusBadge status={appointment.status} />
+            {appointment.origin === "walk_in" ? <WalkInBadge /> : null}
             <ClientConfirmedBadge appointment={appointment} />
             {appointment.status === "concluido" &&
             paymentFlag &&
@@ -379,6 +382,7 @@ export function AgendaPage() {
   // ou hoje no fuso do tenant. Lido só na montagem; a navegação interna segue
   // pelo estado, sem reescrever a URL.
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [day, setDay] = useState(() => {
     const fromUrl = searchParams.get("dia");
     return isValidIsoDate(fromUrl) ? fromUrl : todayInTenantTz(timeZone);
@@ -574,10 +578,18 @@ export function AgendaPage() {
         descricao="Agendamentos do dia por profissional."
         acoes={
           canManageAppointments && !professionalWithoutLink ? (
-            <Button onClick={openCreate}>
-              <Plus aria-hidden="true" />
-              Novo agendamento
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {paymentsFeature === true && canRegisterPayments ? (
+                <Button variant="outline" onClick={() => navigate("/app/pdv")}>
+                  <ShoppingCart aria-hidden="true" />
+                  Nova venda
+                </Button>
+              ) : null}
+              <Button onClick={openCreate}>
+                <Plus aria-hidden="true" />
+                Novo agendamento
+              </Button>
+            </div>
           ) : undefined
         }
       />
