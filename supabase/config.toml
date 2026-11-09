@@ -102,6 +102,16 @@ secrets = "env(CUSTOM_ACCESS_TOKEN_HOOK_SECRET)"
 enable_signup = false
 enable_confirmations = false
 
+# MFA via App Authenticator (TOTP): exigido pelo E2E do backfill de operadores
+# (internal-operators-mfa, BE-02) — enroll→challenge→verify até sessão aal2.
+[auth.mfa]
+# Controla quantos fatores MFA podem ser inscritos por usuário.
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 # Provedores externos de OAuth ficam desligados no MVP.
 [auth.external.apple]
 enabled = false

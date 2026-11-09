@@ -32,8 +32,16 @@ type FakeOptions = {
   /** Usuários por chamada de listUsers (última posição se repete). Usado na corrida. */
   userSequence?: FakeUser[][];
   profiles?: Record<string, FakeProfile>;
+  /** Operadores internos pré-existentes (user_ids). */
+  operators?: string[];
   createUser?: () => { data: { user: { id: string } | null }; error: FakeAuthError };
+  /** Erro do insert em `profiles` (legado `insertError` mantido como alias). */
+  profileInsertError?: { code?: string } | null;
   insertError?: { code?: string } | null;
+  /** Erro do insert em `internal_operators` (ex.: falha injetada no rollback). */
+  operatorInsertError?: { code?: string } | null;
+  /** Erro da leitura do freeze (`select limit` em `internal_operators`). */
+  freezeError?: { code?: string } | null;
   listUsersError?: { status?: number } | null;
 };
 
@@ -41,17 +49,32 @@ type FakeCalls = {
   createUser: unknown[];
   deleteUser: string[];
   insert: unknown[];
+  /** Ordem das tabelas apagadas via `delete()` (ex.: `internal_operators` → `profiles`). */
+  deletes: string[];
+  operatorInserts: unknown[];
   listUsers: number;
 };
 
-function fakeService(options: FakeOptions): { service: SupabaseClient; calls: FakeCalls } {
+type FakeStore = {
+  profiles: Record<string, FakeProfile>;
+  operators: Set<string>;
+};
+
+function fakeService(
+  options: FakeOptions,
+): { service: SupabaseClient; calls: FakeCalls; store: FakeStore } {
   const calls: FakeCalls = {
     createUser: [],
     deleteUser: [],
     insert: [],
+    deletes: [],
+    operatorInserts: [],
     listUsers: 0,
   };
-  const profiles = options.profiles ?? {};
+  const store: FakeStore = {
+    profiles: { ...(options.profiles ?? {}) },
+    operators: new Set(options.operators ?? []),
+  };
 
   const service = {
     auth: {
@@ -78,20 +101,72 @@ function fakeService(options: FakeOptions): { service: SupabaseClient; calls: Fa
         },
       },
     },
-    from: (_table: string) => ({
-      select: () => ({
-        eq: (_column: string, id: string) => ({
-          maybeSingle: async () => ({ data: profiles[id] ?? null, error: null }),
+    from: (table: string) => {
+      if (table === "internal_operators") {
+        return {
+          select: () => ({
+            eq: (column: string, value: string) => ({
+              maybeSingle: async () => {
+                if (column === "user_id" && store.operators.has(value)) {
+                  return { data: { user_id: value }, error: null };
+                }
+                return { data: null, error: null };
+              },
+            }),
+            limit: async (n: number) => {
+              if (options.freezeError) return { data: null, error: options.freezeError };
+              return {
+                data: [...store.operators].slice(0, n).map((user_id) => ({ user_id })),
+                error: null,
+              };
+            },
+          }),
+          insert: async (row: unknown) => {
+            calls.operatorInserts.push(row);
+            if (options.operatorInsertError) {
+              return { data: null, error: options.operatorInsertError };
+            }
+            const userId = (row as { user_id?: string }).user_id ?? "";
+            if (store.operators.has(userId)) return { data: null, error: { code: "23505" } };
+            store.operators.add(userId);
+            return { data: null, error: null };
+          },
+          delete: () => ({
+            eq: async (column: string, value: string) => {
+              calls.deletes.push(table);
+              if (column === "user_id") store.operators.delete(value);
+              return { data: null, error: null };
+            },
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: (_column: string, id: string) => ({
+            maybeSingle: async () => ({ data: store.profiles[id] ?? null, error: null }),
+          }),
+          limit: async (_n: number) => ({ data: [], error: null }),
         }),
-      }),
-      insert: async (row: unknown) => {
-        calls.insert.push(row);
-        return { data: null, error: options.insertError ?? null };
-      },
-    }),
+        insert: async (row: unknown) => {
+          calls.insert.push(row);
+          const failure = options.profileInsertError ?? options.insertError ?? null;
+          if (failure) return { data: null, error: failure };
+          const record = row as { id: string; role: string | null; tenant_id: string | null };
+          store.profiles[record.id] = { role: record.role, tenant_id: record.tenant_id };
+          return { data: null, error: null };
+        },
+        delete: () => ({
+          eq: async (_column: string, id: string) => {
+            calls.deletes.push(table);
+            delete store.profiles[id];
+            return { data: null, error: null };
+          },
+        }),
+      };
+    },
   };
 
-  return { service: service as unknown as SupabaseClient, calls };
+  return { service: service as unknown as SupabaseClient, calls, store };
 }
 
 function build(options: FakeOptions = {}, env: BootstrapEnv = ENV) {
@@ -104,7 +179,7 @@ function build(options: FakeOptions = {}, env: BootstrapEnv = ENV) {
       return fake.service;
     },
   } satisfies BootstrapHandlerOptions);
-  return { handler, calls: fake.calls, serviceCalls: () => serviceCalls };
+  return { handler, calls: fake.calls, store: fake.store, serviceCalls: () => serviceCalls };
 }
 
 async function call(
@@ -306,4 +381,154 @@ Deno.test("falha de listUsers responde 500 sem criar nada", async () => {
 
   strictEqual(response.status, 500);
   deepStrictEqual(calls.createUser, []);
+});
+
+Deno.test("criado inclui operador interno (count=1)", async () => {
+  const { handler, calls, store } = build({ users: [] });
+  const response = await call(handler);
+
+  strictEqual(response.status, 201);
+  deepStrictEqual(await response.json(), { status: "criado", user_id: "novo-id" });
+  strictEqual(store.operators.size, 1);
+  strictEqual(store.operators.has("novo-id"), true);
+  deepStrictEqual(calls.deleteUser, []);
+  deepStrictEqual(calls.deletes, []);
+});
+
+Deno.test("retry do mesmo user_id não duplica operador e não responde 500", async () => {
+  // Retry real: a segunda chamada já encontra o usuário criado pela primeira (ja_existe) e o
+  // insert do operador colide em 23505 → sucesso idempotente, sem 500 e sem duplicata.
+  const { handler, store } = build({
+    userSequence: [[], [{ id: "novo-id", email: SUPER_ADMIN_EMAIL }]],
+  });
+
+  const first = await call(handler);
+  strictEqual(first.status, 201);
+  deepStrictEqual(await first.json(), { status: "criado", user_id: "novo-id" });
+
+  const second = await call(handler);
+  strictEqual(second.status, 200);
+  deepStrictEqual(await second.json(), { status: "ja_existe", user_id: "novo-id" });
+
+  strictEqual(store.operators.size, 1);
+});
+
+Deno.test("duplo invoke paralelo em ja_existe: count=1 e zero 500", async () => {
+  const { handler, store } = build({
+    users: [{ id: "u-9", email: SUPER_ADMIN_EMAIL }],
+    profiles: { "u-9": { role: "super_admin", tenant_id: null } },
+    operators: [],
+  });
+
+  const [a, b] = await Promise.all([call(handler), call(handler)]);
+  strictEqual(a.status, 200);
+  strictEqual(b.status, 200);
+  deepStrictEqual(await a.json(), { status: "ja_existe", user_id: "u-9" });
+  deepStrictEqual(await b.json(), { status: "ja_existe", user_id: "u-9" });
+  strictEqual(store.operators.size, 1);
+});
+
+Deno.test("falha no insert do operador desfaz operador→profile→usuário e responde 500", async () => {
+  const { handler, calls, store } = build({
+    users: [],
+    operatorInsertError: { code: "XX000" },
+  });
+  const response = await call(handler);
+
+  strictEqual(response.status, 500);
+  const body = (await response.json()) as { code?: string };
+  strictEqual(body.code, "internal_error");
+  deepStrictEqual(calls.deletes, ["internal_operators", "profiles"]);
+  deepStrictEqual(calls.deleteUser, ["novo-id"]);
+  strictEqual("novo-id" in store.profiles, false);
+  strictEqual(store.operators.size, 0);
+});
+
+Deno.test("com operadores existentes responde bootstrap_bloqueado e nada muda", async () => {
+  const { handler, calls, store } = build({ users: [], operators: ["op-1"] });
+  const response = await call(handler);
+
+  strictEqual(response.status, 403);
+  const body = (await response.json()) as { code?: string };
+  strictEqual(body.code, "bootstrap_bloqueado");
+  deepStrictEqual(calls.createUser, []);
+  deepStrictEqual([...store.operators], ["op-1"]);
+});
+
+Deno.test("ja_existe cria operador faltante (cura pós-crash)", async () => {
+  const { handler, store } = build({
+    users: [{ id: "u-9", email: SUPER_ADMIN_EMAIL }],
+    profiles: { "u-9": { role: "super_admin", tenant_id: null } },
+    operators: [],
+  });
+  const response = await call(handler);
+
+  strictEqual(response.status, 200);
+  deepStrictEqual(await response.json(), { status: "ja_existe", user_id: "u-9" });
+  strictEqual(store.operators.has("u-9"), true);
+});
+
+Deno.test("profile insert 42501 (freeze) responde bootstrap_bloqueado e remove usuário criado", async () => {
+  const { handler, calls, store } = build({
+    users: [],
+    profileInsertError: { code: "42501" },
+  });
+  const response = await call(handler);
+
+  strictEqual(response.status, 403);
+  const body = (await response.json()) as { code?: string };
+  strictEqual(body.code, "bootstrap_bloqueado");
+  deepStrictEqual(calls.deleteUser, ["novo-id"]);
+  strictEqual(store.operators.size, 0);
+});
+
+Deno.test("falha real de leitura dos operadores responde 500 sem criar nada", async () => {
+  const { handler, calls } = build({ users: [], freezeError: { code: "XX000" } });
+  const response = await call(handler);
+
+  strictEqual(response.status, 500);
+  const body = (await response.json()) as { code?: string };
+  strictEqual(body.code, "internal_error");
+  deepStrictEqual(calls.createUser, []);
+});
+
+Deno.test("tabela de operadores ausente (undefined_table) segue fluxo legado", async () => {
+  const { handler, store } = build({ users: [], freezeError: { code: "42P01" } });
+  const response = await call(handler);
+
+  strictEqual(response.status, 201);
+  deepStrictEqual(await response.json(), { status: "criado", user_id: "novo-id" });
+  strictEqual(store.operators.has("novo-id"), true);
+});
+
+Deno.test("insert do operador sem tabela migrada segue legado (201)", async () => {
+  const { handler, store } = build({
+    users: [],
+    freezeError: { code: "42P01" },
+    operatorInsertError: { code: "42P01" },
+  });
+  // Simula legado total: sem tabela, o operador não persiste, mas o bootstrap passa.
+  const response = await call(handler);
+
+  strictEqual(response.status, 201);
+  deepStrictEqual(await response.json(), { status: "criado", user_id: "novo-id" });
+  strictEqual(store.operators.size, 0);
+});
+
+Deno.test("ja_existe com falha do operador responde 500 sem apagar identidade pré-existente", async () => {
+  const { handler, calls, store } = build({
+    users: [{ id: "u-9", email: SUPER_ADMIN_EMAIL }],
+    profiles: { "u-9": { role: "super_admin", tenant_id: null } },
+    operators: [],
+    operatorInsertError: { code: "XX000" },
+  });
+  const response = await call(handler);
+
+  strictEqual(response.status, 500);
+  const body = (await response.json()) as { code?: string };
+  strictEqual(body.code, "internal_error");
+  deepStrictEqual(calls.deletes, []);
+  deepStrictEqual(calls.deleteUser, []);
+  deepStrictEqual(store.profiles["u-9"], { role: "super_admin", tenant_id: null });
+  strictEqual(store.operators.size, 0);
 });
