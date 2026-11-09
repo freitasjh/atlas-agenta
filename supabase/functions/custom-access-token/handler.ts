@@ -13,6 +13,8 @@
 //   3. corpo validado com zod (schemas.ts) → 400 `invalid_body`;
 //   4. leitura de `profiles` com service role, filtrada por `user_id` do corpo já validado.
 //      Erro de leitura ou perfil inválido → 500 `identity_unavailable`: o login falha (fail closed);
+//      super_admin sem operador ativo + factor MFA verificado → 200 com claims neutras
+//      + `mfa_required` (rebaixado, sem privilégio; autorização em verify-operator/RLS);
 //   5. claims montadas (schemas.ts) → 200 `{ claims }`.
 //
 // Esta função é pública no sentido do GoTrue (`verify_jwt = false` em config.toml), por isso a
@@ -204,23 +206,38 @@ export async function handleHookRequest(
     // Fail-closed permanece para erro de leitura do banco (error !== null) e shape inválido,
     // tratados acima (500 identity_unavailable).
 
-    // 4. Gate de operador interno (BE-03): super_admin só recebe claims com
-    // registro ativo em internal_operators + AAL2 server-side (Auth Admin API,
-    // nunca claim do cliente). Sem operador ou sem factor verificado, o login
-    // falha fechado (500 identity_unavailable) — nunca emite papel privilegiado.
+    // 4. Gate de operador interno (BE-03 + bugfix auth-hook-mfa-lockout): super_admin
+    // só recebe claims com privilégio quando há registro ativo em internal_operators
+    // + factor MFA verificado (enrollment, server-side via Admin API, nunca claim do
+    // cliente). Sem operador ou sem factor verificado, o hook REBAIXA para 200 com
+    // claims neutras (sem privilégio super_admin) + flag `mfa_required`: a autenticação
+    // (aal1) abre para permitir o enroll de MFA, mas a autorização segue fechada em
+    // verify-operator/guards/RLS. Erro real de leitura falha fechado (500
+    // identity_unavailable). RLS usa `current_role_name()`, que lê `profiles` direto
+    // (nunca claims): claims neutras nunca concedem cross-tenant (BOLA segue fechado).
     if (profile && profile.role === "super_admin") {
+      let operator = false;
+      let verified = 0;
       try {
-        const operator = await isActiveInternalOperator(service, input.data.user_id);
-        const verified = operator
+        operator = await isActiveInternalOperator(service, input.data.user_id);
+        verified = operator
           ? await readVerifiedFactorsCount(service, input.data.user_id)
           : 0;
-        if (!operator || verified <= 0) {
-          console.error("custom-access-token: super_admin without operator+aal2 denied");
-          return errorResponse("identity_unavailable");
-        }
       } catch {
         console.error("custom-access-token: operator check failed");
         return errorResponse("identity_unavailable");
+      }
+      if (!operator || verified <= 0) {
+        console.error("custom-access-token: super_admin without operator+aal2 downgraded");
+        const downgraded = buildHookClaims(input.data.claims, null);
+        if (!downgraded.ok) {
+          console.error("custom-access-token: app_metadata flag invalid");
+          return errorResponse("identity_unavailable");
+        }
+        return new Response(
+          JSON.stringify({ claims: { ...downgraded.claims, mfa_required: true } }),
+          { status: 200, headers: jsonHeaders },
+        );
       }
     }
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
-import { QuotaHotTable, quotaStatusOf } from "@/admin/metricas/QuotaHotTable";
+import { QuotaHotTable, quotaStatusOf } from "@/internal-admin/metricas/QuotaHotTable";
 import type { QuotaHotRow } from "@/hooks/usePlanTelemetry";
 
 afterEach(() => cleanup());

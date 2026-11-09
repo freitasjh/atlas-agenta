@@ -1,6 +1,5 @@
 import {
   createBrowserRouter,
-  Navigate,
   type RouterProviderProps,
 } from "react-router-dom";
 
@@ -44,30 +43,37 @@ import { RequirePasswordChange } from "@/app/guards/RequirePasswordChange";
 import { RequireRole } from "@/app/guards/RequireRole";
 import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscription";
 
-import { AdminLayout } from "@/admin/AdminLayout";
-import { AdminDashboardPage, AssinaturasPage, EmpresasPage, MetricasPage } from "@/admin/pages";
-import { ConvitesPage } from "@/admin/convites/ConvitesPage";
 import { InternalAdminLayout } from "@/internal-admin/InternalAdminLayout";
+import { InternalShell } from "@/internal-admin/InternalShell";
 import { RequireInternalOperator } from "@/internal-admin/RequireInternalOperator";
+import {
+  LegacyAdminRedirect,
+  LegacyTenantPlanoRedirect,
+} from "@/internal-admin/LegacyAdminRedirect";
 import { InternalLoginPage } from "@/internal-admin/pages/InternalLoginPage";
 import { InternalMfaPage } from "@/internal-admin/pages/InternalMfaPage";
 import { InternalEnrollPage } from "@/internal-admin/pages/InternalEnrollPage";
 import { InternalHomePage } from "@/internal-admin/pages/InternalHomePage";
-import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
+import { EmpresasPage } from "@/internal-admin/empresas/EmpresasPage";
+import { TenantPlanoPage } from "@/internal-admin/tenants/TenantPlanoPage";
+import { AdminDashboardPage } from "@/internal-admin/dashboard/AdminDashboardPage";
+import { MetricasPage } from "@/internal-admin/metricas/MetricasPage";
+import { ConvitesPage } from "@/internal-admin/convites/ConvitesPage";
+import { AuditoriaPage } from "@/internal-admin/auditoria/AuditoriaPage";
+import { AssinaturasPage } from "@/internal-admin/assinaturas/AssinaturasPage";
 import { AgendarPage } from "@/public/AgendarPage";
-import { TenantPlanoPage } from "@/admin/tenants/TenantPlanoPage";
 
 /**
  * Casca de roteamento (data router). A raiz monta providers + skip-link +
  * Toaster; cada área tem seu layout.
  *
  * Ordem dos guards nas árvores privadas (ADR-11): sessão → troca de senha
- * obrigatória → papel (`/admin`) ou assinatura (`/app`) → layout. A troca vem
- * antes do papel para quem tem a flag não ver tela de acesso negado de outra
- * área. `/trocar-senha` fica fora do guard de troca (é ela que limpa a flag).
- * `/admin` índice redireciona para `/admin/empresas`; o placeholder
- * `AdminDashboardPage` permanece no código, sem rota (P-13). Rota curinga →
- * 404 em pt-BR.
+ * obrigatória → assinatura (`/app`) → layout. A troca vem antes do papel
+ * para quem tem a flag não ver tela de acesso negado de outra área.
+ * `/trocar-senha` fica fora do guard de troca (é ela que limpa a flag).
+ * `/admin/*` legado redireciona para `/internal-admin/*` (release 1,
+ * VAL-01); `/internal-admin` índice redireciona para
+ * `/internal-admin/empresas`. Rota curinga → 404 em pt-BR.
  */
 // Anotação explícita de tipo: evita TS2742 (o tipo inferido referenciava o
 // caminho interno de resolução de @remix-run/router, não portável).
@@ -182,58 +188,59 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
           },
         ],
       },
-      // Admin (super admin). Ordem: RequireAuth → RequirePasswordChange →
-      // RequireRole(["super_admin"]) → layout (ADR-11).
+      // Legado `/admin` (release 1, VAL-01): só redirect para
+      // `/internal-admin/*`, sem guards próprios (o destino guarda).
       {
         path: "admin",
-        element: <RequireAuth />,
         children: [
           {
-            element: <RequirePasswordChange />,
-            children: [
-              {
-                element: <RequireRole roles={["super_admin"]} />,
-                children: [
-                  {
-                    element: <AdminLayout />,
-                    children: [
-                      // Placeholder sem rota: nenhum caminho leva ao
-                      // `AdminDashboardPage` (P-13). O índice do painel é a
-                      // lista de empresas.
-                      {
-                        index: true,
-                        element: <Navigate to="/admin/empresas" replace />,
-                      },
-                      { path: "empresas", element: <EmpresasPage /> },
-                      { path: "tenants/:id/plano", element: <TenantPlanoPage /> },
-                      { path: "dashboard", element: <AdminDashboardPage /> },
-                      { path: "metricas", element: <MetricasPage /> },
-                      { path: "convites", element: <ConvitesPage /> },
-                      { path: "auditoria", element: <AuditoriaPage /> },
-                      { path: "assinaturas", element: <AssinaturasPage /> },
-                    ],
-                  },
-                ],
-              },
-            ],
+            index: true,
+            element: <LegacyAdminRedirect to="/internal-admin" />,
           },
+          { path: "empresas", element: <LegacyAdminRedirect to="/internal-admin/empresas" /> },
+          { path: "tenants/:id/plano", element: <LegacyTenantPlanoRedirect /> },
+          { path: "dashboard", element: <LegacyAdminRedirect to="/internal-admin/dashboard" /> },
+          { path: "metricas", element: <LegacyAdminRedirect to="/internal-admin/metricas" /> },
+          { path: "convites", element: <LegacyAdminRedirect to="/internal-admin/convites" /> },
+          { path: "auditoria", element: <LegacyAdminRedirect to="/internal-admin/auditoria" /> },
+          { path: "assinaturas", element: <LegacyAdminRedirect to="/internal-admin/assinaturas" /> },
+          { path: "*", element: <LegacyAdminRedirect to="/internal-admin" /> },
         ],
       },
       // Curinga → 404 pt-BR
       { path: "*", element: <NotFound /> },
       // Área interna isolada (internal-operators-mfa): sem RequireRole/tenant.
       // Prova única via RequireInternalOperator (Edge verify-operator, AAL2 por
-      // request). Login/MFA/enroll fora do guard; o núcleo exige operador+AAL2.
+      // request). Login/MFA/enroll fora do guard, sob o layout estreito
+      // (max-w-md); o núcleo exige operador+AAL2 sob o InternalShell.
       {
         path: "internal-admin",
-        element: <InternalAdminLayout />,
         children: [
-          { path: "login", element: <InternalLoginPage /> },
-          { path: "mfa", element: <InternalMfaPage /> },
-          { path: "enroll", element: <InternalEnrollPage /> },
+          {
+            element: <InternalAdminLayout />,
+            children: [
+              { path: "login", element: <InternalLoginPage /> },
+              { path: "mfa", element: <InternalMfaPage /> },
+              { path: "enroll", element: <InternalEnrollPage /> },
+            ],
+          },
           {
             element: <RequireInternalOperator />,
-            children: [{ index: true, element: <InternalHomePage /> }],
+            children: [
+              {
+                element: <InternalShell />,
+                children: [
+                  { index: true, element: <InternalHomePage /> },
+                  { path: "empresas", element: <EmpresasPage /> },
+                  { path: "tenants/:id/plano", element: <TenantPlanoPage /> },
+                  { path: "dashboard", element: <AdminDashboardPage /> },
+                  { path: "metricas", element: <MetricasPage /> },
+                  { path: "convites", element: <ConvitesPage /> },
+                  { path: "auditoria", element: <AuditoriaPage /> },
+                  { path: "assinaturas", element: <AssinaturasPage /> },
+                ],
+              },
+            ],
           },
         ],
       },

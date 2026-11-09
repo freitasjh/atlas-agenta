@@ -22,7 +22,7 @@ vi.mock("@/hooks/useAuditLog", () => ({
   }),
 }));
 
-import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
+import { AuditoriaPage } from "@/internal-admin/auditoria/AuditoriaPage";
 
 afterEach(() => cleanup());
 

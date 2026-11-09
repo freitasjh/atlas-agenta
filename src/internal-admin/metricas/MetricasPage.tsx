@@ -47,8 +47,8 @@ import {
 import { getPlanLabel, getSubscriptionTransitionLabel } from "@/lib/subscription-status";
 import { PLAN_SLUGS, type PlanSlug } from "@/lib/plans";
 import { currentTelemetryMonth, useQuotaUtilization } from "@/hooks/usePlanTelemetry";
-import { PlanAnalyticsCard } from "@/admin/metricas/PlanAnalyticsCard";
-import { QuotaHotTable } from "@/admin/metricas/QuotaHotTable";
+import { PlanAnalyticsCard } from "@/internal-admin/metricas/PlanAnalyticsCard";
+import { QuotaHotTable } from "@/internal-admin/metricas/QuotaHotTable";
 import { useAdminTenants } from "@/hooks/useAdminTenants";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "@/types/domain";

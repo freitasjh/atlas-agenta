@@ -32,7 +32,7 @@ import { readFromState, readNoticeState } from "@/auth/read-from-state";
 /**
  * Tela de login por e-mail/senha. Ao sucesso, decide o destino com
  * `usePostLoginRedirect` a partir da sessão (ADR-08): flag de troca de senha
- * primeiro, depois `/admin/empresas` para `super_admin`, e `state.from` só para
+ * primeiro, depois `/internal-admin/empresas` para `super_admin`, e `state.from` só para
  * papéis de tenant. Erro de credencial vira um alerta pt-BR genérico no topo,
  * sem revelar qual campo falhou (anti-enumeração).
  *

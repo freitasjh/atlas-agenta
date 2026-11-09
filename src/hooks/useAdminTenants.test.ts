@@ -108,7 +108,7 @@ describe("normalizeInvokeError → mapSubscriptionError (CA-07, caminho real)", 
 });
 
 /**
- * Follow-up (code-review loop 1/3): `:id` da rota `/admin/tenants/:id/plano`
+ * Follow-up (code-review loop 1/3): `:id` da rota `/internal-admin/tenants/:id/plano`
  * é validado como UUID antes de qualquer query. Slug/injeção nunca chega ao
  * banco — cai em "Empresa inválida".
  */

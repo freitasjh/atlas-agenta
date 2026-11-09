@@ -20,6 +20,12 @@ type FakeOptions = {
   profileError?: FakeError;
   insertError?: FakeError;
   auditError?: FakeError;
+  /** MIG-BE-02: operador ativo em `internal_operators` (default false). */
+  isOperator?: boolean;
+  /** MIG-BE-02: factors MFA verificados (default 0). */
+  verifiedFactors?: number;
+  /** MIG-BE-02: `app_metadata` do usuário (p/ must_change_password). */
+  appMetadata?: Record<string, unknown>;
 };
 
 type FakeCalls = {
@@ -28,11 +34,22 @@ type FakeCalls = {
   invitationInsert: unknown[];
   auditInsert: unknown[];
   inviteEmail: unknown[];
+  denyRpc: string[];
 };
 
+/** JWT mínimo com claim `aal` (lido server-side por `readJwtAal`). */
+function jwtWithAal(aal: string): string {
+  const b64 = (v: unknown) =>
+    btoa(JSON.stringify(v)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none", typ: "JWT" })}.${b64({ aal, sub: USER_ID })}.sig`;
+}
+
+const OPERATOR_AAL2_TOKEN = jwtWithAal("aal2");
+const OPERATOR_AAL1_TOKEN = jwtWithAal("aal1");
+
 function fakeService(options: FakeOptions = {}): { service: SupabaseClient; calls: FakeCalls } {
-  const calls: FakeCalls = { getUser: [], profileSelect: [], invitationInsert: [], auditInsert: [], inviteEmail: [] };
-  const user = options.user === undefined ? { id: USER_ID } : options.user;
+  const calls: FakeCalls = { getUser: [], profileSelect: [], invitationInsert: [], auditInsert: [], inviteEmail: [], denyRpc: [] };
+  const user = options.user === undefined ? { id: USER_ID, app_metadata: options.appMetadata ?? {} } : options.user;
 
   const service = {
     auth: {
@@ -46,13 +63,33 @@ function fakeService(options: FakeOptions = {}): { service: SupabaseClient; call
           calls.inviteEmail.push({ email, opts });
           return { data: {}, error: null };
         },
+        mfa: {
+          listFactors: async (_args: { userId: string }) => ({
+            data: Array.from({ length: options.verifiedFactors ?? 0 }, (_, i) => ({ id: `f-${i}`, status: "verified" })),
+            error: null,
+          }),
+        },
       },
+    },
+    rpc: async (name: string) => {
+      calls.denyRpc.push(name);
+      return { data: null, error: null };
     },
     from: (table: string) => ({
       select: (columns: string) => {
         if (table === "profiles") calls.profileSelect.push(columns);
         return {
           eq: (_column: string, _value: string) => ({
+            is: (_column: string, _value: unknown) => ({
+              maybeSingle: async () => {
+                if (table === "internal_operators") {
+                  return options.isOperator
+                    ? { data: { user_id: USER_ID }, error: null }
+                    : { data: null, error: null };
+                }
+                return { data: null, error: null };
+              },
+            }),
             maybeSingle: async () => {
               if (table === "profiles") {
                 return { data: options.profile ?? null, error: options.profileError ?? null };
@@ -193,4 +230,64 @@ Deno.test("admin convida professional com sucesso", async () => {
   strictEqual(inserted.role, "professional");
   const audit = calls.auditInsert[0] as Record<string, unknown>;
   strictEqual(audit.tenant_id, TENANT_ID);
+});
+// MIG-BE-02: caminho do operador interno (ignora profiles.role, alvo no corpo).
+Deno.test("operador+AAL2 convida professional de qualquer tenant (ignora role)", async () => {
+  const { handler, calls } = build({ profile: PROFESSIONAL, isOperator: true, verifiedFactors: 1 });
+  const res = await call(handler, {
+    token: OPERATOR_AAL2_TOKEN,
+    body: { email: "prof@teste.com", role: "professional", tenant_id: TENANT_ID },
+  });
+  strictEqual(res.status, 201);
+  const inserted = calls.invitationInsert[0] as Record<string, unknown>;
+  strictEqual(inserted.tenant_id, TENANT_ID);
+  strictEqual(inserted.role, "professional");
+  const audit = calls.auditInsert[0] as Record<string, unknown>;
+  strictEqual(audit.tenant_id, TENANT_ID);
+});
+
+Deno.test("operador sem AAL2 cai no legado e nega (professional -> 403)", async () => {
+  const { handler, calls } = build({ profile: PROFESSIONAL, isOperator: true, verifiedFactors: 1 });
+  const res = await call(handler, {
+    token: OPERATOR_AAL1_TOKEN,
+    body: { email: "prof@teste.com", role: "professional", tenant_id: TENANT_ID },
+  });
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationInsert.length, 0);
+});
+
+Deno.test("nao-operador com role professional nega (403, sem escrita)", async () => {
+  const { handler, calls } = build({ profile: PROFESSIONAL, isOperator: false, verifiedFactors: 0 });
+  const res = await call(handler, {
+    token: OPERATOR_AAL2_TOKEN,
+    body: { email: "prof@teste.com", role: "professional", tenant_id: TENANT_ID },
+  });
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationInsert.length, 0);
+});
+
+Deno.test("operador com must_change_password=true nega 403 e conta deny", async () => {
+  const { handler, calls } = build({
+    profile: PROFESSIONAL,
+    isOperator: true,
+    verifiedFactors: 1,
+    appMetadata: { must_change_password: true },
+  });
+  const res = await call(handler, {
+    token: OPERATOR_AAL2_TOKEN,
+    body: { email: "prof@teste.com", role: "professional", tenant_id: TENANT_ID },
+  });
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationInsert.length, 0);
+  deepStrictEqual(calls.denyRpc, ["internal_admin_deny"]);
+});
+
+Deno.test("operador sem tenant_id no corpo -> 400 (alvo nunca implicito)", async () => {
+  const { handler, calls } = build({ profile: PROFESSIONAL, isOperator: true, verifiedFactors: 1 });
+  const res = await call(handler, {
+    token: OPERATOR_AAL2_TOKEN,
+    body: { email: "prof@teste.com", role: "professional" },
+  });
+  strictEqual(res.status, 400);
+  strictEqual(calls.invitationInsert.length, 0);
 });

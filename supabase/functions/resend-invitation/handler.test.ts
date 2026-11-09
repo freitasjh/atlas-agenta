@@ -24,6 +24,12 @@ type FakeOptions = {
   invitationError?: FakeError;
   updateError?: FakeError;
   auditError?: FakeError;
+  /** MIG-BE-02: operador ativo em `internal_operators` (default false). */
+  isOperator?: boolean;
+  /** MIG-BE-02: factors MFA verificados (default 0). */
+  verifiedFactors?: number;
+  /** MIG-BE-02: `app_metadata` do usuário (p/ must_change_password). */
+  appMetadata?: Record<string, unknown>;
 };
 
 type FakeCalls = {
@@ -33,11 +39,22 @@ type FakeCalls = {
   invitationUpdate: unknown[];
   auditInsert: unknown[];
   inviteEmail: unknown[];
+  denyRpc: string[];
 };
 
+/** JWT mínimo com claim `aal` (lido server-side por `readJwtAal`). */
+function jwtWithAal(aal: string): string {
+  const b64 = (v: unknown) =>
+    btoa(JSON.stringify(v)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `${b64({ alg: "none", typ: "JWT" })}.${b64({ aal, sub: USER_ID })}.sig`;
+}
+
+const OPERATOR_AAL2_TOKEN = jwtWithAal("aal2");
+const OPERATOR_AAL1_TOKEN = jwtWithAal("aal1");
+
 function fakeService(options: FakeOptions = {}): { service: SupabaseClient; calls: FakeCalls } {
-  const calls: FakeCalls = { getUser: [], profileSelect: [], invitationSelect: 0, invitationUpdate: [], auditInsert: [], inviteEmail: [] };
-  const user = options.user === undefined ? { id: USER_ID } : options.user;
+  const calls: FakeCalls = { getUser: [], profileSelect: [], invitationSelect: 0, invitationUpdate: [], auditInsert: [], inviteEmail: [], denyRpc: [] };
+  const user = options.user === undefined ? { id: USER_ID, app_metadata: options.appMetadata ?? {} } : options.user;
 
   const service = {
     auth: {
@@ -51,14 +68,30 @@ function fakeService(options: FakeOptions = {}): { service: SupabaseClient; call
           calls.inviteEmail.push({ email, opts });
           return { data: {}, error: null };
         },
+        mfa: {
+          listFactors: async (_args: { userId: string }) => ({
+            data: Array.from({ length: options.verifiedFactors ?? 0 }, (_, i) => ({ id: `f-${i}`, status: "verified" })),
+            error: null,
+          }),
+        },
       },
+    },
+    rpc: async (name: string) => {
+      calls.denyRpc.push(name);
+      return { data: null, error: null };
     },
     from: (table: string) => ({
       select: (_cols: string) => {
         if (table === "profiles") calls.profileSelect.push(_cols);
+        const internalOperatorsSingle = async () => ({
+          data: options.isOperator ? { user_id: USER_ID } : null,
+          error: null,
+        });
         return {
           eq: (_col: string, _val: string) => ({
+            is: (_icol: string, _ival: unknown) => ({ maybeSingle: internalOperatorsSingle }),
             maybeSingle: async () => {
+              if (table === "internal_operators") return internalOperatorsSingle();
               if (table === "invitations") {
                 calls.invitationSelect += 1;
                 return { data: options.invitation === undefined ? { id: INVITATION_ID, tenant_id: TENANT_ID, email: "convidado@teste.com", status: "pending" } : options.invitation, error: options.invitationError ?? null };
@@ -95,10 +128,10 @@ function build(options: FakeOptions = {}, overrides: { createServiceThrows?: boo
   return { handler, calls: fake.calls };
 }
 
-async function call(handler: (r: Request) => Promise<Response>, body: unknown = { invitation_id: INVITATION_ID }) {
+async function call(handler: (r: Request) => Promise<Response>, body: unknown = { invitation_id: INVITATION_ID }, token: string = TOKEN) {
   return handler(new Request("http://localhost/functions/v1/resend-invitation", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   }));
 }
@@ -175,6 +208,53 @@ Deno.test("admin reenvia com sucesso: novo token_hash, expires_at, status pendin
 Deno.test("super_admin reenvia convite super_admin", async () => {
   const { handler, calls } = build({ profile: SUPER_ADMIN, invitation: { id: INVITATION_ID, tenant_id: null, email: "super@teste.com", status: "pending" } });
   const res = await call(handler);
+  strictEqual(res.status, 200);
+  strictEqual(calls.invitationUpdate.length, 1);
+});
+// MIG-BE-02: caminho do operador interno (ignora profiles.role).
+Deno.test("operador+AAL2 reenvia convite de tenant (ignora role)", async () => {
+  const { handler, calls } = build({ profile: { tenant_id: null, role: "professional" }, isOperator: true, verifiedFactors: 1 });
+  const res = await call(handler, { invitation_id: INVITATION_ID }, OPERATOR_AAL2_TOKEN);
+  strictEqual(res.status, 200);
+  strictEqual(calls.invitationUpdate.length, 1);
+  strictEqual(calls.auditInsert.length, 1);
+});
+
+Deno.test("operador sem AAL2 cai no legado e nega (professional -> 403)", async () => {
+  const { handler, calls } = build({ profile: { tenant_id: null, role: "professional" }, isOperator: true, verifiedFactors: 1 });
+  const res = await call(handler, { invitation_id: INVITATION_ID }, OPERATOR_AAL1_TOKEN);
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationUpdate.length, 0);
+});
+
+Deno.test("nao-operador com role professional nega (403, sem escrita)", async () => {
+  const { handler, calls } = build({ profile: { tenant_id: TENANT_ID, role: "professional" }, isOperator: false, verifiedFactors: 0 });
+  const res = await call(handler, { invitation_id: INVITATION_ID }, OPERATOR_AAL2_TOKEN);
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationUpdate.length, 0);
+});
+
+Deno.test("operador com must_change_password=true nega 403 e conta deny", async () => {
+  const { handler, calls } = build({
+    profile: { tenant_id: null, role: "professional" },
+    isOperator: true,
+    verifiedFactors: 1,
+    appMetadata: { must_change_password: true },
+  });
+  const res = await call(handler, { invitation_id: INVITATION_ID }, OPERATOR_AAL2_TOKEN);
+  strictEqual(res.status, 403);
+  strictEqual(calls.invitationUpdate.length, 0);
+  deepStrictEqual(calls.denyRpc, ["internal_admin_deny"]);
+});
+
+Deno.test("operador reenvia convite de outro tenant (cross-tenant permitido)", async () => {
+  const { handler, calls } = build({
+    profile: { tenant_id: TENANT_ID, role: "professional" },
+    isOperator: true,
+    verifiedFactors: 1,
+    invitation: { id: INVITATION_ID, tenant_id: OTHER_TENANT, email: "x@teste.com", status: "pending" },
+  });
+  const res = await call(handler, { invitation_id: INVITATION_ID }, OPERATOR_AAL2_TOKEN);
   strictEqual(res.status, 200);
   strictEqual(calls.invitationUpdate.length, 1);
 });

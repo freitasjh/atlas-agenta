@@ -8,7 +8,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 /**
  * Guard de troca de senha obrigatória (ADR-11). Fica entre `RequireAuth` e os
- * guards de papel/assinatura nas duas árvores (`/app` e `/admin`), porque a
+ * guards de papel/assinatura nas duas árvores (`/app` e `/internal-admin`), porque a
  * flag é da conta, não do papel.
  *
  * Toda a regra mora na função pura `decidePasswordGate`; aqui só há tradução:

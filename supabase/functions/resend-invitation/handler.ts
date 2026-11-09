@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { parseResendBody } from "./schemas.ts";
+import { countInternalAdminDeny, verifyInternalOperator } from "../_shared/internal-operator.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -76,6 +77,8 @@ interface Identity {
   userId: string;
   tenantId: string | null;
   role: string;
+  /** Valor CRU de `app_metadata.must_change_password`; `undefined` quando ausente. */
+  mustChangePassword: unknown;
 }
 
 async function resolveIdentity(service: SupabaseClient, token: string): Promise<Identity | null> {
@@ -87,10 +90,16 @@ async function resolveIdentity(service: SupabaseClient, token: string): Promise<
     .eq("id", data.user.id)
     .maybeSingle();
   if (!profile) return null;
+  const rawAppMetadata = (data.user as { app_metadata?: unknown }).app_metadata;
+  const appMetadata: Record<string, unknown> =
+    typeof rawAppMetadata === "object" && rawAppMetadata !== null
+      ? (rawAppMetadata as Record<string, unknown>)
+      : {};
   return {
     userId: data.user.id,
     tenantId: (profile.tenant_id as string | null) ?? null,
     role: profile.role as string,
+    mustChangePassword: appMetadata.must_change_password,
   };
 }
 
@@ -133,12 +142,25 @@ export function createResendInvitationHandler(options: ResendInvitationHandlerOp
     const inv = invitation as Record<string, unknown>;
     const invTenantId = (inv.tenant_id as string | null) ?? null;
 
-    if (identity.role === "super_admin") {
-      if (invTenantId !== null) return errorResponse("forbidden");
-    } else if (identity.role === "admin") {
-      if (invTenantId !== identity.tenantId || identity.tenantId === null) return errorResponse("forbidden");
-    } else {
-      return errorResponse("forbidden");
+    // Caminho do operador interno (MIG-BE-02): prova server-side por request;
+    // OK + sem must_change → ignora `profiles.role`, opera qualquer tenant.
+    // must_change_password=true continua negando (403) com métrica de nega.
+    try {
+      await verifyInternalOperator(service, token);
+      if (identity.mustChangePassword === true) {
+        console.warn("resend-invitation: operator must_change_password blocked");
+        await countInternalAdminDeny(service);
+        return errorResponse("forbidden");
+      }
+      console.warn("resend-invitation: operator resend");
+    } catch {
+      if (identity.role === "super_admin") {
+        if (invTenantId !== null) return errorResponse("forbidden");
+      } else if (identity.role === "admin") {
+        if (invTenantId !== identity.tenantId || identity.tenantId === null) return errorResponse("forbidden");
+      } else {
+        return errorResponse("forbidden");
+      }
     }
 
     const allowedStatuses = new Set(["pending", "expired", "revoked"]);

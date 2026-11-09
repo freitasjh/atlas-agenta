@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TrocarPlanoDialog } from "@/admin/empresas/TrocarPlanoDialog";
+import { TrocarPlanoDialog } from "@/internal-admin/empresas/TrocarPlanoDialog";
 import type { TenantListItem } from "@/types/domain";
 
 vi.mock("@/hooks/useSetPlan", async (importOriginal) => {

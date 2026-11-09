@@ -18,7 +18,7 @@ interface SidebarNavProps {
 }
 
 /**
- * Lista de navegação compartilhada pelas sidebars de `/app` e `/admin`.
+ * Lista de navegação compartilhada pelas sidebars de `/app` e `/internal-admin`.
  * Marca o item ativo com `aria-current="page"` (acessibilidade).
  */
 export function SidebarNav({ items, onNavigate }: SidebarNavProps) {

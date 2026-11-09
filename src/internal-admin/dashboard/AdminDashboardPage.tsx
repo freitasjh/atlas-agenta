@@ -31,7 +31,7 @@ import {
   type AdminTenantStatusFilter,
 } from "@/hooks/useAdminDashboard";
 import { currentTelemetryMonth } from "@/hooks/usePlanTelemetry";
-import { PlanMrrCard } from "@/admin/dashboard/PlanMrrCard";
+import { PlanMrrCard } from "@/internal-admin/dashboard/PlanMrrCard";
 
 function displayName(tenant: TenantListItem): string {
   const trade = tenant.trade_name?.trim();

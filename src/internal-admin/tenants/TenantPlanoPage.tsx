@@ -10,7 +10,7 @@ import { getPlan } from "@/lib/plans";
 import { isValidTenantId, useAdminTenant } from "@/hooks/useAdminTenants";
 import { useTenantPlanUsage } from "@/hooks/useSetPlan";
 import { usePlanHistory } from "@/hooks/usePlanHistory";
-import { TrocarPlanoDialog } from "@/admin/empresas/TrocarPlanoDialog";
+import { TrocarPlanoDialog } from "@/internal-admin/empresas/TrocarPlanoDialog";
 
 function formatDateTime(iso: string): string {
   try {
@@ -21,7 +21,7 @@ function formatDateTime(iso: string): string {
 }
 
 /**
- * Tela de plano do tenant (`/admin/tenants/:id/plano`): plano atual + uso +
+ * Tela de plano do tenant (`/internal-admin/tenants/:id/plano`): plano atual + uso +
  * histórico auditado (desc, com ator/data/motivo). Fase 1 sem scheduler: nenhum
  * "pendente/agendado" é exibido. Estados Skeleton/Empty/Error em pt-BR.
  */
@@ -79,7 +79,7 @@ export function TenantPlanoPage() {
       />
       <div>
         <Button variant="outline" asChild className="min-h-[44px]">
-          <Link to="/admin/empresas">← Voltar para empresas</Link>
+          <Link to="/internal-admin/empresas">← Voltar para empresas</Link>
         </Button>
       </div>
 

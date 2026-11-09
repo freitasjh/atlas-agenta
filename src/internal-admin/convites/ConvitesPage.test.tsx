@@ -27,7 +27,7 @@ vi.mock("@/hooks/useInvitations", () => ({
   useRevokeInvitation: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-import { ConvitesPage } from "@/admin/convites/ConvitesPage";
+import { ConvitesPage } from "@/internal-admin/convites/ConvitesPage";
 
 afterEach(() => cleanup());
 

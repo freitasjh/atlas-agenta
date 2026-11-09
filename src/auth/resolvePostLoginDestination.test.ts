@@ -11,7 +11,7 @@ import {
  *
  * Ordem das regras (a primeira que casa vence):
  * 1. `mustChangePassword === true` → `/trocar-senha` (sempre primeiro);
- * 2. `super_admin` → `/admin/empresas` (`from` não muda o destino dele);
+ * 2. `super_admin` → `/internal-admin/empresas` (`from` não muda o destino dele);
  * 3. sem claims (`role` nulo) → `/app` (os guards negam o acesso depois);
  * 4. demais papéis → `from` se for caminho interno válido, senão `/app`.
  */
@@ -41,7 +41,7 @@ describe("resolvePostLoginDestination", () => {
       const destination = resolvePostLoginDestination({
         role: "super_admin",
         mustChangePassword: true,
-        from: "/admin/empresas",
+        from: "/internal-admin/empresas",
       });
 
       expect(destination).toBe("/trocar-senha");
@@ -49,13 +49,13 @@ describe("resolvePostLoginDestination", () => {
   });
 
   describe("super admin com flag limpo", () => {
-    it("vai para /admin/empresas", () => {
+    it("vai para /internal-admin/empresas", () => {
       const destination = resolvePostLoginDestination({
         role: "super_admin",
         mustChangePassword: false,
       });
 
-      expect(destination).toBe("/admin/empresas");
+      expect(destination).toBe("/internal-admin/empresas");
     });
 
     it("from de tenant não desvia o super admin do painel", () => {
@@ -65,7 +65,7 @@ describe("resolvePostLoginDestination", () => {
         from: "/app/agenda",
       });
 
-      expect(destination).toBe("/admin/empresas");
+      expect(destination).toBe("/internal-admin/empresas");
     });
   });
 
@@ -183,7 +183,7 @@ describe("resolvePostLoginDestination", () => {
 });
 
 describe("isInternalPath", () => {
-  it.each(["/", "/app", "/app/agenda?date=2026-10-31", "/admin/empresas"])(
+  it.each(["/", "/app", "/app/agenda?date=2026-10-31", "/internal-admin/empresas"])(
     "%s é caminho interno",
     (from) => {
       expect(isInternalPath(from)).toBe(true);

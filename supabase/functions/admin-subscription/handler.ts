@@ -31,6 +31,7 @@ import {
   type SubscriptionStatus,
 } from "./schemas.ts";
 import { decideSubscriptionGate, type SubscriptionGateRole } from "./gate.ts";
+import { countInternalAdminDeny, verifyInternalOperator } from "../_shared/internal-operator.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -60,6 +61,8 @@ interface Identity {
   role: RoleName;
   /** Valor CRU da flag de troca de senha, lido do `app_metadata`; `undefined` quando ausente. */
   mustChangePassword: unknown;
+  /** JWT cru (Bearer) para a prova de operador por request (MIG-BE-02). */
+  token: string;
 }
 
 /**
@@ -118,6 +121,7 @@ async function resolveIdentity(
     tenantId: profile.tenant_id as string | null,
     role: profile.role as RoleName,
     mustChangePassword: appMetadata.must_change_password,
+    token,
   };
 }
 
@@ -132,16 +136,44 @@ async function handleSetStatus(
   // RBAC + flag de troca de senha, decididos pela função pura (gate.ts). A checagem fica antes de
   // carregar o tenant alvo e de qualquer escrita: bloqueado não revela a existência da empresa e
   // não altera `tenants`. Service role ignora RLS, então o bloqueio precisa existir aqui.
-  const decision = decideSubscriptionGate({
-    role: identity.role,
-    mustChangePassword: identity.mustChangePassword,
-  });
+  //
+  // Caminho do operador interno (MIG-BE-02): `verifyInternalOperator` por request
+  // (operador ativo + AAL2); OK + sem must_change → ignora `profiles.role`.
+  // must_change_password=true continua negando (403) com métrica de nega.
+  let operatorProof = false;
+  try {
+    await verifyInternalOperator(service, identity.token);
+    operatorProof = true;
+  } catch {
+    operatorProof = false;
+  }
+  if (operatorProof && identity.mustChangePassword === true) {
+    console.warn("set_status: operator must_change_password blocked");
+    await countInternalAdminDeny(service);
+    const operatorMessage = "Troque sua senha antes de operar o painel.";
+    return jsonResponse(
+      {
+        error: operatorMessage,
+        code: "password_change_required",
+        message: operatorMessage,
+      },
+      403,
+    );
+  }
+  const decision = operatorProof
+    ? ({ allowed: true } as const)
+    : decideSubscriptionGate({
+      role: identity.role,
+      mustChangePassword: identity.mustChangePassword,
+    });
 
   if (!decision.allowed) {
     if (decision.code === "forbidden_role") {
       console.warn("set_status: forbidden role attempt", identity.role);
+      await countInternalAdminDeny(service);
       return errorResponse("Você não tem permissão para alterar o status de assinatura.", 403);
     }
+    await countInternalAdminDeny(service);
     const passwordMessage = "Troque sua senha antes de operar o painel.";
     return jsonResponse(
       {

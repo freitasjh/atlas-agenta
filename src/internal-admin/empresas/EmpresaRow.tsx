@@ -87,7 +87,7 @@ export function EmpresaRow({ tenant, renderAction }: EmpresaRowProps) {
         <div className="space-y-1">
           <p>{getPlanLabel(tenant.plan)}</p>
           <Link
-            to={`/admin/tenants/${tenant.id}/plano`}
+            to={`/internal-admin/tenants/${tenant.id}/plano`}
             className="inline-flex min-h-[44px] items-center text-xs text-primary underline"
           >
             Ver plano
@@ -132,7 +132,7 @@ export function EmpresaCard({ tenant, renderAction }: EmpresaRowProps) {
           <dd className="space-y-1 text-foreground">
             <p>{getPlanLabel(tenant.plan)}</p>
             <Link
-              to={`/admin/tenants/${tenant.id}/plano`}
+              to={`/internal-admin/tenants/${tenant.id}/plano`}
               className="inline-flex min-h-[44px] items-center text-xs text-primary underline"
             >
               Ver plano

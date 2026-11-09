@@ -7,8 +7,8 @@ export const POST_LOGIN_DEFAULT = "/app";
 export const POST_LOGIN_PROFESSIONAL = "/app/agenda";
 export const POST_LOGIN_RECEPTIONIST = "/app/agenda";
 
-/** Casa do super admin (ADR-08): painel de empresas, não o dashboard. */
-export const POST_LOGIN_SUPER_ADMIN = "/admin/empresas";
+/** Casa do operador interno (MIG interna): empresas, não o dashboard. */
+export const POST_LOGIN_SUPER_ADMIN = "/internal-admin/empresas";
 
 /** Tela de troca de senha obrigatória (ADR-10). */
 export const POST_LOGIN_CHANGE_PASSWORD = "/trocar-senha";
@@ -57,7 +57,7 @@ export function isInternalPath(from: unknown): from is string {
  * Ordem (a primeira regra que casa vence):
  * 1. `mustChangePassword === true` → `/trocar-senha`. Primeiro sempre, para
  *    nenhum destino vazar antes da troca obrigatória;
- * 2. `super_admin` → `/admin/empresas`;
+ * 2. `super_admin` → `/internal-admin/empresas`;
  * 3. sem claims (`role` nulo) → `/app` — os guards negam o acesso depois;
  * 4. demais papéis → `from` se for caminho interno válido, senão `/app`.
  */

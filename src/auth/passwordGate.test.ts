@@ -8,7 +8,7 @@ import { POST_LOGIN_CHANGE_PASSWORD } from "@/auth/resolvePostLoginDestination";
 
 /**
  * Contrato de `decidePasswordGate` (ADR-11). Função pura que os guards de
- * `/app` e `/admin` traduzem em `RouteFallback`, `Navigate`, `DefensiveLogout`
+ * `/app` e `/internal-admin` traduzem em `RouteFallback`, `Navigate`, `DefensiveLogout`
  * ou `Outlet`. A ordem das regras é parte do contrato: carregando antes de
  * anônimo, erro de identidade antes da flag, e `/trocar-senha` nunca recebe
  * `change-password` (evita laço).
@@ -62,9 +62,9 @@ describe("decidePasswordGate", () => {
     expect(decide({ mustChangePassword: true })).toBe("change-password");
   });
 
-  it("flag ligada em /admin ⇒ change-password", () => {
+  it("flag ligada em /internal-admin ⇒ change-password", () => {
     expect(
-      decide({ mustChangePassword: true, pathname: "/admin/empresas" }),
+      decide({ mustChangePassword: true, pathname: "/internal-admin/empresas" }),
     ).toBe("change-password");
   });
 
@@ -78,7 +78,7 @@ describe("decidePasswordGate", () => {
   });
 
   it("sessão válida com flag limpa ⇒ allow", () => {
-    expect(decide({ pathname: "/admin/empresas" })).toBe("allow");
+    expect(decide({ pathname: "/internal-admin/empresas" })).toBe("allow");
   });
 
   it("flag limpa na tela de troca ⇒ allow", () => {

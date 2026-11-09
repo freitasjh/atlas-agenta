@@ -209,3 +209,139 @@ Deno.test("erro de leitura do banco responde 500", async () => {
     assertEquals(res.status, 500);
   });
 });
+
+interface FakeGateOptions {
+  profile: unknown;
+  operatorRow?: unknown;
+  operatorError?: unknown;
+  factors?: unknown;
+  factorsError?: unknown;
+}
+
+/** Fake com `profiles`, `internal_operators` e Admin API de MFA (gate §4). */
+function makeGateFakeService(opts: FakeGateOptions) {
+  return {
+    from: (table: string) => ({
+      select: (_cols: string) => ({
+        eq: (_col: string, _val: string) => {
+          if (table === "internal_operators") {
+            return {
+              is: (_c: string, _v: null) => ({
+                maybeSingle: async () => {
+                  if (opts.operatorError) return { data: null, error: opts.operatorError };
+                  return { data: opts.operatorRow ?? null, error: null };
+                },
+              }),
+            };
+          }
+          return {
+            maybeSingle: async () => ({ data: opts.profile, error: null }),
+          };
+        },
+      }),
+    }),
+    auth: {
+      admin: {
+        mfa: {
+          listFactors: async (_args: { userId: string }) => {
+            if (opts.factorsError) return { data: null, error: opts.factorsError };
+            return { data: opts.factors ?? { totp: [] }, error: null };
+          },
+        },
+      },
+    },
+  } as unknown as import("jsr:@supabase/supabase-js@2").SupabaseClient;
+}
+
+Deno.test("super_admin sem operador responde 200 neutro com mfa_required", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = makeGateFakeService({
+    profile: { role: "super_admin", tenant_id: null, active: true },
+    operatorRow: null,
+  });
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.user_role, null);
+    assertEquals(json.claims.tenant_id, null);
+    assertEquals(json.claims.active, false);
+    assertEquals(json.claims.mfa_required, true);
+    assertEquals(json.claims.role, "authenticated");
+  });
+});
+
+Deno.test("super_admin com operador mas sem fator verificado responde 200 neutro", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = makeGateFakeService({
+    profile: { role: "super_admin", tenant_id: null, active: true },
+    operatorRow: { user_id: USER_ID },
+    factors: { totp: [] },
+  });
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.user_role, null);
+    assertEquals(json.claims.mfa_required, true);
+    assertEquals(json.claims.role, "authenticated");
+  });
+});
+
+Deno.test("super_admin com operador+AAL2 responde 200 cheio (regressão)", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = makeGateFakeService({
+    profile: { role: "super_admin", tenant_id: null, active: true },
+    operatorRow: { user_id: USER_ID },
+    factors: { totp: [{ status: "verified" }] },
+  });
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.user_role, "super_admin");
+    assertEquals(json.claims.tenant_id, null);
+    assertEquals(json.claims.active, true);
+    assertEquals(json.claims.mfa_required, undefined);
+  });
+});
+
+Deno.test("erro de leitura no gate de operador responde 500", async () => {
+  const { secret, key } = newSecret();
+  const fakeService = makeGateFakeService({
+    profile: { role: "super_admin", tenant_id: null, active: true },
+    operatorError: { code: "PGRST" },
+  });
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 500);
+    assertEquals((await res.json()).code, "identity_unavailable");
+  });
+});
+
+Deno.test("tenant comum com operador ausente segue inalterado (sem mfa_required)", async () => {
+  const { secret, key } = newSecret();
+  const TENANT_ID = "2b3c4d5e-6f70-4a8b-9c0d-1e2f3a4b5c6d";
+  const fakeService = makeGateFakeService({
+    profile: { role: "admin", tenant_id: TENANT_ID, active: true },
+  });
+
+  await withSecretEnv(secret, async () => {
+    const req = await signedRequest(key, validBody);
+    const res = await handleHookRequest(req, { serviceClient: fakeService });
+    assertEquals(res.status, 200);
+    const json = await res.json();
+    assertEquals(json.claims.user_role, "admin");
+    assertEquals(json.claims.tenant_id, TENANT_ID);
+    assertEquals(json.claims.active, true);
+    assertEquals(json.claims.mfa_required, undefined);
+  });
+});
