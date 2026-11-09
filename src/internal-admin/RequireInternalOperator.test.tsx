@@ -22,6 +22,7 @@ function renderGuard(s: InternalOperatorState, entry = "/internal-admin") {
         </Route>
         <Route path="/internal-admin/login" element={<p>tela de login interno</p>} />
         <Route path="/internal-admin/mfa" element={<p>tela de mfa</p>} />
+        <Route path="/internal-admin/enroll" element={<p>tela de enroll</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -44,6 +45,12 @@ describe("RequireInternalOperator", () => {
   it("operador sem mfa cai no mfa sem dado", () => {
     renderGuard({ status: "mfa_required" });
     expect(screen.getByText("tela de mfa")).toBeTruthy();
+    expect(screen.queryByText("área interna")).toBeNull();
+  });
+
+  it("operador sem factors cai no enroll sem dado nem loop", () => {
+    renderGuard({ status: "enroll_required" }, "/internal-admin");
+    expect(screen.getByText("tela de enroll")).toBeTruthy();
     expect(screen.queryByText("área interna")).toBeNull();
   });
 

@@ -1,6 +1,10 @@
-// Testes da Edge `verify-operator`: 401 sem JWT, 403 sem operador/AAL2, 200 operador+AAL2.
+// Testes da Edge `verify-operator`: 401 sem JWT, 403 só p/ não-operador/erro
+// (corpo idêntico anti-enumeração), 200 p/ operador com {is_operator, aal,
+// user_id, enrolled_factors} — o `aal` roteia enroll×mfa no cliente; a
+// autorização real segue em `verifyInternalOperator` (outras Edges) + guard
+// (só aal2+factor libera).
 // C5 (enrollment × assurance): `aal` da SESSÃO (JWT) + factor verificado são
-// exigidos juntos; token sem `aal2` nega mesmo com factor válido.
+// exigidos juntos na AUTORIZAÇÃO; aqui o status 200 apenas relata ambos.
 // Rodar com: npm run test:functions (deno test --allow-env supabase/functions/verify-operator/).
 import { strictEqual as assertEquals } from "node:assert/strict";
 import { createVerifyOperatorHandler } from "./handler.ts";
@@ -81,12 +85,15 @@ Deno.test("verify-operator: JWT inválido responde 401", async () => {
   assertEquals(res.status, 401);
 });
 
-Deno.test("verify-operator: operador sem factor verificado responde 403 (enrollment)", async () => {
+Deno.test("verify-operator: operador aal2 sem factor responde 200 com enrolled_factors 0", async () => {
   const handler = createVerifyOperatorHandler({
     createService: () => fakeService({ isOperator: true, verifiedFactors: 0 }) as never,
   });
   const res = await handler(postRequest(VALID_AAL2));
-  assertEquals(res.status, 403);
+  assertEquals(res.status, 200);
+  const body = await res.json() as { is_operator: boolean; enrolled_factors: number };
+  assertEquals(body.is_operator, true);
+  assertEquals(body.enrolled_factors, 0);
 });
 
 Deno.test("verify-operator: sem operador responde 403", async () => {
@@ -97,33 +104,62 @@ Deno.test("verify-operator: sem operador responde 403", async () => {
   assertEquals(res.status, 403);
 });
 
-Deno.test("verify-operator: operador+AAL2 responde 200 com prova", async () => {
+Deno.test("verify-operator: operador+AAL2 responde 200 com prova + enrolled_factors", async () => {
   const handler = createVerifyOperatorHandler({
     createService: () => fakeService({ isOperator: true, verifiedFactors: 1 }) as never,
   });
   const res = await handler(postRequest(VALID_AAL2));
   assertEquals(res.status, 200);
-  const body = await res.json() as { is_operator: boolean; aal: string; user_id: string };
+  const body = await res.json() as { is_operator: boolean; aal: string; user_id: string; enrolled_factors: number };
   assertEquals(body.is_operator, true);
   assertEquals(body.aal, "aal2");
+  assertEquals(body.enrolled_factors, 1);
 });
 
-Deno.test("verify-operator C5: factor válido mas sessão aal1 nega 403 (assurance)", async () => {
+Deno.test("verify-operator: 403 anti-enumeração não expõe enrolled_factors", async () => {
+  const handler = createVerifyOperatorHandler({
+    createService: () => fakeService({ isOperator: false, verifiedFactors: 1 }) as never,
+  });
+  const res = await handler(postRequest(VALID_AAL2));
+  assertEquals(res.status, 403);
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(body.is_operator, false);
+  assertEquals("enrolled_factors" in body, false);
+});
+
+Deno.test("verify-operator C5: factor válido mas sessão aal1 responde 200 p/ rotear ao mfa (assurance segue no guard)", async () => {
   const handler = createVerifyOperatorHandler({
     createService: () => fakeService({ isOperator: true, verifiedFactors: 1 }) as never,
   });
   const res = await handler(postRequest(VALID_AAL1));
-  assertEquals(res.status, 403);
-  const body = await res.json() as { is_operator: boolean };
-  assertEquals(body.is_operator, false);
+  assertEquals(res.status, 200);
+  const body = await res.json() as { is_operator: boolean; aal: string; enrolled_factors: number };
+  assertEquals(body.is_operator, true);
+  assertEquals(body.aal, "aal1");
+  assertEquals(body.enrolled_factors, 1);
 });
 
-Deno.test("verify-operator C5: token legado sem claim aal nega 403", async () => {
+Deno.test("verify-operator: operador aal1 sem factor responde 200 com enrolled_factors 0 (roteia ao enroll)", async () => {
+  const handler = createVerifyOperatorHandler({
+    createService: () => fakeService({ isOperator: true, verifiedFactors: 0 }) as never,
+  });
+  const res = await handler(postRequest(VALID_AAL1));
+  assertEquals(res.status, 200);
+  const body = await res.json() as { is_operator: boolean; aal: string; enrolled_factors: number };
+  assertEquals(body.is_operator, true);
+  assertEquals(body.aal, "aal1");
+  assertEquals(body.enrolled_factors, 0);
+});
+
+Deno.test("verify-operator: token legado sem claim aal responde 200 normalizado p/ aal1", async () => {
   const handler = createVerifyOperatorHandler({
     createService: () => fakeService({ isOperator: true, verifiedFactors: 1 }) as never,
   });
   const res = await handler(postRequest(VALID_NO_AAL));
-  assertEquals(res.status, 403);
+  assertEquals(res.status, 200);
+  const body = await res.json() as { is_operator: boolean; aal: string };
+  assertEquals(body.is_operator, true);
+  assertEquals(body.aal, "aal1");
 });
 
 Deno.test("readJwtAal: extrai aal, null sem claim ou token malformado", () => {

@@ -107,4 +107,22 @@ describe("InternalMfaPage", () => {
     renderWithRoutes();
     expect(await screen.findByText("Login interno")).toBeTruthy();
   });
+
+  it("erro sem-autenticador mostra CTA para o enroll", async () => {
+    listFactors.mockResolvedValue({ data: { totp: [] }, error: null });
+    render(
+      <MemoryRouter initialEntries={["/internal-admin/mfa"]}>
+        <Routes>
+          <Route path="/internal-admin/mfa" element={<InternalMfaPage />} />
+          <Route path="/internal-admin/enroll" element={<p>Tela de enroll</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText("Código de 6 dígitos"), { target: { value: "000000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verificar código" }));
+    const cta = await screen.findByRole("button", { name: "Ativar autenticador" });
+    expect(cta).toBeTruthy();
+    fireEvent.click(cta);
+    expect(await screen.findByText("Tela de enroll")).toBeTruthy();
+  });
 });

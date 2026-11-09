@@ -20,6 +20,11 @@ export function RequireInternalOperator() {
   if (state.status === "mfa_required") {
     return <Navigate to="/internal-admin/mfa" replace />;
   }
+  // Operador sem nenhum factor enrolado: o enroll vive fora do guard (mesmo
+  // nível de login/mfa), logo sem ciclo — o enroll sai p/ login ou p/ a área.
+  if (state.status === "enroll_required") {
+    return <Navigate to="/internal-admin/enroll" replace />;
+  }
   if (state.status === "forbidden") {
     return (
       <AccessDenied
