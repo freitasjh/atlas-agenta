@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Receipt,
   Settings,
+  Store,
   Users,
 } from "lucide-react";
 
@@ -22,8 +23,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ onNavigate }: AppSidebarProps) {
-  const { isAdmin, isProfessional, canViewCommission } = usePermissions();
-  const { commission } = useSegmentFeatures();
+  const { isAdmin, isProfessional, canViewCommission, canRegisterPayments } = usePermissions();
+  const { commission, payments } = useSegmentFeatures();
   const { userId } = useCurrentUser();
   const professionalsQuery = useProfessionals({ activeOnly: true, enabled: isProfessional });
 
@@ -37,6 +38,10 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
 
   items.push({ to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true });
   items.push({ to: "/app/agenda", label: "Agenda", icon: CalendarDays });
+  // PDV balcão (ADR-23): mesmo gating do checkout — salão/barbearia, 3 papéis.
+  if (payments === true && canRegisterPayments) {
+    items.push({ to: "/app/pdv", label: "PDV", icon: Store });
+  }
   items.push({ to: "/app/clientes", label: "Clientes", icon: Users });
 
   if (isAdmin) {

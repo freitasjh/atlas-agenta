@@ -51,6 +51,11 @@ const DOMAIN_MESSAGES: Record<string, string> = {
   GATEWAY_CANCEL_FAILED: "Falha ao cancelar a cobrança no gateway.",
   GATEWAY_IN_PROGRESS: "Cobrança já está sendo criada no gateway. Tente novamente em instantes.",
   GATEWAY_CLAIM_LOST: "O claim da cobrança expirou ou mudou de dono.",
+  SEGMENT_NOT_ENABLED: "PDV disponível apenas para salões e barbearias.",
+  SERVICE_NOT_OFFERED: "Este profissional não oferece o serviço selecionado.",
+  PROFESSIONAL_NOT_AVAILABLE: "Profissional não encontrado ou inativo.",
+  SERVICE_NOT_FOUND: "Serviço não encontrado ou inativo.",
+  CUSTOMER_NOT_FOUND: "Cliente não encontrado.",
   METHOD_NOT_ALLOWED: "Método não suportado.",
   INTERNAL: "Erro interno.",
 };

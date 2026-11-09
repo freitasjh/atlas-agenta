@@ -185,7 +185,7 @@ export function AppointmentFormDialog({
     if (appointment) {
       const local = toTenantLocal(appointment.starts_at, timeZone);
       form.reset({
-        customerId: appointment.customer_id,
+        customerId: appointment.customer_id ?? "",
         professionalId: appointment.professional_id,
         selection: initialSelection,
         date: `${local.year.toString().padStart(4, "0")}-${local.month

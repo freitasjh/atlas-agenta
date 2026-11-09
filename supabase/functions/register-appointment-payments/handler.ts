@@ -352,19 +352,25 @@ async function attachGatewayData(
   if (appointmentError) throw new ApiError(500, "INTERNAL");
   if (!appointment) throw new ApiError(404, "APPOINTMENT_NOT_FOUND");
 
-  const { data: customer, error: customerError } = await service
-    .from("customers")
-    .select("name, email, phone")
-    .eq("tenant_id", identity.tenantId)
-    .eq("id", appointment.customer_id)
-    .maybeSingle();
+  const { data: customer, error: customerError } = appointment.customer_id
+    ? await service
+        .from("customers")
+        .select("name, email, phone")
+        .eq("tenant_id", identity.tenantId)
+        .eq("id", appointment.customer_id)
+        .maybeSingle()
+    : { data: null, error: null };
   if (customerError) throw new ApiError(500, "INTERNAL");
 
   const asaasCustomerId = await ensureAsaasCustomer(baseUrl, apiKey, {
-    customerId: String(appointment.customer_id),
-    name: customer?.name ?? "Cliente",
-    email: customer?.email ?? null,
-    phone: customer?.phone ?? null,
+    // Walk-in anônimo (1R): sem linha em `customers`. O gateway exige um
+    // customer — o `externalReference` é o próprio appointment (sem PII, sem
+    // cliente sintético no nosso banco, sem telefone fake).
+    customerId:
+      appointment.customer_id ?? `walkin:${appointmentId}`,
+    name: (customer?.name as string | null) ?? "Cliente de balcão",
+    email: (customer?.email as string | null) ?? null,
+    phone: (customer?.phone as string | null) ?? null,
   });
   if (!asaasCustomerId) throw new ApiError(422, "GATEWAY_ERROR");
 

@@ -245,9 +245,23 @@ export type AppointmentConfirmedVia =
   (typeof APPOINTMENT_CONFIRMED_VIA)[number];
 
 /**
+ * Origem do agendamento (coluna `appointments.origin`, migration
+ * 20261111000000 — PDV balcão, modelo 1R). `agendado` = compromisso com
+ * horário marcado, sempre com cliente; `walk_in` = venda de balcão criada na
+ * hora, `customer_id` pode ser nulo (cliente anônimo → "Cliente de balcão").
+ * Ortogonal ao `status`: não entra em máquina de estados, RLS ou relatório
+ * financeiro — só filtra UI e autoriza o cliente nulo.
+ */
+export const APPOINTMENT_ORIGINS = ["agendado", "walk_in"] as const;
+
+export type AppointmentOrigin = (typeof APPOINTMENT_ORIGINS)[number];
+
+/**
  * Linha de `appointments`. `price_cents` é snapshot do serviço/pacote no ato;
  * `starts_at`/`ends_at`/`confirmed_at`/`created_at` são `timestamptz` UTC.
  * `confirmed_via` registra a ORIGEM da confirmação (ver `AppointmentConfirmedVia`).
+ * `customer_id` é nullable no modelo 1R: só `origin='walk_in'` pode ser
+ * anônimo (CHECK `appointments_walk_in_customer_check` no banco).
  *
  * `service_id` e `combo_id` estão em **XOR** (ADR-03, CHECK
  * `appointments_service_xor_combo`): exatamente um dos dois é preenchido — um
@@ -257,7 +271,8 @@ export type AppointmentConfirmedVia =
 export interface Appointment {
   id: string;
   tenant_id: string;
-  customer_id: string;
+  origin: AppointmentOrigin;
+  customer_id: string | null;
   professional_id: string;
   service_id: string | null;
   combo_id: string | null;

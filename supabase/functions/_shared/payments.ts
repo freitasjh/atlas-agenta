@@ -114,7 +114,7 @@ export async function loadSettlement(
 ): Promise<Record<string, unknown>> {
   const { data: appointment, error: appointmentError } = await service
     .from("appointments")
-    .select("id, status, starts_at, price_cents, customer_id, service_id, professional_id")
+    .select("id, status, origin, starts_at, price_cents, customer_id, service_id, professional_id")
     .eq("tenant_id", identity.tenantId)
     .eq("id", appointmentId)
     .maybeSingle();
@@ -185,10 +185,17 @@ export async function loadSettlement(
   const hasPaidCharge = allCharges.some((charge) => charge.status === "pago");
 
   const isAdmin = identity.role === "admin";
+  const isReceptionist = identity.role === "receptionist";
   const canManageCharges = identity.role === "admin" || identity.role === "receptionist";
   const hasPending = pendingCharges.length > 0;
+  // Walk-in (PDV): recepção vê QR em `concluido` só para venda de balcão
+  // (ADR-22). Agendado concluído para recepção continua sem QR.
+  const isWalkInConcluido =
+    (appointment as { origin?: string }).origin === "walk_in" &&
+    appointment.status === "concluido";
   const canViewQr =
-    hasPending && (isAdmin || appointment.status === "em_atendimento");
+    hasPending &&
+    (isAdmin || appointment.status === "em_atendimento" || (isReceptionist && isWalkInConcluido));
   const canRegister =
     (identity.role === "admin" || identity.role === "receptionist" || identity.role === "professional") &&
     (appointment.status === "em_atendimento" || appointment.status === "concluido");
@@ -205,6 +212,7 @@ export async function loadSettlement(
     appointment: {
       id: appointment.id,
       status: appointment.status,
+      origin: (appointment as { origin?: string }).origin ?? "agendado",
       starts_at: appointment.starts_at,
       customer_name: customerResult.data?.name ?? null,
       service_name: serviceResult.data?.name ?? null,
