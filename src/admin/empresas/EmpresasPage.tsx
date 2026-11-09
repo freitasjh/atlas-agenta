@@ -14,6 +14,7 @@ import {
 } from "./EmpresasFilters";
 import { EmpresasTable } from "./EmpresasTable";
 import { MudarStatusDialog } from "./MudarStatusDialog";
+import { TrocarPlanoDialog } from "./TrocarPlanoDialog";
 
 /** Valor com debounce leve para a busca client-side (não refaz request). */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -145,7 +146,12 @@ export function EmpresasPage() {
           ) : (
             <EmpresasTable
               tenants={filteredTenants}
-              renderAction={(tenant) => <MudarStatusDialog tenant={tenant} />}
+              renderAction={(tenant) => (
+                <span className="inline-flex flex-wrap justify-end gap-2">
+                  <TrocarPlanoDialog tenant={tenant} />
+                  <MudarStatusDialog tenant={tenant} />
+                </span>
+              )}
             />
           )}
         </>

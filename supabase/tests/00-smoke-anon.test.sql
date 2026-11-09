@@ -172,9 +172,15 @@ begin
       ('webhook_events', 'tenant_id')
     ) as v(tabela, coluna)
   loop
-    execute format('update %I set %I = %I', alvo.tabela, alvo.coluna, alvo.coluna);
-    get diagnostics n = row_count;
-    if n > 0 then afetadas := afetadas || alvo.tabela || ' (update) '; end if;
+    -- Sem privilégio de tabela (42501 antes da RLS) também conta como "0 linhas
+    -- afetadas": a trava é mais forte que a policy. Vale para UPDATE e DELETE.
+    begin
+      execute format('update %I set %I = %I', alvo.tabela, alvo.coluna, alvo.coluna);
+      get diagnostics n = row_count;
+      if n > 0 then afetadas := afetadas || alvo.tabela || ' (update) '; end if;
+    exception when insufficient_privilege then
+      -- sem UPDATE de tabela: 0 linhas por desenho (ex.: profiles, tenants).
+    end;
 
     -- profiles: anon não tem DELETE de tabela (ADR-02, aprovação do usuário). tenants: anon não
     -- tem DELETE de tabela (ADR-03, review). O comando recebe 42501 antes da RLS, e a linha

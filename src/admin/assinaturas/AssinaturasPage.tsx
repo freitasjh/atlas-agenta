@@ -24,6 +24,8 @@ import {
   useSubscriptionCharges,
   type SubscriptionCharge,
 } from "@/hooks/useSubscriptionCharges";
+import { usePlanDivergences } from "@/hooks/usePlanDivergences";
+
 import { PLANS } from "@/lib/plans";
 import type { TenantListItem } from "@/types/domain";
 
@@ -65,6 +67,10 @@ export function AssinaturasPage() {
 
   const tenants = tenantsQuery.data ?? [];
 
+  const divergencesQuery = usePlanDivergences();
+
+  const divergences = divergencesQuery.data ?? [];
+
   React.useEffect(() => {
     if (!tenantId && tenants.length > 0) setTenantId(tenants[0].id);
   }, [tenants, tenantId]);
@@ -103,6 +109,21 @@ export function AssinaturasPage() {
         titulo="Assinaturas"
         descricao="Cobranças de assinatura PIX para tenants."
       />
+
+      {divergences.length > 0 ? (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm"
+        >
+          <p className="font-medium">
+            ⚠️ {divergences.length} cobrança(s) paga(s) com plano divergente do tenant.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            O webhook nunca altera o plano sozinho — confira e ajuste pelo diálogo Trocar plano em Empresas.
+            Ver runbook em <code>supabase/functions/admin-plan/RUNBOOK.md</code>.
+          </p>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>

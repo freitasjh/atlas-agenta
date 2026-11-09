@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeInvokeError } from "@/hooks/useAdminTenants";
+import { isValidTenantId, normalizeInvokeError } from "@/hooks/useAdminTenants";
 import { mapSubscriptionError } from "@/lib/subscription-errors";
 
 /**
@@ -94,8 +94,7 @@ describe("normalizeInvokeError → mapSubscriptionError (CA-07, caminho real)", 
     );
   });
 
-  it("403 com code password_change_required (ADR-09): reconhece por status e mapeia", async () => {
-    const raw = functionsHttpError(403, {
+  it("403 com code password_change_required (ADR-09): reconhece por status e mapeia", async () => {    const raw = functionsHttpError(403, {
       error: "Troque sua senha antes de operar o painel.",
       code: "password_change_required",
       message: "Troque sua senha antes de operar o painel.",
@@ -105,5 +104,32 @@ describe("normalizeInvokeError → mapSubscriptionError (CA-07, caminho real)", 
     // O mapeador reconhece 403 como forbidden/permissão. A tela pode inspecionar
     // o objeto do erro se precisar diferenciar "super_admin bloqueado" de outro 403.
     expect(mapSubscriptionError(normalized)).toBe("Sem permissão para esta ação.");
+  });
+});
+
+/**
+ * Follow-up (code-review loop 1/3): `:id` da rota `/admin/tenants/:id/plano`
+ * é validado como UUID antes de qualquer query. Slug/injeção nunca chega ao
+ * banco — cai em "Empresa inválida".
+ */
+describe("isValidTenantId (guarda do :id da rota plano)", () => {
+  it("aceita UUID v4 válido", () => {
+    expect(isValidTenantId("a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1")).toBe(true);
+  });
+
+  it("recusa string vazia, null e undefined", () => {
+    expect(isValidTenantId("")).toBe(false);
+    expect(isValidTenantId(null)).toBe(false);
+    expect(isValidTenantId(undefined)).toBe(false);
+  });
+
+  it("recusa slug ou injeção SQL", () => {
+    expect(isValidTenantId("pro")).toBe(false);
+    expect(isValidTenantId("1' OR '1'='1")).toBe(false);
+    expect(isValidTenantId("../../admin")).toBe(false);
+  });
+
+  it("recusa UUID truncado", () => {
+    expect(isValidTenantId("a1a1a1a1-a1a1")).toBe(false);
   });
 });

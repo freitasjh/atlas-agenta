@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 
 import { supabase } from "@/lib/supabase";
 import {
@@ -44,6 +45,37 @@ export function useAdminTenants() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return adminTenantsResponseSchema.parse(data);
+    },
+  });
+}
+
+/**
+ * Guarda do `:id` da rota `/admin/tenants/:id/plano` (follow-up loop 1/3):
+ * só UUID chega ao banco. Slug/injeção cai em "Empresa inválida" sem query.
+ */
+export function isValidTenantId(raw: string | null | undefined): raw is string {
+  if (typeof raw !== "string" || raw.length === 0) return false;
+  return z.string().uuid().safeParse(raw).success;
+}
+
+/**
+ * Uma empresa por id (tela de plano). Habilitada só com UUID válido; o RLS
+ * `tenants_super_admin_select` continua sendo a trava (não-super_admin lê zero).
+ */
+export function useAdminTenant(tenantId: string | null) {
+  const valid = isValidTenantId(tenantId);
+  return useQuery<TenantListItem | null>({
+    queryKey: valid ? ["admin", "tenant", tenantId as string] : ["admin", "tenant", "none"],
+    enabled: valid,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tenants")
+        .select(ADMIN_TENANTS_SELECT)
+        .eq("id", tenantId as string)
+        .maybeSingle();
+      if (error) throw error;
+      if (data === null) return null;
+      return adminTenantsResponseSchema.parse([data])[0] ?? null;
     },
   });
 }

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "react-router-dom";
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -82,7 +83,17 @@ export function EmpresaRow({ tenant, renderAction }: EmpresaRowProps) {
           ) : null}
         </div>
       </TableCell>
-      <TableCell>{getPlanLabel(tenant.plan)}</TableCell>
+      <TableCell>
+        <div className="space-y-1">
+          <p>{getPlanLabel(tenant.plan)}</p>
+          <Link
+            to={`/admin/tenants/${tenant.id}/plano`}
+            className="inline-flex min-h-[44px] items-center text-xs text-primary underline"
+          >
+            Ver plano
+          </Link>
+        </div>
+      </TableCell>
       <TableCell>
         <StatusBadge subscriptionStatus={tenant.subscription_status} />
       </TableCell>
@@ -118,7 +129,15 @@ export function EmpresaCard({ tenant, renderAction }: EmpresaRowProps) {
       <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
         <div className="space-y-0.5">
           <dt className="text-xs text-muted-foreground">Plano</dt>
-          <dd className="text-foreground">{getPlanLabel(tenant.plan)}</dd>
+          <dd className="space-y-1 text-foreground">
+            <p>{getPlanLabel(tenant.plan)}</p>
+            <Link
+              to={`/admin/tenants/${tenant.id}/plano`}
+              className="inline-flex min-h-[44px] items-center text-xs text-primary underline"
+            >
+              Ver plano
+            </Link>
+          </dd>
         </div>
         <div className="space-y-0.5">
           <dt className="text-xs text-muted-foreground">Fim do trial</dt>
