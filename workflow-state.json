@@ -1,18 +1,18 @@
 {
-  "current_feature": "seed-superadmin-default",
-  "current_phase": "Completed",
-  "previous_phase": "Testing",
-  "next_phase": null,
+  "current_feature": "pdv-balcao",
+  "current_phase": "Testing",
+  "previous_phase": "Execution",
+  "next_phase": "Completed",
   "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-09T18:04:44.855918+00:00",
+    "last_invoked_at": "2026-11-09T18:30:00.000000+00:00",
     "last_status": "passed",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Loop1 APPROVED 0 débito. Diff 1 arquivo SQL, 92 linhas."
+    "reviewer_notes": "5 ADRs (21-25) revisados inline; 1 falha pre-existente confirmada sem regressao (AgendaPage.payments). Reviewer formal do pipeline pendente."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-09T18:34:46.367382+00:00",
+  "last_update": "2026-11-09T18:30:00.000000+00:00",
   "code_review_status": "passed",
   "pendencies": [
     {
@@ -36,31 +36,42 @@
       "what": "Abrir PR e revisar/mergear manualmente",
       "url": "https://github.com/freitasjh/atlas-agenta/compare/master...adr/cobranca-pix-asaas",
       "owner": "humano"
+    },
+    {
+      "id": "pdv-integration-local",
+      "what": "Supabase db reset 2x + matriz RLS/comissao/Pix/idempotencia contra banco real; npm run test:functions (sem deno nesta sessao)",
+      "owner": "developer-engineer"
+    },
+    {
+      "id": "pr-pdv-balcao",
+      "what": "Revisar e mergear branch feat/pdv-balcao manualmente (sem merge automatico)",
+      "url": "https://github.com/freitasjh/atlas-agenda/compare/master...feat/pdv-balcao",
+      "owner": "humano"
     }
   ],
   "artifacts": {
-    "prd": null,
-    "research": null,
-    "adr_index": null,
-    "spec": ".spec/archive/20261109-seed-superadmin-default/SPEC.md",
-    "plan": ".spec/archive/20261109-seed-superadmin-default/PLAN.md",
-    "tasks": ".spec/archive/20261109-seed-superadmin-default/TASKS.md"
+    "prd": ".agents/tasks/dev-pipeline/prd.md",
+    "research": ".agents/tasks/dev-pipeline/analysis-data.md",
+    "adr_index": ".agents/tasks/dev-pipeline/adr/index.json",
+    "spec": null,
+    "plan": null,
+    "tasks": ".agents/tasks/dev-pipeline/adr/adr-21-pdv-criacao-walk-in.md"
   },
   "prd_adr": {
-    "prd_id": "cobranca-formas-pagamento",
+    "prd_id": "pdv-balcao",
     "prd_status": "approved",
     "active_adr": null,
     "adr_order": [
-      "ADR-001",
-      "ADR-002",
-      "ADR-003",
-      "ADR-004",
-      "ADR-005"
+      "ADR-21",
+      "ADR-22",
+      "ADR-23",
+      "ADR-24",
+      "ADR-25"
     ],
     "snapshots": [
       {
-        "at": "2026-11-07T18:03:47+00:00",
-        "note": "PR #43 merged na master; ADR-001..005 merged"
+        "at": "2026-11-09T18:30:00.000000+00:00",
+        "note": "PDV balcao 1R implementado em feat/pdv-balcao (5 commits, 1 por ADR). Build+typecheck+vitest verdes exceto 1 pre-existente confirmada. Integracao banco-real pendente."
       }
     ]
   },
@@ -128,6 +139,22 @@
       "done": 6,
       "total": 6,
       "status": "completed"
+    },
+    {
+      "name": "internal-enroll-rota",
+      "stage": "BugCompleted",
+      "progress": 100,
+      "done": 4,
+      "total": 4,
+      "status": "completed"
+    },
+    {
+      "name": "pdv-balcao",
+      "stage": "Testing",
+      "progress": 90,
+      "done": 5,
+      "total": 5,
+      "status": "active"
     }
   ],
   "overrides": [
