@@ -47,8 +47,15 @@ import { RequireActiveSubscription } from "@/app/guards/RequireActiveSubscriptio
 import { AdminLayout } from "@/admin/AdminLayout";
 import { AdminDashboardPage, AssinaturasPage, EmpresasPage, MetricasPage } from "@/admin/pages";
 import { ConvitesPage } from "@/admin/convites/ConvitesPage";
+import { InternalAdminLayout } from "@/internal-admin/InternalAdminLayout";
+import { RequireInternalOperator } from "@/internal-admin/RequireInternalOperator";
+import { InternalLoginPage } from "@/internal-admin/pages/InternalLoginPage";
+import { InternalMfaPage } from "@/internal-admin/pages/InternalMfaPage";
+import { InternalEnrollPage } from "@/internal-admin/pages/InternalEnrollPage";
+import { InternalHomePage } from "@/internal-admin/pages/InternalHomePage";
 import { AuditoriaPage } from "@/admin/auditoria/AuditoriaPage";
 import { AgendarPage } from "@/public/AgendarPage";
+import { TenantPlanoPage } from "@/admin/tenants/TenantPlanoPage";
 
 /**
  * Casca de roteamento (data router). A raiz monta providers + skip-link +
@@ -198,6 +205,7 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
                         element: <Navigate to="/admin/empresas" replace />,
                       },
                       { path: "empresas", element: <EmpresasPage /> },
+                      { path: "tenants/:id/plano", element: <TenantPlanoPage /> },
                       { path: "dashboard", element: <AdminDashboardPage /> },
                       { path: "metricas", element: <MetricasPage /> },
                       { path: "convites", element: <ConvitesPage /> },
@@ -213,6 +221,22 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
       },
       // Curinga → 404 pt-BR
       { path: "*", element: <NotFound /> },
+      // Área interna isolada (internal-operators-mfa): sem RequireRole/tenant.
+      // Prova única via RequireInternalOperator (Edge verify-operator, AAL2 por
+      // request). Login/MFA/enroll fora do guard; o núcleo exige operador+AAL2.
+      {
+        path: "internal-admin",
+        element: <InternalAdminLayout />,
+        children: [
+          { path: "login", element: <InternalLoginPage /> },
+          { path: "mfa", element: <InternalMfaPage /> },
+          { path: "enroll", element: <InternalEnrollPage /> },
+          {
+            element: <RequireInternalOperator />,
+            children: [{ index: true, element: <InternalHomePage /> }],
+          },
+        ],
+      },
     ],
   },
 ], {

@@ -25,6 +25,7 @@ import {
   profileRowSchema,
   type ProfileRow,
 } from "./schemas.ts";
+import { isActiveInternalOperator, readVerifiedFactorsCount } from "../_shared/internal-operator.ts";
 
 const HOOK_SECRET_ENV = "CUSTOM_ACCESS_TOKEN_HOOK_SECRET";
 
@@ -202,6 +203,26 @@ export async function handleHookRequest(
     // emitimos claims mínimas (user_role=null, tenant_id=null, active=false) com 200.
     // Fail-closed permanece para erro de leitura do banco (error !== null) e shape inválido,
     // tratados acima (500 identity_unavailable).
+
+    // 4. Gate de operador interno (BE-03): super_admin só recebe claims com
+    // registro ativo em internal_operators + AAL2 server-side (Auth Admin API,
+    // nunca claim do cliente). Sem operador ou sem factor verificado, o login
+    // falha fechado (500 identity_unavailable) — nunca emite papel privilegiado.
+    if (profile && profile.role === "super_admin") {
+      try {
+        const operator = await isActiveInternalOperator(service, input.data.user_id);
+        const verified = operator
+          ? await readVerifiedFactorsCount(service, input.data.user_id)
+          : 0;
+        if (!operator || verified <= 0) {
+          console.error("custom-access-token: super_admin without operator+aal2 denied");
+          return errorResponse("identity_unavailable");
+        }
+      } catch {
+        console.error("custom-access-token: operator check failed");
+        return errorResponse("identity_unavailable");
+      }
+    }
 
     // 4. Monta as claims. Flag inválida também falha fechada.
     const built = buildHookClaims(input.data.claims, profile);
