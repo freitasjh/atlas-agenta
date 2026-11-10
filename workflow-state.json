@@ -1,19 +1,41 @@
 {
   "current_feature": "pdv-checkout-anonimo",
-  "current_phase": "BugReview",
-  "previous_phase": "BugFix",
-  "next_phase": "BugCompleted",
+  "current_phase": "BugCompleted",
+  "previous_phase": "BugReview",
+  "next_phase": null,
   "type": "bugfix",
   "code_review": {
-    "last_invoked_at": null,
+    "last_invoked_at": "2026-11-10T00:11:36.148Z",
     "last_status": "pending",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Iteração 1 do loop aplicada pelo developer-engineer: prova falsa do settlement portada para Vitest (src/lib/payments-settlement.test.ts) e Deno órfão removido; reset do cliente/opt-in no sucesso do PDV; erros de nome/WhatsApp renderizados com role=alert + aria-invalid/aria-describedby; checkbox de opt-in do WhatsApp no bloco de identificação; testes de regressão de register/settlement adicionados; follow-up 23P01 registrado. Aguardando novo veredito do code-reviewer."
+    "reviewer_notes": "Revisao 2 APPROVED (2026-11-10T00:11:36Z) com 0 criticos. Reaberta como pending: o gate Deno (2026-11-11) alterou codigo apos esse veredito (nullable.ts, payments.ts, create-charge/handler.ts) — exige novo review antes de declarar completo."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-10T00:03:20.165780+00:00",
+  "last_update": "2026-11-11T00:00:00.000Z",
   "code_review_status": "pending",
+  "deno_gate": {
+    "status": "passed",
+    "executed_at": "2026-11-11T00:00:00.000Z",
+    "deno_version": "2.9.8",
+    "check_functions": {
+      "command": "bash scripts/deno.sh check supabase/functions/*/index.ts",
+      "errors": 0
+    },
+    "test_functions": {
+      "command": "npm run test:functions",
+      "test_files": 39,
+      "passed": 438,
+      "failed": 0,
+      "newly_covered_orphans": [
+        "supabase/functions/create-walk-in/handler.test.ts",
+        "supabase/functions/_shared/internal-operator.test.ts",
+        "supabase/functions/whatsapp/evolution-adapter.test.ts"
+      ]
+    },
+    "wrapper": "scripts/deno.sh",
+    "ci_workflow": ".github/workflows/functions-tests.yml"
+  },
   "follow_ups_created_at_basis": "2026-11-10T00:03:20.165780+00:00",
   "follow_ups": [
     {
@@ -50,11 +72,6 @@
       "what": "Abrir PR e revisar/mergear manualmente",
       "url": "https://github.com/freitasjh/atlas-agenta/compare/master...adr/cobranca-pix-asaas",
       "owner": "humano"
-    },
-    {
-      "id": "test:functions",
-      "what": "npm run test:functions (Deno) não executado: binário deno ausente na sessão. Decisão do usuário: não necessário agora",
-      "owner": "decisao-usuario"
     },
     {
       "id": "phase-completed-seal-host",
