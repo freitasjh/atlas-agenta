@@ -1,22 +1,22 @@
 {
-  "current_feature": "pdv-checkout-anonimo",
-  "current_phase": "BugCompleted",
-  "previous_phase": "BugReview",
-  "next_phase": null,
+  "current_feature": "pdv-venda-consecutiva",
+  "current_phase": "BugReview",
+  "previous_phase": "BugFix",
+  "next_phase": "BugCompleted",
   "type": "bugfix",
   "code_review": {
-    "last_invoked_at": "2026-11-10T00:25:20.483Z",
-    "last_status": "passed",
+    "last_invoked_at": null,
+    "last_status": "pending",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Revisao 3 APPROVED: 0 criticos. 8 observacoes nao bloqueantes (dirs sem teste no script, espaco final, npm ci no CI, deno-version flutuante, drift de doc, helper sem teste proprio)."
+    "reviewer_notes": "Aguardando review do batch pdv-venda-consecutiva."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-10T00:28:26.055Z",
-  "code_review_status": "passed",
+  "last_update": "2026-11-10T01:00:18.941Z",
+  "code_review_status": "pending",
   "deno_gate": {
     "status": "passed",
-    "executed_at": "2026-11-10T00:28:26.055Z",
+    "executed_at": "2026-11-10T01:00:18.941Z",
     "deno_version": "2.9.8",
     "ci_deno_version": "v2.9.8",
     "check_functions": {
@@ -25,34 +25,15 @@
     },
     "test_functions": {
       "command": "npm run test:functions",
-      "test_files": 40,
-      "passed": 443,
-      "failed": 0,
-      "newly_covered_orphans": [
-        "supabase/functions/create-walk-in/handler.test.ts",
-        "supabase/functions/_shared/internal-operator.test.ts",
-        "supabase/functions/whatsapp/evolution-adapter.test.ts",
-        "supabase/functions/_shared/nullable.test.ts"
-      ]
+      "test_files": 41,
+      "passed": 449,
+      "failed": 0
     },
-    "removed_test_dirs": [
-      "supabase/functions/deactivate-user/",
-      "supabase/functions/reactivate-user/",
-      "supabase/functions/change-user-role/",
-      "supabase/functions/unlink-professional-profile/"
-    ],
     "wrapper": "scripts/deno.sh",
     "ci_workflow": ".github/workflows/functions-tests.yml"
   },
   "follow_ups_created_at_basis": "2026-11-10T00:03:20.165780+00:00",
-  "follow_ups": [
-    {
-      "id": "23P01-slot-conflict",
-      "what": "O contrato de erro da Edge não mapeia a exclusão de slot (SQLSTATE 23P01 / appointments_no_overlap) para um código estável: hoje vira 500 INTERNAL. Dois walk-ins no mesmo profissional dentro da mesma janela (ou uma corrida de agendamento) expõem o problema. Corrigir exige alterar mapRpcError/contrato de erro da Edge — fora do escopo deste bugfix.",
-      "owner": "architect",
-      "created_at": "2026-11-10T00:03:20.165780+00:00"
-    }
-  ],
+  "follow_ups": [],
   "pendencies": [
     {
       "id": "A3",
@@ -88,7 +69,7 @@
     "adr_index": null,
     "spec": null,
     "plan": null,
-    "tasks": ".spec/bugs/pdv-checkout-anonimo/TASKS.md"
+    "tasks": ".spec/bugs/pdv-venda-consecutiva/TASKS.md"
   },
   "prd_adr": {
     "prd_id": "pdv-balcao",
@@ -204,6 +185,14 @@
       "done": 5,
       "total": 5,
       "status": "completed"
+    },
+    {
+      "name": "pdv-venda-consecutiva",
+      "stage": "BugReview",
+      "progress": 100,
+      "done": 4,
+      "total": 4,
+      "status": "active"
     }
   ],
   "overrides": []

@@ -19,6 +19,7 @@ import {
 } from "../helpers/payments-fixtures.ts";
 import { sql } from "../helpers/sql.ts";
 import { createTenantMember, deleteTestUsers, type TestUser } from "../helpers/users.ts";
+import { errorResponse, mapRpcError } from "../../../supabase/functions/_shared/http.ts";
 
 const tenantsToCleanup: string[] = [];
 
@@ -700,7 +701,7 @@ describe("Idempotência e concorrência da criação", () => {
     expect(ledgerCount(tenant.tenantId, appointmentId)).toBe(1);
   });
 
-  it("2 vendas simultâneas do mesmo profissional => 1 sucesso e 1 conflito 23P01", async () => {
+  it("2 vendas simultâneas do mesmo profissional => ambas sucesso (walk-in não ocupa agenda)", async () => {
     const race = await seedWalkInCatalog(tenant.tenantId);
     const [first, second] = await Promise.all([
       callCreateWalkIn({
@@ -719,12 +720,113 @@ describe("Idempotência e concorrência da criação", () => {
       }),
     ]);
 
-    const successes = [first, second].filter((result) => result.error === null);
-    const failures = [first, second].filter((result) => result.error !== null);
-    expect(successes).toHaveLength(1);
-    expect(failures).toHaveLength(1);
-    expect(failures[0]?.error?.code).toBe("23P01");
-    expect(appointmentCount(tenant.tenantId, race.professionalId)).toBe(1);
+    // A constraint de exclusão protege AGENDAMENTO; venda walk-in é registro de
+    // venda e não disputa o horário do profissional (migration
+    // 20261112090000_appointments_no_overlap_origin.sql).
+    expect(first.error).toBeNull();
+    expect(second.error).toBeNull();
+    expect(first.data?.id).not.toBe(second.data?.id);
+    expect(appointmentCount(tenant.tenantId, race.professionalId)).toBe(2);
+  });
+});
+
+describe("Venda consecutiva no PDV (walk-in não ocupa a agenda)", () => {
+  let tenant: PaymentsTenant;
+  let catalog: WalkInCatalog;
+
+  beforeAll(async () => {
+    tenant = await newTenant("pdv-consecutive");
+    await setTenantSegment(tenant.tenantId, "barbearia");
+    catalog = await seedWalkInCatalog(tenant.tenantId, { linkService: true });
+  });
+
+  it("2 vendas consecutivas do mesmo profissional dentro da duração => ambas 201 e pagamento 200", async () => {
+    const first = await edgeWalkIn(tenant.admin, {
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      creation_idempotency_key: randomUUID(),
+    });
+    expect(first.status).toBe(201);
+    const firstId = String(first.json?.appointment_id ?? "");
+    expect(firstId).not.toBe("");
+
+    const second = await edgeWalkIn(tenant.admin, {
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      creation_idempotency_key: randomUUID(),
+    });
+    expect(second.status).toBe(201);
+    const secondId = String(second.json?.appointment_id ?? "");
+    expect(secondId).not.toBe("");
+    expect(secondId).not.toBe(firstId);
+
+    for (const appointmentId of [firstId, secondId]) {
+      const paid = await callFunction("register-appointment-payments", {
+        token: tenant.admin.accessToken,
+        body: {
+          appointment_id: appointmentId,
+          idempotency_key: randomUUID(),
+          close_appointment: true,
+          payments: [{ method: "dinheiro", amount_cents: 10_000 }],
+        },
+      });
+      expect(paid.status).toBe(200);
+      expect(await getAppointmentStatus(appointmentId)).toBe("concluido");
+    }
+
+    expect(appointmentCount(tenant.tenantId, catalog.professionalId)).toBe(2);
+  });
+});
+
+describe("Agendado continua protegido pela constraint de exclusão", () => {
+  let tenant: PaymentsTenant;
+  let catalog: WalkInCatalog;
+
+  beforeAll(async () => {
+    tenant = await newTenant("pdv-slot-guard");
+    catalog = await seedWalkInCatalog(tenant.tenantId, { withCustomer: true });
+  });
+
+  function insertScheduled(startsAt: Date) {
+    return serviceClient().from("appointments").insert({
+      tenant_id: tenant.tenantId,
+      origin: "agendado",
+      customer_id: catalog.customerId,
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 30 * 60_000).toISOString(),
+      price_cents: 10_000,
+      status: "pendente",
+    });
+  }
+
+  it("dois agendamentos sobrepostos do mesmo profissional => 23P01", async () => {
+    const startsAt = new Date(Date.now() + 2 * 3_600_000);
+    const first = await insertScheduled(startsAt);
+    expect(first.error).toBeNull();
+
+    // Mesma janela: a exclusão de agendamento continua ativa.
+    const overlap = await insertScheduled(new Date(startsAt.getTime() + 5 * 60_000));
+    expect(overlap.error?.code).toBe("23P01");
+  });
+
+  it("o erro real 23P01 do agendado vira 409 SLOT_CONFLICT, nunca 500", async () => {
+    const startsAt = new Date(Date.now() + 4 * 3_600_000);
+    const first = await insertScheduled(startsAt);
+    expect(first.error).toBeNull();
+
+    const overlap = await insertScheduled(new Date(startsAt.getTime() + 5 * 60_000));
+    expect(overlap.error?.code).toBe("23P01");
+
+    const mapped = mapRpcError(overlap.error);
+    expect(mapped.status).toBe(409);
+    expect(mapped.code).toBe("SLOT_CONFLICT");
+
+    const response = errorResponse(mapped);
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.code).toBe("SLOT_CONFLICT");
   });
 });
 

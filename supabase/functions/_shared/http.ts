@@ -2,6 +2,8 @@
 //
 // Regras:
 //  * `mapRpcError` traduz SQLSTATE PT4xx + message=CODE em HTTP + código estável;
+//  * `23P01` (exclusion_violation de `appointments_no_overlap`) vira 409
+//    SLOT_CONFLICT — conflito de horário é erro de negócio, não falha interna;
 //  * qualquer outra falha vira 500 INTERNAL, sem ecoar detalhe de SQL;
 //  * `logEvent` só aceita as chaves da whitelist (nunca PII, QR, copia-e-cola ou payload).
 import { CORS_HEADERS } from "./http-cors.ts";
@@ -56,6 +58,7 @@ const DOMAIN_MESSAGES: Record<string, string> = {
   PROFESSIONAL_NOT_AVAILABLE: "Profissional não encontrado ou inativo.",
   SERVICE_NOT_FOUND: "Serviço não encontrado ou inativo.",
   CUSTOMER_NOT_FOUND: "Cliente não encontrado.",
+  SLOT_CONFLICT: "Profissional ocupado neste horário. Escolha outro profissional ou outro horário.",
   METHOD_NOT_ALLOWED: "Método não suportado.",
   INTERNAL: "Erro interno.",
 };
@@ -70,6 +73,12 @@ export function mapRpcError(error: { code?: string | null; message?: string | nu
   const rawMessage = error?.message ?? "";
   if (/^PT\d{3}$/.test(rawCode) && /^[A-Z][A-Z0-9_]{2,63}$/.test(rawMessage)) {
     return new ApiError(Number(rawCode.slice(2)), rawMessage);
+  }
+  // SQLSTATE 23P01 (exclusion_violation): a constraint `appointments_no_overlap`
+  // barrou sobreposição de agendamento do mesmo profissional. Erro de negócio
+  // com mensagem própria — nunca "Erro interno".
+  if (rawCode === "23P01") {
+    return new ApiError(409, "SLOT_CONFLICT");
   }
   return new ApiError(500, "INTERNAL");
 }

@@ -101,6 +101,11 @@ export const PAYMENT_ERROR_MAP: Readonly<Record<string, PaymentErrorInfo>> = {
     retryable: false,
     action: "review",
   },
+  SLOT_CONFLICT: {
+    messageKey: "payments.error.slotConflict",
+    retryable: false,
+    action: "review",
+  },
 };
 
 export interface PaymentApiErrorOptions {

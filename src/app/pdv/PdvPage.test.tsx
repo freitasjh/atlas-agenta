@@ -11,8 +11,14 @@ import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 
 const mocks = vi.hoisted(() => ({
   payments: true as boolean | null,
+  canScheduleForAnyProfessional: true,
   professionals: [
-    { id: "44444444-4444-4444-4444-444444444444", name: "Beto", active: true },
+    {
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "Beto",
+      profile_id: "u1",
+      active: true,
+    },
   ],
   services: [
     {
@@ -30,7 +36,7 @@ vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
     canRegisterPayments: true,
     canManageAppointments: true,
-    canScheduleForAnyProfessional: true,
+    canScheduleForAnyProfessional: mocks.canScheduleForAnyProfessional,
     isAdmin: true,
     isProfessional: false,
     isReceptionist: false,
@@ -80,9 +86,18 @@ vi.mock("@/hooks/useCustomers", () => ({
   useCreateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
-vi.mock("@/app/agenda/pagamentos/PaymentCaptureDialog", () => ({
-  PaymentCaptureDialog: () => null,
-}));
+vi.mock("@/app/agenda/pagamentos/PaymentCaptureDialog", async () => {
+  const React = await import("react");
+  return {
+    // Stub mínimo: expõe `onCompleted` para o teste dirigir a conclusão da venda.
+    PaymentCaptureDialog: (props: { onCompleted?: () => void }) =>
+      React.createElement(
+        "button",
+        { type: "button", onClick: () => props.onCompleted?.() },
+        "concluir-venda",
+      ),
+  };
+});
 
 function wrapper(children: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -97,7 +112,33 @@ afterEach(() => {
   cleanup();
   mocks.pending = [];
   mocks.payments = true;
+  mocks.canScheduleForAnyProfessional = true;
 });
+
+/** Venda em andamento usada para abrir o diálogo de pagamento pela lista. */
+function pendingAppointment(): Record<string, unknown> {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    tenant_id: "22222222-2222-2222-2222-222222222222",
+    origin: "walk_in",
+    customer_id: null,
+    professional_id: "44444444-4444-4444-4444-444444444444",
+    service_id: "55555555-5555-5555-5555-555555555555",
+    combo_id: null,
+    starts_at: "2026-11-09T15:00:00.000Z",
+    ends_at: "2026-11-09T15:30:00.000Z",
+    price_cents: 5000,
+    status: "em_atendimento",
+    confirmed_at: null,
+    confirmed_via: null,
+    created_at: "2026-11-09T14:55:00.000Z",
+    customers: null,
+    services: { name: "Corte", duration_minutes: 30, price_cents: 5000 },
+    combos: null,
+    professionals: { name: "Beto" },
+    commission_cents: null,
+  };
+}
 
 describe("PdvPage — PDV balcão (ADR-23)", () => {
   it("renderiza o formulário de venda quando payments é true", () => {
@@ -207,5 +248,65 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
     const phone = screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement;
     expect(phone.getAttribute("aria-invalid")).toBe("true");
     expect(phone.getAttribute("aria-describedby")).toBe("pdv-cliente-fone-erro");
+  });
+
+  it("concluir a venda limpa o formulário inteiro (identify + campos + seleção)", async () => {
+    mocks.pending = [pendingAppointment()];
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    // Preenche a identificação da venda em andamento.
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(paymentsMessages.pdv.customerName), {
+      target: { value: "Ana" },
+    });
+    fireEvent.change(screen.getByLabelText(paymentsMessages.pdv.customerPhone), {
+      target: { value: "11999998888" },
+    });
+
+    // Abre o pagamento pela lista e conclui (stub do diálogo).
+    fireEvent.click(
+      screen.getByRole("button", { name: paymentsMessages.pdv.openPayment }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "concluir-venda" }));
+
+    // `identify` volta a falso: campos ocultos e dica de anônimo visível.
+    expect(screen.queryByLabelText(paymentsMessages.pdv.customerName)).toBeNull();
+    expect(screen.getByText(paymentsMessages.pdv.anonymousHint)).toBeTruthy();
+    // Estado inicial não tem erro visível (reset limpa o formState).
+    expect(screen.queryByText("Selecione o serviço.")).toBeNull();
+
+    // Reabrir mostra os campos vazios.
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(
+      (screen.getByLabelText(paymentsMessages.pdv.customerName) as HTMLInputElement).value,
+    ).toBe("");
+    expect(
+      (screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement).value,
+    ).toBe("");
+
+    // Profissional e serviço voltaram ao inicial (submit acusa os dois).
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),
+    );
+    expect(await screen.findByText("Selecione o profissional.")).toBeTruthy();
+    expect(await screen.findByText("Selecione o serviço.")).toBeTruthy();
+  });
+
+  it("papel professional repopula o próprio profissional após o reset", async () => {
+    mocks.canScheduleForAnyProfessional = false;
+    mocks.pending = [pendingAppointment()];
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: paymentsMessages.pdv.openPayment }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "concluir-venda" }));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),
+    );
+
+    expect(await screen.findByText("Selecione o serviço.")).toBeTruthy();
+    expect(screen.queryByText("Selecione o profissional.")).toBeNull();
   });
 });

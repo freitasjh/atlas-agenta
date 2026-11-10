@@ -49,6 +49,11 @@ describe("PAYMENT_ERROR_MAP", () => {
       messageKey: "payments.error.network",
       retryable: true,
     });
+    expect(PAYMENT_ERROR_MAP.SLOT_CONFLICT).toMatchObject({
+      messageKey: "payments.error.slotConflict",
+      retryable: false,
+      action: "review",
+    });
   });
 });
 

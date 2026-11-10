@@ -87,6 +87,7 @@ export const paymentsMessages = {
     forbidden: "Você não tem permissão para esta ação.",
     generic: "Não foi possível concluir a operação. Tente de novo.",
     professionalBusy: "Profissional ocupado neste horário. Escolha outro profissional ou aguarde.",
+    slotConflict: "Profissional ocupado neste horário. Escolha outro profissional ou outro horário.",
     serviceNotOffered: "Este profissional não oferece o serviço selecionado.",
     segmentNotEnabled: "PDV disponível apenas para salões e barbearias.",
   },
