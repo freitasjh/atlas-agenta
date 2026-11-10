@@ -134,7 +134,7 @@ export async function loadSettlement(
       // `customer_id` é NULL em walk-in anônimo: `.eq("id", null)` vira
       // `id=eq.null` e o PostgREST responde 22P02 (400). Id opcional só consulta
       // quando existe.
-      queryOptionalById(appointment.customer_id, () =>
+      queryOptionalById<{ name: string }>(appointment.customer_id, () =>
         service
           .from("customers")
           .select("name")
@@ -143,7 +143,7 @@ export async function loadSettlement(
           .maybeSingle(),
       ),
       // `service_id` é NULL em venda por combo (XOR service_id/combo_id).
-      queryOptionalById(appointment.service_id, () =>
+      queryOptionalById<{ name: string }>(appointment.service_id, () =>
         service
           .from("services")
           .select("name")

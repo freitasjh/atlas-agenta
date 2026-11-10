@@ -292,7 +292,11 @@ async function attachGatewayData(
   // Walk-in anônimo tem `customer_id` NULL: nunca montar `.eq("id", null)`
   // (PostgREST 22P02 → 500 INTERNAL). Sem cliente, o gateway usa a referência
   // `walkin:<appointmentId>` (mesmo padrão do register-appointment-payments).
-  const { data: customer, error: customerError } = await queryOptionalById(customerId, () =>
+  const { data: customer, error: customerError } = await queryOptionalById<{
+    name: string;
+    email: string | null;
+    phone: string | null;
+  }>(customerId, () =>
     service
       .from("customers")
       .select("name, email, phone")

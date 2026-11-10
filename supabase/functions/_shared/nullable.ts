@@ -13,11 +13,15 @@ export interface OptionalQueryResult<T> {
 /**
  * Executa a query somente quando `id` é um uuid presente; id nulo/ausente
  * devolve o mesmo shape de "nenhuma linha" sem tocar no PostgREST.
+ *
+ * `query` devolve `PromiseLike`, não `Promise`: o `PostgrestBuilder` do
+ * supabase-js é thenable (tem `.then`) mas não implementa `catch`/`finally`.
+ * Devolvemos sempre uma `Promise` real para o chamador poder usar `await`.
  */
 export async function queryOptionalById<T>(
   id: string | null | undefined,
-  query: () => Promise<OptionalQueryResult<T>>,
+  query: () => PromiseLike<OptionalQueryResult<T>>,
 ): Promise<OptionalQueryResult<T>> {
   if (id === null || id === undefined) return { data: null, error: null };
-  return query();
+  return Promise.resolve().then(() => query());
 }
