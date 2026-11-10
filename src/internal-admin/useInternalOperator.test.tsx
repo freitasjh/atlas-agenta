@@ -89,3 +89,50 @@ describe("useInternalOperator — mapeamento snake_case da Edge (C4)", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 });
+
+describe("useInternalOperator — roteamento enroll × mfa (enrolled_factors)", () => {
+  it("operador aal1 sem factors vai para enroll_required", async () => {
+    invoke.mockResolvedValue({
+      data: { is_operator: true, aal: "aal1", user_id: "x", enrolled_factors: 0 },
+      error: null,
+    });
+    const { result } = renderOperatorHook();
+    await waitFor(() => expect(result.current.status).toBe("enroll_required"));
+  });
+
+  it("operador aal1 com factors vai para mfa_required (inalterado)", async () => {
+    invoke.mockResolvedValue({
+      data: { is_operator: true, aal: "aal1", user_id: "x", enrolled_factors: 2 },
+      error: null,
+    });
+    const { result } = renderOperatorHook();
+    await waitFor(() => expect(result.current.status).toBe("mfa_required"));
+  });
+
+  it("resposta legada sem enrolled_factors mantém mfa_required", async () => {
+    invoke.mockResolvedValue({
+      data: { is_operator: true, aal: "aal1", user_id: "x" },
+      error: null,
+    });
+    const { result } = renderOperatorHook();
+    await waitFor(() => expect(result.current.status).toBe("mfa_required"));
+  });
+
+  it("resposta legada aal2 sem enrolled_factors mantém allowed", async () => {
+    invoke.mockResolvedValue({
+      data: { is_operator: true, aal: "aal2", user_id: "x" },
+      error: null,
+    });
+    const { result } = renderOperatorHook();
+    await waitFor(() => expect(result.current.status).toBe("allowed"));
+  });
+
+  it("aal2 com enrolled_factors 0 vira forbidden (fail-closed)", async () => {
+    invoke.mockResolvedValue({
+      data: { is_operator: true, aal: "aal2", user_id: "x", enrolled_factors: 0 },
+      error: null,
+    });
+    const { result } = renderOperatorHook();
+    await waitFor(() => expect(result.current.status).toBe("forbidden"));
+  });
+});

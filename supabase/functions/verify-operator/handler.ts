@@ -1,15 +1,23 @@
-// Handler da Edge Function `verify-operator` — único caminho de prova de operador.
-// POST com `Authorization: Bearer <jwt>`; responde 200 {is_operator, aal, user_id}
-// ou 403 fail-closed {is_operator:false}. Erro/timeout também nega. Sem PII em log.
-// verify_jwt=true (config.toml): o GoTrue valida o JWT antes; aqui revalidamos via
-// Auth API + factors AAL2 por request, sem confiar em claim nem em cache client.
+// Handler da Edge Function `verify-operator` — status de operador p/ roteamento.
+// POST com `Authorization: Bearer <jwt>`; operador ativo responde 200
+// {is_operator:true, aal, user_id, enrolled_factors}; não-operador e erro
+// interno respondem o MESMO corpo `{ is_operator: false }` com 403 — o cliente
+// nunca distingue qual etapa negou. Só a ausência de token/JWT inválido é 401.
+// Sem PII em log. verify_jwt=true (config.toml): o GoTrue valida o JWT antes;
+// aqui revalidamos via Auth API + factors AAL2 por request, sem confiar em
+// claim nem em cache client.
 //
-// Anti-enumeração server-side: não-operador, sem factor verificado e erro interno
-// respondem o MESMO corpo `{ is_operator: false }` com 403 — o cliente nunca
-// distingue qual etapa negou. Só a ausência de token é 401 (não autenticado).
+// Decisão enroll-rota: este handler RELATA (200) o `aal` da sessão + a
+// contagem de factors verificados p/ o cliente rotear enroll×mfa. NÃO autoriza:
+// a prova real segue em `verifyInternalOperator` (usado pelas Edges de dados,
+// fail-closed) e no guard do cliente (só aal2+factor libera área interna).
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { CORS_HEADERS, jsonResponse, ApiError, errorResponse } from "../_shared/http.ts";
-import { verifyInternalOperator } from "../_shared/internal-operator.ts";
+import { CORS_HEADERS, jsonResponse } from "../_shared/http.ts";
+import {
+  isActiveInternalOperator,
+  readJwtAal,
+  readVerifiedFactorsCount,
+} from "../_shared/internal-operator.ts";
 
 const corsHeaders: Record<string, string> = {
   ...CORS_HEADERS,
@@ -51,15 +59,39 @@ export function createVerifyOperatorHandler(
       });
     }
     try {
-      const result = await verifyInternalOperator(service, token);
-      return jsonResponse({ is_operator: result.isOperator, aal: result.aal, user_id: result.userId }, 200);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      const { data, error } = await service.auth.getUser(token);
+      if (error || !data.user) {
         return new Response(JSON.stringify({ is_operator: false }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      const userId = data.user.id;
+      let operator = false;
+      try {
+        operator = await isActiveInternalOperator(service, userId);
+      } catch {
+        return forbiddenResponse();
+      }
+      if (!operator) {
+        console.warn("verify-operator: deny non-operator");
+        return forbiddenResponse();
+      }
+      // Operador ativo: relata aal da sessão + factors enrolados (200). O
+      // guard decide: aal2+factor → área; aal1+0 factors → enroll; aal1+factors
+      // → mfa. Leitura de factors falha fechado (403 idêntico).
+      let enrolled = 0;
+      try {
+        enrolled = await readVerifiedFactorsCount(service, userId);
+      } catch {
+        return forbiddenResponse();
+      }
+      const aal = readJwtAal(token) ?? "aal1";
+      return jsonResponse(
+        { is_operator: true, aal, user_id: userId, enrolled_factors: enrolled },
+        200,
+      );
+    } catch {
       return forbiddenResponse();
     }
   };

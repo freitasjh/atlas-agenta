@@ -7,6 +7,7 @@ export type InternalOperatorState =
   | { status: "loading" }
   | { status: "unauthenticated" }
   | { status: "mfa_required" }
+  | { status: "enroll_required" }
   | { status: "forbidden" }
   | { status: "allowed"; userId: string };
 
@@ -34,6 +35,8 @@ export function useInternalOperator(): InternalOperatorState {
             aal?: unknown;
             user_id?: unknown;
             userId?: unknown;
+            enrolled_factors?: unknown;
+            enrolledFactors?: unknown;
           }
         | null;
       if (!body) return null;
@@ -48,10 +51,17 @@ export function useInternalOperator(): InternalOperatorState {
           : typeof body.userId === "string"
             ? body.userId
             : null;
+      const rawEnrolled =
+        typeof body.enrolled_factors === "number"
+          ? body.enrolled_factors
+          : typeof body.enrolledFactors === "number"
+            ? body.enrolledFactors
+            : undefined;
       return {
         isOperator: rawIsOperator,
         aal: typeof body.aal === "string" ? body.aal : "aal1",
         userId: rawUserId,
+        enrolledFactors: rawEnrolled,
       };
     },
     retry: false,
@@ -66,9 +76,14 @@ export function useInternalOperator(): InternalOperatorState {
   if (query.isError) return { status: "forbidden" };
   const proof = query.data ?? null;
   if (!proof) return { status: "unauthenticated" };
-  if (!proof.isOperator || proof.aal !== "aal2" || !proof.userId) {
-    if (proof.isOperator && proof.aal !== "aal2") return { status: "mfa_required" };
-    return { status: "forbidden" };
+  if (!proof.isOperator || !proof.userId) return { status: "forbidden" };
+  // Enroll-rota: operador com sessão aal1 e zero factors nunca enrolou — vai
+  // ao enroll, não ao mfa (dead-end antigo). Campo ausente (Edge legada) cai
+  // no comportamento legado: aal1 → mfa_required, aal2 → allowed.
+  if (proof.aal !== "aal2") {
+    if (proof.enrolledFactors === 0) return { status: "enroll_required" };
+    return { status: "mfa_required" };
   }
+  if (proof.enrolledFactors === 0) return { status: "forbidden" };
   return { status: "allowed", userId: proof.userId };
 }

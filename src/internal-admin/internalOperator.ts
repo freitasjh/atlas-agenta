@@ -17,6 +17,12 @@ export type OperatorProof = {
   isOperator: boolean;
   aal: string;
   userId: string | null;
+  /**
+   * Factors MFA verificados (Edge `verify-operator`, aditivo). Ausente =
+   * resposta legada: o hook trata como `mfa_required` (aal1) / `allowed`
+   * (aal2) sem distinguir enroll.
+   */
+  enrolledFactors?: number;
 };
 
 export type VerifyOperatorFn = () => Promise<OperatorProof | null>;

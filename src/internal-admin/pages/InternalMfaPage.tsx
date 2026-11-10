@@ -25,6 +25,7 @@ export function InternalMfaPage() {
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [noAuthenticator, setNoAuthenticator] = useState(false);
   const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const alertRef = useRef<HTMLParagraphElement>(null);
@@ -54,12 +55,16 @@ export function InternalMfaPage() {
     event.preventDefault();
     if (locked || pending) return;
     setError(null);
+    setNoAuthenticator(false);
     setPending(true);
     try {
       const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
       const totp = factors?.totp?.find((f) => f.status === "verified") ?? factors?.totp?.[0];
       if (factorsError || !totp) {
         setError("Nenhum autenticador ativo. Passe pela ativação primeiro.");
+        // Rede de segurança enroll-rota: operador fresco (zero factors) caía
+        // aqui em dead-end; o CTA leva ao enroll sem digitar URL manual.
+        setNoAuthenticator(true);
         return;
       }
       const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
@@ -153,6 +158,16 @@ export function InternalMfaPage() {
               "Verificar código"
             )}
           </Button>
+          {noAuthenticator ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-[44px] w-full"
+              onClick={() => navigate("/internal-admin/enroll")}
+            >
+              Ativar autenticador
+            </Button>
+          ) : null}
           {locked ? (
             <p role="status" className="text-center text-sm text-muted-foreground">
               Bloqueado temporariamente após 5 tentativas.
