@@ -10,6 +10,7 @@ import {
   callCreateWalkIn,
   cleanupPaymentFixtures,
   createPaymentsTenant,
+  seedAppointment,
   seedWalkInCatalog,
   setTenantSegment,
   type PaymentsTenant,
@@ -133,5 +134,59 @@ describe("get-appointment-settlement de walk-in sem cliente e de combo", () => {
     const body = response.json as Record<string, any>;
     expect(String(body.appointment.customer_name)).toContain("Cliente balcão");
     expect(body.appointment.service_name).toBeNull();
+  });
+
+  it("registrar pagamento em dinheiro de walk-in anônimo responde 200 e quita", async () => {
+    // Este é literalmente o endpoint que devolvia 500 INTERNAL: o register lê o
+    // settlement ao final e, sem cliente, montava `.eq("id", null)`.
+    // Profissional novo: o walk-in nasce "agora" e a exclusão de sobreposição é
+    // global por profissional (23P01) — não pode colidir com os casos acima.
+    const registerCatalog = await seedWalkInCatalog(tenant.tenantId);
+    const created = await callCreateWalkIn({
+      tenantId: tenant.tenantId,
+      actorId: tenant.admin.id,
+      professionalId: registerCatalog.professionalId,
+      serviceId: registerCatalog.serviceId,
+    });
+    expect(created.error).toBeNull();
+    const appointmentId = String(created.data?.id ?? "");
+    expect(appointmentId).not.toBe("");
+
+    const response = await callFunction("register-appointment-payments", {
+      token: tenant.admin.accessToken,
+      body: {
+        appointment_id: appointmentId,
+        idempotency_key: randomUUID(),
+        close_appointment: true,
+        payments: [{ method: "dinheiro", amount_cents: 10_000 }],
+      },
+    });
+    expect(response.status).toBe(200);
+    const body = response.json as Record<string, any>;
+    expect(body.settlement.appointment.customer_name).toBeNull();
+    expect(body.settlement.total_paid_cents).toBe(10_000);
+    expect(body.settlement.payment_status).toBe("quitado");
+  });
+});
+
+describe("get-appointment-settlement de agendado normal (cliente + serviço)", () => {
+  let tenant: PaymentsTenant;
+  let appointmentId = "";
+
+  beforeAll(async () => {
+    tenant = await newTenant("settlement-scheduled");
+    const fixture = await seedAppointment(tenant.tenantId, { status: "concluido" });
+    appointmentId = fixture.appointmentId;
+  });
+
+  it("responde 200 com customer_name e service_name não nulos", async () => {
+    const response = await settlementOf(tenant, appointmentId);
+    expect(response.status).toBe(200);
+    const body = response.json as Record<string, any>;
+    expect(body.appointment.customer_name).not.toBeNull();
+    expect(String(body.appointment.customer_name)).toContain("Cliente");
+    expect(body.appointment.service_name).not.toBeNull();
+    expect(String(body.appointment.service_name)).toContain("Serviço");
+    expect(body.payment_status).toBe("sem_pagamento");
   });
 });

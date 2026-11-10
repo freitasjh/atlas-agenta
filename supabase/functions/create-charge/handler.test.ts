@@ -37,15 +37,25 @@ function builder(table: string, state: FakeState): any {
     };
   }
   if (table === "customers") {
-    return {
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { name: "Cliente", email: null, phone: null }, error: null }),
-          }),
-        }),
-      }),
+    const filters: Array<{ column: string; value: unknown }> = [];
+    const chain: any = {
+      select: () => chain,
+      eq: (column: string, value: unknown) => {
+        filters.push({ column, value });
+        state.calls.push(`customers:${column}=${String(value)}`);
+        return chain;
+      },
+      maybeSingle: async () => {
+        const idFilter = filters.find((filter) => filter.column === "id");
+        // Respeita o filtro: `.eq("id", null)` nunca devolve linha — exatamente
+        // o que a guarda `queryOptionalById` evita montar no walk-in anônimo.
+        if (idFilter && (idFilter.value === null || idFilter.value === undefined)) {
+          return { data: null, error: null };
+        }
+        return { data: { name: "Cliente", email: null, phone: null }, error: null };
+      },
     };
+    return chain;
   }
   if (table === "tenant_asaas_config") {
     return {
@@ -235,6 +245,7 @@ function request(options: { method?: string; token?: string | null; body?: unkno
 function stubAsaas(delayMs = 0, options: { deleteStatus?: number } = {}) {
   const original = globalThis.fetch;
   const payments: Row[] = [];
+  const customers: Row[] = [];
   const deletes: string[] = [];
   globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
     const target = String(url);
@@ -246,6 +257,7 @@ function stubAsaas(delayMs = 0, options: { deleteStatus?: number } = {}) {
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
     }
     if (target.endsWith("/customers")) {
+      customers.push(JSON.parse(String(init?.body ?? "{}")) as Row);
       return new Response(JSON.stringify({ id: "cus1" }), { status: 200 });
     }
     if (target.includes("/payments?externalReference=")) {
@@ -263,6 +275,7 @@ function stubAsaas(delayMs = 0, options: { deleteStatus?: number } = {}) {
   }) as typeof fetch;
   return {
     payments,
+    customers,
     deletes,
     restore: () => {
       globalThis.fetch = original;
@@ -722,5 +735,38 @@ Deno.test("falha ao liberar a reserva (RPC) vira 500 e não engole o erro", asyn
     strictEqual(body.code, "INTERNAL");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("walk-in anônimo (customer_id null): referência walkin:<appointmentId> e nenhum filtro id null", async () => {
+  const state = baseState({
+    appointment: {
+      id: APPOINTMENT_ID,
+      status: "concluido",
+      customer_id: null,
+      professional_id: "p1",
+    },
+  });
+  const stub = stubAsaas();
+  try {
+    const response = await handlerFor(state)(
+      request({ body: { appointment_id: APPOINTMENT_ID, amount_cents: 3000 } }),
+    );
+    strictEqual(response.status, 200);
+
+    // A guarda pulou a query por inteiro: nenhum `.eq` em `customers` foi montado,
+    // muito menos com id nulo (PostgREST 22P02 → 500).
+    strictEqual(
+      state.calls.some((call) => call.startsWith("customers:")),
+      false,
+    );
+
+    // O cliente do gateway usa o atendimento como referência (sem PII sintética).
+    strictEqual(stub.customers.length, 1);
+    strictEqual(stub.customers[0]?.externalReference, `walkin:${APPOINTMENT_ID}`);
+    strictEqual(stub.payments.length, 1);
+    strictEqual(stub.payments[0]?.externalReference, "ch1");
+  } finally {
+    stub.restore();
   }
 });

@@ -177,4 +177,35 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
       (screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement).value,
     ).toBe("");
   });
+
+  it("identificar revela o checkbox de opt-in do WhatsApp (LGPD)", () => {
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    expect(screen.queryByLabelText(paymentsMessages.pdv.whatsappOptIn)).toBeNull();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+
+    const optIn = screen.getByLabelText(paymentsMessages.pdv.whatsappOptIn) as HTMLInputElement;
+    expect(optIn).toBeTruthy();
+    expect(optIn.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("submeter só o nome mostra erro acessível de WhatsApp (submit não fica mudo)", async () => {
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    const name = screen.getByLabelText(paymentsMessages.pdv.customerName);
+    fireEvent.change(name, { target: { value: "Ana" } });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),
+    );
+
+    const alert = await screen.findByText("Informe o WhatsApp para identificar o cliente.");
+    expect(alert.getAttribute("role")).toBe("alert");
+
+    const phone = screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement;
+    expect(phone.getAttribute("aria-invalid")).toBe("true");
+    expect(phone.getAttribute("aria-describedby")).toBe("pdv-cliente-fone-erro");
+  });
 });

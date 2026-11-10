@@ -26,6 +26,7 @@ import {
 } from "../_shared/gateway-claim.ts";
 import { requestSchema } from "./schemas.ts";
 import { queryOptionalById } from "../_shared/nullable.ts";
+import { WALK_IN_CUSTOMER_NAME } from "../_shared/payments.ts";
 
 export type HandlerOptions = { createService: () => SupabaseClient };
 
@@ -303,7 +304,7 @@ async function attachGatewayData(
 
   const asaasCustomerId = await ensureAsaasCustomer(config.baseUrl, config.apiKey, {
     customerId: customerId ?? `walkin:${appointmentId}`,
-    name: customer?.name ?? "Cliente de balcão",
+    name: customer?.name ?? WALK_IN_CUSTOMER_NAME,
     email: customer?.email ?? null,
     phone: customer?.phone ?? null,
   });

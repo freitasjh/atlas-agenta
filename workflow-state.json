@@ -9,11 +9,20 @@
     "last_status": "pending",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Implementação e harness H3 concluídos pelo developer-engineer; aguardando delegação ao code-reviewer pelo orquestrador. Nenhum veredito de review foi emitido neste ciclo."
+    "reviewer_notes": "Iteração 1 do loop aplicada pelo developer-engineer: prova falsa do settlement portada para Vitest (src/lib/payments-settlement.test.ts) e Deno órfão removido; reset do cliente/opt-in no sucesso do PDV; erros de nome/WhatsApp renderizados com role=alert + aria-invalid/aria-describedby; checkbox de opt-in do WhatsApp no bloco de identificação; testes de regressão de register/settlement adicionados; follow-up 23P01 registrado. Aguardando novo veredito do code-reviewer."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-09T23:40:00.000000+00:00",
+  "last_update": "2026-11-10T00:03:20.165780+00:00",
   "code_review_status": "pending",
+  "follow_ups_created_at_basis": "2026-11-10T00:03:20.165780+00:00",
+  "follow_ups": [
+    {
+      "id": "23P01-slot-conflict",
+      "what": "O contrato de erro da Edge não mapeia a exclusão de slot (SQLSTATE 23P01 / appointments_no_overlap) para um código estável: hoje vira 500 INTERNAL. Dois walk-ins no mesmo profissional dentro da mesma janela (ou uma corrida de agendamento) expõem o problema. Corrigir exige alterar mapRpcError/contrato de erro da Edge — fora do escopo deste bugfix.",
+      "owner": "architect",
+      "created_at": "2026-11-10T00:03:20.165780+00:00"
+    }
+  ],
   "pendencies": [
     {
       "id": "code-review-pdv-checkout-anonimo",

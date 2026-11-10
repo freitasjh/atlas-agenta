@@ -189,15 +189,22 @@ export function PdvPage() {
           status: "em_atendimento",
         },
       });
+      // Cliente é por venda: sem reset, a identificação da venda anterior vaza
+      // para a próxima e pode gravar `customer_id` errado (customers não tem
+      // unique por telefone). Profissional/serviço permanecem para agilizar.
+      setIdentify(false);
+      form.setValue("customerName", "");
+      form.setValue("customerPhone", "");
+      form.setValue("whatsappOptIn", false);
+      form.clearErrors(["customerName", "customerPhone"]);
     } catch (error) {
       if (error instanceof PaymentApiError) {
         // Código conhecido → mensagem do próprio código; desconhecido → fallback
         // do PDV. A Edge não devolve `23P01` (mapRpcError só traduz PT4xx),
         // então não há conflito de agenda a mapear aqui.
-        const message =
-          error.code in PAYMENT_ERROR_MAP
-            ? paymentErrorMessage(messages, error.code)
-            : messages.pdv.createdError;
+        const message = Object.prototype.hasOwnProperty.call(PAYMENT_ERROR_MAP, error.code)
+          ? paymentErrorMessage(messages, error.code)
+          : messages.pdv.createdError;
         toast.error(message);
       } else {
         toast.error(messages.pdv.createdError);
@@ -336,15 +343,64 @@ export function PdvPage() {
                 <Label htmlFor="pdv-identificar">{messages.pdv.identifiedToggle}</Label>
               </div>
               {identify ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="pdv-cliente-nome">{messages.pdv.customerName}</Label>
-                    <Input id="pdv-cliente-nome" autoFocus {...form.register("customerName")} />
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="pdv-cliente-nome">{messages.pdv.customerName}</Label>
+                      <Input
+                        id="pdv-cliente-nome"
+                        autoFocus
+                        aria-invalid={Boolean(form.formState.errors.customerName)}
+                        aria-describedby={
+                          form.formState.errors.customerName ? "pdv-cliente-nome-erro" : undefined
+                        }
+                        {...form.register("customerName")}
+                      />
+                      {form.formState.errors.customerName ? (
+                        <p
+                          id="pdv-cliente-nome-erro"
+                          className="text-sm text-destructive"
+                          role="alert"
+                        >
+                          {form.formState.errors.customerName.message}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="pdv-cliente-fone">{messages.pdv.customerPhone}</Label>
+                      <Input
+                        id="pdv-cliente-fone"
+                        aria-invalid={Boolean(form.formState.errors.customerPhone)}
+                        aria-describedby={
+                          form.formState.errors.customerPhone ? "pdv-cliente-fone-erro" : undefined
+                        }
+                        {...form.register("customerPhone")}
+                      />
+                      {form.formState.errors.customerPhone ? (
+                        <p
+                          id="pdv-cliente-fone-erro"
+                          className="text-sm text-destructive"
+                          role="alert"
+                        >
+                          {form.formState.errors.customerPhone.message}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="pdv-cliente-fone">{messages.pdv.customerPhone}</Label>
-                    <Input id="pdv-cliente-fone" {...form.register("customerPhone")} />
-                  </div>
+                  <Controller
+                    control={form.control}
+                    name="whatsappOptIn"
+                    render={({ field }) => (
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="pdv-whatsapp-optin"
+                          checked={field.value}
+                          onCheckedChange={(checked) => field.onChange(checked === true)}
+                        />
+                        <Label htmlFor="pdv-whatsapp-optin">{messages.pdv.whatsappOptIn}</Label>
+                      </div>
+                    )}
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">{messages.pdv.anonymousHint}</p>

@@ -14,6 +14,12 @@ export const PAYMENT_METHODS = [
   "pix_maquininha",
 ] as const;
 
+/**
+ * Nome exibido ao gateway quando o atendimento não tem cliente (walk-in
+ * anônimo). Fonte única — nunca duplicar o literal nos handlers.
+ */
+export const WALK_IN_CUSTOMER_NAME = "Cliente de balcão";
+
 export interface PaymentSummary {
   price_cents: number;
   total_paid_cents: number;
