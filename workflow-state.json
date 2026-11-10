@@ -27,7 +27,19 @@
       "command": "npm run test:functions",
       "test_files": 41,
       "passed": 449,
-      "failed": 0
+      "failed": 0,
+      "newly_covered_orphans": [
+        "supabase/functions/create-walk-in/handler.test.ts",
+        "supabase/functions/_shared/internal-operator.test.ts",
+        "supabase/functions/whatsapp/evolution-adapter.test.ts",
+        "supabase/functions/_shared/nullable.test.ts"
+      ],
+      "removed_test_dirs": [
+        "supabase/functions/deactivate-user/",
+        "supabase/functions/reactivate-user/",
+        "supabase/functions/change-user-role/",
+        "supabase/functions/unlink-professional-profile/"
+      ]
     },
     "wrapper": "scripts/deno.sh",
     "ci_workflow": ".github/workflows/functions-tests.yml"

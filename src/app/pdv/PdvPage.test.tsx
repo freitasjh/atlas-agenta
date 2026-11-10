@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createElement, type ReactNode } from "react";
+import { createElement, type ChangeEvent, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -86,6 +86,47 @@ vi.mock("@/hooks/useCustomers", () => ({
   useCreateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+/**
+ * `Select` do design system vira um `<select>` nativo neste teste: o Radix
+ * monta as opções num portal com posicionamento medido (e usa
+ * `hasPointerCapture`), que o happy-dom não resolve. A troca é só do primitivo
+ * de entrada — a lógica sob teste é o reset do formulário do PDV.
+ */
+vi.mock("@/components/ui/select", async () => {
+  const React = await import("react");
+
+  type SelectProps = {
+    children?: ReactNode;
+    value?: string;
+    onValueChange?: (value: string) => void;
+    disabled?: boolean;
+  };
+
+  return {
+    Select: ({ children, value, onValueChange, disabled }: SelectProps) => {
+      // `nenhum` é sentinela visual do shadcn para "vazio" (nunca valor de domínio).
+      const normalized = value === "nenhum" ? "" : (value ?? "");
+      return React.createElement(
+        "select",
+        {
+          value: normalized,
+          disabled,
+          onChange: (event: ChangeEvent<HTMLSelectElement>) =>
+            onValueChange?.(event.target.value),
+        },
+        React.createElement("option", { value: "" }, ""),
+        children,
+      );
+    },
+    SelectTrigger: () => null,
+    SelectValue: () => null,
+    SelectContent: ({ children }: SelectProps) =>
+      React.createElement(React.Fragment, null, children),
+    SelectItem: ({ children, value }: SelectProps) =>
+      React.createElement("option", { value }, children),
+  };
+});
+
 vi.mock("@/app/agenda/pagamentos/PaymentCaptureDialog", async () => {
   const React = await import("react");
   return {
@@ -114,6 +155,17 @@ afterEach(() => {
   mocks.payments = true;
   mocks.canScheduleForAnyProfessional = true;
 });
+
+/** `select` nativo (mock do shadcn Select) que contém a opção com o texto dado. */
+function selectWithOption(container: HTMLElement, optionText: string): HTMLSelectElement {
+  const select = Array.from(container.querySelectorAll("select")).find((candidate) =>
+    Array.from(candidate.options).some((option) =>
+      (option.textContent ?? "").includes(optionText),
+    ),
+  );
+  if (!select) throw new Error(`select com a opção "${optionText}" não encontrado`);
+  return select;
+}
 
 /** Venda em andamento usada para abrir o diálogo de pagamento pela lista. */
 function pendingAppointment(): Record<string, unknown> {
@@ -252,7 +304,7 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
 
   it("concluir a venda limpa o formulário inteiro (identify + campos + seleção)", async () => {
     mocks.pending = [pendingAppointment()];
-    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
 
     // Preenche a identificação da venda em andamento.
     fireEvent.click(screen.getByRole("checkbox"));
@@ -262,6 +314,15 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
     fireEvent.change(screen.getByLabelText(paymentsMessages.pdv.customerPhone), {
       target: { value: "11999998888" },
     });
+
+    // Preenche profissional e serviço ANTES de concluir — sem isso a asserção
+    // de reset seria tautológica (nunca preenchidos, nunca resetados).
+    const professionalSelect = selectWithOption(container, "Beto");
+    const serviceSelect = selectWithOption(container, "Corte");
+    fireEvent.change(professionalSelect, { target: { value: mocks.professionals[0].id } });
+    fireEvent.change(serviceSelect, { target: { value: mocks.services[0].id } });
+    expect(professionalSelect.value).toBe(mocks.professionals[0].id);
+    expect(serviceSelect.value).toBe(mocks.services[0].id);
 
     // Abre o pagamento pela lista e conclui (stub do diálogo).
     fireEvent.click(
@@ -275,6 +336,10 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
     // Estado inicial não tem erro visível (reset limpa o formState).
     expect(screen.queryByText("Selecione o serviço.")).toBeNull();
 
+    // Profissional e serviço voltaram ao valor inicial (vazio) — prova real do reset.
+    expect(selectWithOption(container, "Beto").value).toBe("");
+    expect(selectWithOption(container, "Corte").value).toBe("");
+
     // Reabrir mostra os campos vazios.
     fireEvent.click(screen.getByRole("checkbox"));
     expect(
@@ -284,7 +349,7 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
       (screen.getByLabelText(paymentsMessages.pdv.customerPhone) as HTMLInputElement).value,
     ).toBe("");
 
-    // Profissional e serviço voltaram ao inicial (submit acusa os dois).
+    // Submit acusa os dois campos obrigatórios: estão vazios de verdade.
     fireEvent.click(
       screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),
     );
@@ -295,12 +360,26 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
   it("papel professional repopula o próprio profissional após o reset", async () => {
     mocks.canScheduleForAnyProfessional = false;
     mocks.pending = [pendingAppointment()];
-    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    // O Select travado já nasce com o profissional do usuário (ownProfessional).
+    const professionalSelect = selectWithOption(container, "Beto");
+    expect(professionalSelect.value).toBe(mocks.professionals[0].id);
+
+    // Preenche o serviço para provar que o reset realmente roda.
+    const serviceSelect = selectWithOption(container, "Corte");
+    fireEvent.change(serviceSelect, { target: { value: mocks.services[0].id } });
+    expect(serviceSelect.value).toBe(mocks.services[0].id);
 
     fireEvent.click(
       screen.getByRole("button", { name: paymentsMessages.pdv.openPayment }),
     );
     fireEvent.click(screen.getByRole("button", { name: "concluir-venda" }));
+
+    // O reset rodou: o serviço voltou ao inicial…
+    expect(selectWithOption(container, "Corte").value).toBe("");
+    // …e o profissionalId foi REAPLICADO com o próprio id (nunca fica vazio).
+    expect(selectWithOption(container, "Beto").value).toBe(mocks.professionals[0].id);
 
     fireEvent.click(
       screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),

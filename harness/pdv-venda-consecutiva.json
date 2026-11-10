@@ -3,89 +3,101 @@
   "demand": "pdv-venda-consecutiva",
   "agent": "developer-engineer",
   "phase": "BugReview",
-  "gitSha": "cceede8f456360c1f6664ff69e94f11471ff6238",
+  "iteration": 2,
+  "gitSha": "7ffff8d",
   "commands": [
     {
-      "cmd": "npm test",
+      "cmd": "npx supabase db reset (1x)",
       "exitCode": 0,
-      "durationMs": 17420,
-      "stdoutHash": "sha256:vitest-942-pass-0-fail"
+      "stdoutHash": "sha256:db-reset-1x-exit-0"
+    },
+    {
+      "cmd": "npx supabase db reset (2x)",
+      "exitCode": 0,
+      "stdoutHash": "sha256:db-reset-2x-exit-0"
     },
     {
       "cmd": "npm run test:integration",
       "exitCode": 0,
-      "durationMs": 78340,
-      "stdoutHash": "sha256:integration-309-pass-0-fail-0-skip"
+      "stdoutHash": "sha256:integration-312-pass-0-fail-0-skip"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "stdoutHash": "sha256:vitest-942-pass-0-fail"
     },
     {
       "cmd": "npm run test:functions",
       "exitCode": 0,
-      "durationMs": 20000,
       "stdoutHash": "sha256:deno-check-0-errors-deno-test-449-pass"
     },
     {
       "cmd": "npm run build",
       "exitCode": 0,
-      "durationMs": 6390,
       "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
-    },
-    {
-      "cmd": "npx supabase db reset",
-      "exitCode": 0,
-      "durationMs": 42000,
-      "stdoutHash": "sha256:db-reset-2x-exit-0"
     }
   ],
   "counts": {
     "unit": { "passed": 942, "failed": 0, "skipped": 0 },
-    "it": { "passed": 309, "failed": 0, "skipped": 0 },
-    "frontend": { "passed": 0, "failed": 0, "skipped": 0 }
+    "it": { "passed": 312, "failed": 0, "skipped": 0 },
+    "functions": { "passed": 449, "failed": 0, "skipped": 0 }
+  },
+  "predicate": {
+    "constraint": "appointments_no_overlap",
+    "definition": "EXCLUDE USING gist (tenant_id WITH =, professional_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (((status <> ALL (ARRAY['cancelado'::text, 'nao_compareceu'::text])) AND (NOT ((origin = 'walk_in'::text) AND (status = 'concluido'::text)))))",
+    "rule": "walk_in CONCLUIDO sai do indice; walk_in EM_ATENDIMENTO permanece indexado; agendado ativo protegido",
+    "provedBy": "select pg_get_constraintdef() no banco local apos db reset 2x"
   },
   "e2e": {
     "mode": "chrome-devtools",
     "url": "http://localhost:5173/app/pdv",
     "flow": [
       "login admin@demo.local; abrir PDV",
-      "venda 1: profissional Profissional Demo + Corte (30 min, R$ 50); create-walk-in 201; quitar em dinheiro (register 200)",
-      "fechar comprovante: formulario limpo (profissional e servico vazios, identify desmarcado, sem erro visivel)",
+      "venda 1: Profissional Demo + Corte (30 min, R$ 50); create-walk-in 201; quitar em dinheiro (register 200)",
+      "fechar comprovante: formulario limpo (profissional e servico vazios, total R$ 0,00)",
       "venda 2: MESMO profissional + Corte, dentro da duracao da venda 1; create-walk-in 201 (antes: 500 INTERNAL por 23P01); quitar em dinheiro 200",
-      "fechar comprovante: formulario limpo novamente"
+      "predicado novo: agendado pendente [now-5min, now+25min] inserido para o MESMO profissional; tentar walk-in -> create-walk-in 409 SLOT_CONFLICT",
+      "toast pt-BR: 'Profissional ocupado neste horario. Escolha outro profissional ou outro horario.' (nunca 'Erro interno')"
     ],
     "network": {
-      "create-walk-in": "201",
-      "get-appointment-settlement": "200",
+      "create-walk-in#venda1": "201",
+      "create-walk-in#venda2": "201",
+      "create-walk-in#conflito": "409",
       "register-appointment-payments": "200",
+      "get-appointment-settlement": "200",
       "failures_5xx": 0
     },
     "console": {
-      "errors": 0,
+      "errors": 1,
       "warnings": 0,
-      "note": "apenas debug/info do Vite + React DevTools e 1 [issue] de a11y pre-existente (campo sem id/name no dialogo de pagamento); nenhum [ERROR]/[WARN]"
+      "note": "O unico [error] e o 409 intencional de create-walk-in (Chrome loga resposta 4xx como falha de recurso) — e a propria prova do SLOT_CONFLICT. 1 [issue] de a11y pre-existente (campo de formulario sem id/name no dialogo de pagamento). Zero [WARN]."
     },
     "beforeAfter": {
-      "before": "venda anterior walk_in concluida ocupava [starts_at, ends_at); INSERT da venda seguinte -> ERROR: conflicting key value violates exclusion constraint \"appointments_no_overlap\" (23P01) -> 500 INTERNAL",
-      "after": "constraint restrita a origin='agendado'; duas vendas walk-in sobrepostas do mesmo profissional coexistem (72 pares sobrepostos no banco local) e create-walk-in responde 201"
+      "before": "constraint restrita a origin='agendado': todo walk-in (inclusive em_atendimento) saia do indice -> walk-in sobre agendamento e duas vendas abertas simultaneas do mesmo profissional passavam (double-booking, RF06 violado)",
+      "after": "predicado minimo: walk_in concluido sai do indice (duas vendas consecutivas do mesmo profissional sucedem: 201/201); walk_in em_atendimento continua indexado (venda simultanea e sobreposicao com agendado -> 23P01 -> 409 SLOT_CONFLICT)"
     },
     "screenshots": [
       ".spec/bugs/pdv-venda-consecutiva/harness/01-pdv-venda-1-preenchida.png",
-      ".spec/bugs/pdv-venda-consecutiva/harness/02-pdv-apos-venda-1-form-limpo.png",
-      ".spec/bugs/pdv-venda-consecutiva/harness/03-pdv-venda-2-mesmo-profissional.png",
-      ".spec/bugs/pdv-venda-consecutiva/harness/04-pdv-venda-2-comprovante.png",
-      ".spec/bugs/pdv-venda-consecutiva/harness/05-pdv-apos-venda-2-form-limpo.png"
+      ".spec/bugs/pdv-venda-consecutiva/harness/02-comprovante-venda-1.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/03-pdv-apos-venda-1-form-limpo.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/04-pdv-venda-2-mesmo-profissional.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/05-comprovante-venda-2.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/06-slot-conflict-409-toast-ptbr.png"
     ]
   },
   "evaluation": {
-    "telas": "PDV limpa o formulario apos concluir (profissional/servico vazios, identify falso, sem alerta de validacao); a mensagem de conflito de agenda tem texto proprio e nao cai em 'Erro interno'",
-    "negocio": "venda walk-in nao disputa a agenda; agendamento continua protegido (23P01) e o contrato HTTP traduz para 409 SLOT_CONFLICT; nenhum afrouxamento de RLS/trigger/policy",
-    "logica": "mapRpcError cobre 23P01 sem vazar SQL; handler Deno devolve 409; PdvPage reseta com form.reset + clearErrors e reaplica o profissional travado; guarda do sentinela 'nenhum' evita validacao espuria do Select",
-    "perf": "unit 942 em ~17s; integracao 309 em ~78s; Deno 449 em ~20s; build ~6s"
+    "telas": "PDV limpa o formulario apos concluir (profissional/servico vazios, identify falso, total R$ 0,00); o conflito de agenda aparece como toast pt-BR com a mensagem de SLOT_CONFLICT, nunca 'Erro interno'",
+    "negocio": "venda walk-in concluida libera a janela (bug reportado resolvido); venda aberta e agendamento continuam disputando o horario (RF06); nenhum afrouxamento de RLS/trigger/policy",
+    "logica": "mapRpcError cobre 23P01 -> 409 sem vazar SQL; PdvPage reseta com form.reset + clearErrors e reaplica o profissional travado; teste de integracao cobre os dois sentidos (agendado x walk-in) e a regressao do fix",
+    "perf": "unit 942 em ~18s; integracao 312 em ~125s; Deno 449 em ~22s; build ~9s"
   },
   "brainStore": [
-    "regras/projetos/atlas-agenda/exclusion-constraint-por-origem-23p01"
+    "regras/projetos/atlas-agenda/exclusion-constraint-por-origem-23p01",
+    "sessoes/atlas-agenda/2026-11-09-pdv-venda-consecutiva-iteracao-2"
   ],
   "cleanup": {
     "ports": [5173, 54321],
-    "note": "dev-down.sh encerrou Vite e supabase functions serve por PID (lsof/porta, conferindo o dono); nunca pkill -f; portas 5173/54321 livres."
+    "note": "dev-down.sh encerrou Vite e supabase functions serve por PID (conferindo o dono); nunca pkill -f; porta 5173 livre. Stack Supabase local permanece de pe (dev-down sem --all, por desenho)."
   },
   "selfReported": false
 }
