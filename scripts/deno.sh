@@ -14,6 +14,11 @@
 # Uso:
 #   bash scripts/deno.sh check supabase/functions/*/index.ts
 #   bash scripts/deno.sh test --allow-env supabase/functions/<funcao>/
+#
+# Nota: a mesma resolução PATH → $HOME/.deno/bin está duplicada no preflight de
+# `scripts/dev-up.sh` (~linhas 261-268). Duplicação consciente: aqui o wrapper
+# precisa do binário para repassar argumentos; lá o preflight apenas garante o
+# PATH da sessão. Unificar exige refatorar o dev-up (fora do escopo atual).
 
 set -euo pipefail
 

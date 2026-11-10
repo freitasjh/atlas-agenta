@@ -142,12 +142,16 @@ falha antes de subir o resto. Para corrigir o drift, reconecte a instância em
 Causa: o Deno fica em `~/.deno/bin`, que não está no PATH do shell não
 interativo.
 
-O `dev:up` adiciona `$HOME/.deno/bin` automaticamente; se ainda faltar,
-instrui:
+Para o gate das Edge Functions (`npm run check:functions` / `npm run
+test:functions`) não é preciso exportar PATH à mão: ambos chamam
+`scripts/deno.sh`, que resolve o binário do `PATH` ou de `$HOME/.deno/bin`
+(nesta ordem) e falha com instrução de instalação se não achar.
+
+O `dev:up` faz a mesma resolução no preflight e adiciona `$HOME/.deno/bin` ao
+PATH da sessão. Se ainda faltar o binário, instale:
 
 ```bash
 curl -fsSL https://deno.land/install.sh | sh
-export PATH="$HOME/.deno/bin:$PATH"
 ```
 
 ### 4. Asaas 401 no preflight
