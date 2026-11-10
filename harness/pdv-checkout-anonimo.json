@@ -3,24 +3,24 @@
   "demand": "pdv-checkout-anonimo",
   "agent": "developer-engineer",
   "phase": "BugReview",
-  "gitSha": "171d598f915df1e96a27f36af964c6619674ac2c",
+  "gitSha": "6f30fc63aaef108912e04acac1289063131300c4",
   "commands": [
     {
       "cmd": "npm test",
       "exitCode": 0,
-      "durationMs": 9340,
-      "stdoutHash": "sha256:vitest-934-pass-0-fail"
+      "durationMs": 8500,
+      "stdoutHash": "sha256:vitest-940-pass-0-fail"
     },
     {
       "cmd": "npm run test:integration",
       "exitCode": 0,
-      "durationMs": 60780,
-      "stdoutHash": "sha256:integration-304-pass-0-fail-0-skip"
+      "durationMs": 84530,
+      "stdoutHash": "sha256:integration-306-pass-0-fail-0-skip"
     },
     {
       "cmd": "npm run build",
       "exitCode": 0,
-      "durationMs": 4370,
+      "durationMs": 6430,
       "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
     },
     {
@@ -31,8 +31,8 @@
     }
   ],
   "counts": {
-    "unit": { "passed": 934, "failed": 0, "skipped": 0 },
-    "it": { "passed": 304, "failed": 0, "skipped": 0 },
+    "unit": { "passed": 940, "failed": 0, "skipped": 0 },
+    "it": { "passed": 306, "failed": 0, "skipped": 0 },
     "frontend": { "passed": 0, "failed": 0, "skipped": 0 }
   },
   "e2e": {
@@ -40,13 +40,14 @@
     "url": "http://127.0.0.1:5173/app/pdv",
     "flow": [
       "login admin@demo.local",
-      "marcar Identificar cliente: campos Nome/WhatsApp aparecem e o foco vai para Nome",
-      "desmarcar: campos somem e o hint anônimo volta",
-      "selecionar Profissional Demo + Corte e registrar venda anônima",
-      "abrir o fechamento: get-appointment-settlement 200 (antes 500 INTERNAL)",
-      "adicionar Dinheiro, Confirmar e fechar o comprovante quitado"
+      "marcar Identificar cliente: campos Nome/WhatsApp e checkbox de opt-in aparecem",
+      "submeter só o Nome: erro acessível role=alert 'Informe o WhatsApp para identificar o cliente.' + aria-invalid/aria-describedby",
+      "preencher WhatsApp + marcar opt-in; registrar venda identificada (customers 201, create-walk-in 201, settlement 200) e quitar em dinheiro",
+      "após o sucesso: Identify desmarcado, Nome/WhatsApp limpos, profissional/serviço mantidos (cliente não vaza)",
+      "venda anônima seguinte (2º profissional): create-walk-in 201, settlement 200 com customer_name null, register 200 quitado"
     ],
     "network": {
+      "customers": "201",
       "create-walk-in": "201",
       "get-appointment-settlement": "200",
       "register-appointment-payments": "200",
@@ -55,30 +56,32 @@
     "console": {
       "errors": 0,
       "warnings": 0,
-      "note": "apenas debug/info do Vite e 1 [issue] de a11y sobre id/name de campo; nenhum [ERROR]/[WARN]"
+      "note": "apenas debug/info do Vite + React DevTools e 1 [issue] de a11y pré-existente (campo sem id/name no diálogo de pagamento); nenhum [ERROR]/[WARN]"
     },
     "beforeAfter": {
-      "before": "GET /rest/v1/customers?select=name&id=eq.null -> HTTP 400 {\"code\":\"22P02\",\"message\":\"invalid input syntax for type uuid: \\\"null\\\"\"}; loadSettlement convertia em 500 INTERNAL",
-      "after": "POST /functions/v1/get-appointment-settlement -> HTTP 200 com customer_name null"
+      "before": "GET /rest/v1/customers?select=name&id=eq.null -> HTTP 400 {\"code\":\"22P02\"}; loadSettlement convertia em 500 INTERNAL",
+      "after": "POST /functions/v1/get-appointment-settlement -> HTTP 200 com customer_name null; register-appointment-payments -> 200 quitado para walk-in anônimo"
     },
     "screenshots": [
-      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-fechamento-anonimo.png",
-      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-quitado.png",
-      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-venda-concluida.png"
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-erro-whatsapp.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-identificado.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-apos-sucesso-reset.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-anonimo.png"
     ]
   },
   "evaluation": {
-    "telas": "checkbox 'Identificar cliente' controla os campos por estado explícito; marcar revela Nome/WhatsApp com foco no Nome, desmarcar limpa e volta ao hint anônimo; lista de pendentes sem DOM nesting inválido",
-    "negocio": "venda anônima e venda por combo preservadas; settlement devolve customer_name/service_name null sem 500; nenhum afrouxamento de RLS/trigger/policy",
-    "logica": "guarda queryOptionalById evita .eq com id nulo; create-charge usa walkin:<appointmentId> como referência sem cliente; 304 testes de integração contra PostgreSQL real verdes",
-    "perf": "unit 934 em ~9s; integração 304 em ~61s; build 4s"
+    "telas": "checkbox 'Identificar cliente' revela Nome/WhatsApp + opt-in; erro de superRefine visível (role=alert, aria-invalid/aria-describedby); sucesso limpa cliente/opt-in mantendo profissional/serviço",
+    "negocio": "venda identificada cria customer (201) e quita; venda anônima seguinte não herda cliente e quita; settlement anônimo 200; nenhum afrouxamento de RLS/trigger/policy",
+    "logica": "prova do settlement portada para Vitest (4 casos de id opcional); fake de customers no teste Deno respeita o filtro e cobre customer_id null (walkin:<appointmentId>); integração cobre register dinheiro anônimo e settlement agendado normal",
+    "perf": "unit 940 em ~8,5s; integração 306 em ~84s; build ~6s"
   },
   "brainStore": [
-    "regras/projetos/atlas-agenda/pdv-checkout-anonimo-postgrest-null"
+    "regras/projetos/atlas-agenda/pdv-checkout-anonimo-postgrest-null",
+    "regras/projetos/atlas-agenda/teste-orfao-deno-x-vitest"
   ],
   "cleanup": {
     "ports": [5173, 54321],
-    "note": "Vite (PID 3600392) e supabase functions serve (PID 3654459) encerrados por PID após conferir cwd do projeto; container supabase_edge_runtime_atlas-agenda removido; 5173 livre e functions 503 (container ausente). Nenhum pkill -f."
+    "note": "Vite e supabase functions serve encerrados por PID (lsof -ti :PORT + kill), conferindo o dono antes; nunca pkill -f."
   },
   "selfReported": false
 }
