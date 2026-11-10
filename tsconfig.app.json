@@ -32,5 +32,14 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "supabase/functions/_shared/*.json"]
+  "include": [
+    "src",
+    "supabase/functions/_shared/*.json",
+    "supabase/functions/_shared/nullable.ts",
+    "supabase/functions/_shared/http-cors.ts",
+    "supabase/functions/_shared/http.ts",
+    "supabase/functions/_shared/internal-operator.ts",
+    "supabase/functions/_shared/identity.ts",
+    "supabase/functions/_shared/payments.ts"
+  ]
 }

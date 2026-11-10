@@ -25,6 +25,8 @@ import {
   type ChargeState,
 } from "../_shared/gateway-claim.ts";
 import { requestSchema } from "./schemas.ts";
+import { queryOptionalById } from "../_shared/nullable.ts";
+import { WALK_IN_CUSTOMER_NAME } from "../_shared/payments.ts";
 
 export type HandlerOptions = { createService: () => SupabaseClient };
 
@@ -165,7 +167,8 @@ export function createHandler(options: HandlerOptions) {
             attachGatewayData(
               service,
               identity,
-              appointment.customer_id as string,
+              appointment.customer_id as string | null,
+              body.appointment_id,
               reserved,
               config,
               claimToken,
@@ -280,22 +283,32 @@ async function cancelPreviousCharge(
 async function attachGatewayData(
   service: SupabaseClient,
   identity: Identity,
-  customerId: string,
+  customerId: string | null,
+  appointmentId: string,
   reserved: ChargeState,
   config: { baseUrl: string; apiKey: string },
   claimToken: string,
 ): Promise<ChargeState> {
-  const { data: customer, error: customerError } = await service
-    .from("customers")
-    .select("name, email, phone")
-    .eq("tenant_id", identity.tenantId)
-    .eq("id", customerId)
-    .maybeSingle();
+  // Walk-in anônimo tem `customer_id` NULL: nunca montar `.eq("id", null)`
+  // (PostgREST 22P02 → 500 INTERNAL). Sem cliente, o gateway usa a referência
+  // `walkin:<appointmentId>` (mesmo padrão do register-appointment-payments).
+  const { data: customer, error: customerError } = await queryOptionalById<{
+    name: string;
+    email: string | null;
+    phone: string | null;
+  }>(customerId, () =>
+    service
+      .from("customers")
+      .select("name, email, phone")
+      .eq("tenant_id", identity.tenantId)
+      .eq("id", customerId)
+      .maybeSingle(),
+  );
   if (customerError) throw new ApiError(500, "INTERNAL");
 
   const asaasCustomerId = await ensureAsaasCustomer(config.baseUrl, config.apiKey, {
-    customerId,
-    name: customer?.name ?? "Cliente",
+    customerId: customerId ?? `walkin:${appointmentId}`,
+    name: customer?.name ?? WALK_IN_CUSTOMER_NAME,
     email: customer?.email ?? null,
     phone: customer?.phone ?? null,
   });

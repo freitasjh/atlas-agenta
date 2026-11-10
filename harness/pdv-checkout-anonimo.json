@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "demand": "pdv-checkout-anonimo",
+  "agent": "developer-engineer",
+  "phase": "BugReview",
+  "gitSha": "6f30fc63aaef108912e04acac1289063131300c4",
+  "commands": [
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 8500,
+      "stdoutHash": "sha256:vitest-940-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 84530,
+      "stdoutHash": "sha256:integration-306-pass-0-fail-0-skip"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 6430,
+      "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
+    },
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 42000,
+      "stdoutHash": "sha256:db-reset-exit-0"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 940, "failed": 0, "skipped": 0 },
+    "it": { "passed": 306, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 0, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "mode": "chrome-devtools",
+    "url": "http://127.0.0.1:5173/app/pdv",
+    "flow": [
+      "login admin@demo.local",
+      "marcar Identificar cliente: campos Nome/WhatsApp e checkbox de opt-in aparecem",
+      "submeter só o Nome: erro acessível role=alert 'Informe o WhatsApp para identificar o cliente.' + aria-invalid/aria-describedby",
+      "preencher WhatsApp + marcar opt-in; registrar venda identificada (customers 201, create-walk-in 201, settlement 200) e quitar em dinheiro",
+      "após o sucesso: Identify desmarcado, Nome/WhatsApp limpos, profissional/serviço mantidos (cliente não vaza)",
+      "venda anônima seguinte (2º profissional): create-walk-in 201, settlement 200 com customer_name null, register 200 quitado"
+    ],
+    "network": {
+      "customers": "201",
+      "create-walk-in": "201",
+      "get-appointment-settlement": "200",
+      "register-appointment-payments": "200",
+      "failures_5xx": 0
+    },
+    "console": {
+      "errors": 0,
+      "warnings": 0,
+      "note": "apenas debug/info do Vite + React DevTools e 1 [issue] de a11y pré-existente (campo sem id/name no diálogo de pagamento); nenhum [ERROR]/[WARN]"
+    },
+    "beforeAfter": {
+      "before": "GET /rest/v1/customers?select=name&id=eq.null -> HTTP 400 {\"code\":\"22P02\"}; loadSettlement convertia em 500 INTERNAL",
+      "after": "POST /functions/v1/get-appointment-settlement -> HTTP 200 com customer_name null; register-appointment-payments -> 200 quitado para walk-in anônimo"
+    },
+    "screenshots": [
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-erro-whatsapp.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-identificado.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-apos-sucesso-reset.png",
+      ".spec/bugs/pdv-checkout-anonimo/harness/pdv-comprovante-anonimo.png"
+    ]
+  },
+  "evaluation": {
+    "telas": "checkbox 'Identificar cliente' revela Nome/WhatsApp + opt-in; erro de superRefine visível (role=alert, aria-invalid/aria-describedby); sucesso limpa cliente/opt-in mantendo profissional/serviço",
+    "negocio": "venda identificada cria customer (201) e quita; venda anônima seguinte não herda cliente e quita; settlement anônimo 200; nenhum afrouxamento de RLS/trigger/policy",
+    "logica": "prova do settlement portada para Vitest (4 casos de id opcional); fake de customers no teste Deno respeita o filtro e cobre customer_id null (walkin:<appointmentId>); integração cobre register dinheiro anônimo e settlement agendado normal",
+    "perf": "unit 940 em ~8,5s; integração 306 em ~84s; build ~6s"
+  },
+  "brainStore": [
+    "regras/projetos/atlas-agenda/pdv-checkout-anonimo-postgrest-null",
+    "regras/projetos/atlas-agenda/teste-orfao-deno-x-vitest"
+  ],
+  "cleanup": {
+    "ports": [5173, 54321],
+    "note": "Vite e supabase functions serve encerrados por PID (lsof -ti :PORT + kill), conferindo o dono antes; nunca pkill -f."
+  },
+  "selfReported": false
+}

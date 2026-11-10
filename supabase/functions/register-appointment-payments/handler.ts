@@ -25,7 +25,11 @@ import {
   mergeChargeState,
   type ChargeState,
 } from "../_shared/gateway-claim.ts";
-import { loadActivePendingCharge, loadSettlement } from "../_shared/payments.ts";
+import {
+  loadActivePendingCharge,
+  loadSettlement,
+  WALK_IN_CUSTOMER_NAME,
+} from "../_shared/payments.ts";
 import { requestSchema, schemaErrorCode } from "./schemas.ts";
 
 export type HandlerOptions = { createService: () => SupabaseClient };
@@ -368,7 +372,7 @@ async function attachGatewayData(
     // cliente sintético no nosso banco, sem telefone fake).
     customerId:
       appointment.customer_id ?? `walkin:${appointmentId}`,
-    name: (customer?.name as string | null) ?? "Cliente de balcão",
+    name: (customer?.name as string | null) ?? WALK_IN_CUSTOMER_NAME,
     email: (customer?.email as string | null) ?? null,
     phone: (customer?.phone as string | null) ?? null,
   });
