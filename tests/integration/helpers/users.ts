@@ -285,6 +285,15 @@ export async function deleteAuthUserByEmail(email: string): Promise<void> {
     .eq("id", found.id)
     .maybeSingle();
   const tenantId = profile?.tenant_id ?? null;
+  // `internal_operators.user_id` referencia `auth.users` sem cascade: o operador interno (ex.:
+  // super admin criado pelo bootstrap) precisa sair antes do usuário, senão a FK barra a exclusão.
+  const { error: operatorError } = await admin
+    .from("internal_operators")
+    .delete()
+    .eq("user_id", found.id);
+  if (operatorError) {
+    throw new Error(`Limpeza do operador interno falhou (código ${operatorError.code ?? "sem código"}).`);
+  }
   const { error } = await admin.auth.admin.deleteUser(found.id);
   if (error) throw new Error(`Limpeza de usuário falhou (status ${error.status ?? "sem status"}).`);
   if (tenantId) await deleteTenantIfEmpty(tenantId);
