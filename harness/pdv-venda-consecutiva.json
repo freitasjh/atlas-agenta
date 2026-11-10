@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "demand": "pdv-venda-consecutiva",
+  "agent": "developer-engineer",
+  "phase": "BugReview",
+  "gitSha": "cceede8f456360c1f6664ff69e94f11471ff6238",
+  "commands": [
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 17420,
+      "stdoutHash": "sha256:vitest-942-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 78340,
+      "stdoutHash": "sha256:integration-309-pass-0-fail-0-skip"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 20000,
+      "stdoutHash": "sha256:deno-check-0-errors-deno-test-449-pass"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 6390,
+      "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
+    },
+    {
+      "cmd": "npx supabase db reset",
+      "exitCode": 0,
+      "durationMs": 42000,
+      "stdoutHash": "sha256:db-reset-2x-exit-0"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 942, "failed": 0, "skipped": 0 },
+    "it": { "passed": 309, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 0, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "mode": "chrome-devtools",
+    "url": "http://localhost:5173/app/pdv",
+    "flow": [
+      "login admin@demo.local; abrir PDV",
+      "venda 1: profissional Profissional Demo + Corte (30 min, R$ 50); create-walk-in 201; quitar em dinheiro (register 200)",
+      "fechar comprovante: formulario limpo (profissional e servico vazios, identify desmarcado, sem erro visivel)",
+      "venda 2: MESMO profissional + Corte, dentro da duracao da venda 1; create-walk-in 201 (antes: 500 INTERNAL por 23P01); quitar em dinheiro 200",
+      "fechar comprovante: formulario limpo novamente"
+    ],
+    "network": {
+      "create-walk-in": "201",
+      "get-appointment-settlement": "200",
+      "register-appointment-payments": "200",
+      "failures_5xx": 0
+    },
+    "console": {
+      "errors": 0,
+      "warnings": 0,
+      "note": "apenas debug/info do Vite + React DevTools e 1 [issue] de a11y pre-existente (campo sem id/name no dialogo de pagamento); nenhum [ERROR]/[WARN]"
+    },
+    "beforeAfter": {
+      "before": "venda anterior walk_in concluida ocupava [starts_at, ends_at); INSERT da venda seguinte -> ERROR: conflicting key value violates exclusion constraint \"appointments_no_overlap\" (23P01) -> 500 INTERNAL",
+      "after": "constraint restrita a origin='agendado'; duas vendas walk-in sobrepostas do mesmo profissional coexistem (72 pares sobrepostos no banco local) e create-walk-in responde 201"
+    },
+    "screenshots": [
+      ".spec/bugs/pdv-venda-consecutiva/harness/01-pdv-venda-1-preenchida.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/02-pdv-apos-venda-1-form-limpo.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/03-pdv-venda-2-mesmo-profissional.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/04-pdv-venda-2-comprovante.png",
+      ".spec/bugs/pdv-venda-consecutiva/harness/05-pdv-apos-venda-2-form-limpo.png"
+    ]
+  },
+  "evaluation": {
+    "telas": "PDV limpa o formulario apos concluir (profissional/servico vazios, identify falso, sem alerta de validacao); a mensagem de conflito de agenda tem texto proprio e nao cai em 'Erro interno'",
+    "negocio": "venda walk-in nao disputa a agenda; agendamento continua protegido (23P01) e o contrato HTTP traduz para 409 SLOT_CONFLICT; nenhum afrouxamento de RLS/trigger/policy",
+    "logica": "mapRpcError cobre 23P01 sem vazar SQL; handler Deno devolve 409; PdvPage reseta com form.reset + clearErrors e reaplica o profissional travado; guarda do sentinela 'nenhum' evita validacao espuria do Select",
+    "perf": "unit 942 em ~17s; integracao 309 em ~78s; Deno 449 em ~20s; build ~6s"
+  },
+  "brainStore": [
+    "regras/projetos/atlas-agenda/exclusion-constraint-por-origem-23p01"
+  ],
+  "cleanup": {
+    "ports": [5173, 54321],
+    "note": "dev-down.sh encerrou Vite e supabase functions serve por PID (lsof/porta, conferindo o dono); nunca pkill -f; portas 5173/54321 livres."
+  },
+  "selfReported": false
+}
