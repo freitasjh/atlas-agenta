@@ -132,3 +132,27 @@ Deno.test("rejeita corpo inválido sem chamar o RPC", async () => {
   strictEqual(status, 400);
   strictEqual(rpcCalled, false);
 });
+
+Deno.test("colisão de agenda (23P01) responde 409 SLOT_CONFLICT, não 500", async () => {
+  const { status, json } = await post(
+    { professional_id: PROFESSIONAL, service_id: SERVICE, creation_idempotency_key: KEY },
+    {
+      segment: "barbearia",
+      linked: true,
+      rpc: () => ({
+        data: null,
+        error: {
+          code: "23P01",
+          message:
+            'conflicting key value violates exclusion constraint "appointments_no_overlap"',
+        },
+      }),
+    },
+  );
+  strictEqual(status, 409);
+  strictEqual(json.code, "SLOT_CONFLICT");
+  strictEqual(
+    json.message,
+    "Profissional ocupado neste horário. Escolha outro profissional ou outro horário.",
+  );
+});

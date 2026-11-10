@@ -19,6 +19,7 @@ import {
 } from "../helpers/payments-fixtures.ts";
 import { sql } from "../helpers/sql.ts";
 import { createTenantMember, deleteTestUsers, type TestUser } from "../helpers/users.ts";
+import { errorResponse, mapRpcError } from "../../../supabase/functions/_shared/http.ts";
 
 const tenantsToCleanup: string[] = [];
 
@@ -700,9 +701,9 @@ describe("Idempotência e concorrência da criação", () => {
     expect(ledgerCount(tenant.tenantId, appointmentId)).toBe(1);
   });
 
-  it("2 vendas simultâneas do mesmo profissional => 1 sucesso e 1 conflito 23P01", async () => {
+  it("2 vendas simultâneas do mesmo profissional => 1 sucesso + 1 conflito 23P01", async () => {
     const race = await seedWalkInCatalog(tenant.tenantId);
-    const [first, second] = await Promise.all([
+    const results = await Promise.all([
       callCreateWalkIn({
         tenantId: tenant.tenantId,
         actorId: tenant.admin.id,
@@ -719,12 +720,248 @@ describe("Idempotência e concorrência da criação", () => {
       }),
     ]);
 
-    const successes = [first, second].filter((result) => result.error === null);
-    const failures = [first, second].filter((result) => result.error !== null);
-    expect(successes).toHaveLength(1);
-    expect(failures).toHaveLength(1);
-    expect(failures[0]?.error?.code).toBe("23P01");
+    // Venda walk-in ABERTA (`em_atendimento`) disputa o horário do profissional
+    // (migration 20261112090000_appointments_no_overlap_origin.sql): duas
+    // vendas simultâneas seriam double-booking. Só a CONCLUÍDA sai do índice.
+    const ok = results.filter((result) => result.error === null);
+    const conflicts = results.filter((result) => result.error !== null);
+    expect(ok).toHaveLength(1);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.error?.code).toBe("23P01");
+
+    // O conflito atravessa o contrato HTTP como 409 SLOT_CONFLICT, nunca 500.
+    const mapped = mapRpcError(conflicts[0]?.error ?? null);
+    expect(mapped.status).toBe(409);
+    expect(mapped.code).toBe("SLOT_CONFLICT");
+
     expect(appointmentCount(tenant.tenantId, race.professionalId)).toBe(1);
+  });
+});
+
+describe("Venda consecutiva no PDV (walk-in não ocupa a agenda)", () => {
+  let tenant: PaymentsTenant;
+  let catalog: WalkInCatalog;
+
+  beforeAll(async () => {
+    tenant = await newTenant("pdv-consecutive");
+    await setTenantSegment(tenant.tenantId, "barbearia");
+    catalog = await seedWalkInCatalog(tenant.tenantId, { linkService: true });
+  });
+
+  it("2 vendas consecutivas do mesmo profissional dentro da duração => ambas 201 e pagamento 200", async () => {
+    // Ordem do bug real: criar → pagar/concluir → criar → pagar/concluir, na
+    // mesma janela do profissional. A venda concluída sai do índice de exclusão,
+    // então a segunda criação não pode cair em 23P01/500.
+    const first = await edgeWalkIn(tenant.admin, {
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      creation_idempotency_key: randomUUID(),
+    });
+    expect(first.status).toBe(201);
+    const firstId = String(first.json?.appointment_id ?? "");
+    expect(firstId).not.toBe("");
+
+    const firstPaid = await callFunction("register-appointment-payments", {
+      token: tenant.admin.accessToken,
+      body: {
+        appointment_id: firstId,
+        idempotency_key: randomUUID(),
+        close_appointment: true,
+        payments: [{ method: "dinheiro", amount_cents: 10_000 }],
+      },
+    });
+    expect(firstPaid.status).toBe(200);
+    expect(await getAppointmentStatus(firstId)).toBe("concluido");
+
+    const second = await edgeWalkIn(tenant.admin, {
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      creation_idempotency_key: randomUUID(),
+    });
+    expect(second.status).toBe(201);
+    const secondId = String(second.json?.appointment_id ?? "");
+    expect(secondId).not.toBe("");
+    expect(secondId).not.toBe(firstId);
+
+    const secondPaid = await callFunction("register-appointment-payments", {
+      token: tenant.admin.accessToken,
+      body: {
+        appointment_id: secondId,
+        idempotency_key: randomUUID(),
+        close_appointment: true,
+        payments: [{ method: "dinheiro", amount_cents: 10_000 }],
+      },
+    });
+    expect(secondPaid.status).toBe(200);
+    expect(await getAppointmentStatus(secondId)).toBe("concluido");
+
+    expect(appointmentCount(tenant.tenantId, catalog.professionalId)).toBe(2);
+  });
+});
+
+describe("Agendado continua protegido pela constraint de exclusão", () => {
+  let tenant: PaymentsTenant;
+  let catalog: WalkInCatalog;
+
+  beforeAll(async () => {
+    tenant = await newTenant("pdv-slot-guard");
+    catalog = await seedWalkInCatalog(tenant.tenantId, { withCustomer: true });
+  });
+
+  function insertScheduled(startsAt: Date) {
+    return serviceClient().from("appointments").insert({
+      tenant_id: tenant.tenantId,
+      origin: "agendado",
+      customer_id: catalog.customerId,
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 30 * 60_000).toISOString(),
+      price_cents: 10_000,
+      status: "pendente",
+    });
+  }
+
+  it("dois agendamentos sobrepostos do mesmo profissional => 23P01", async () => {
+    const startsAt = new Date(Date.now() + 2 * 3_600_000);
+    const first = await insertScheduled(startsAt);
+    expect(first.error).toBeNull();
+
+    // Mesma janela: a exclusão de agendamento continua ativa.
+    const overlap = await insertScheduled(new Date(startsAt.getTime() + 5 * 60_000));
+    expect(overlap.error?.code).toBe("23P01");
+  });
+
+  it("o erro real 23P01 do agendado vira 409 SLOT_CONFLICT, nunca 500", async () => {
+    const startsAt = new Date(Date.now() + 4 * 3_600_000);
+    const first = await insertScheduled(startsAt);
+    expect(first.error).toBeNull();
+
+    const overlap = await insertScheduled(new Date(startsAt.getTime() + 5 * 60_000));
+    expect(overlap.error?.code).toBe("23P01");
+
+    const mapped = mapRpcError(overlap.error);
+    expect(mapped.status).toBe(409);
+    expect(mapped.code).toBe("SLOT_CONFLICT");
+
+    const response = errorResponse(mapped);
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.code).toBe("SLOT_CONFLICT");
+  });
+});
+
+describe("Walk-in × agendado — dois sentidos e regressão do fix", () => {
+  let tenant: PaymentsTenant;
+
+  beforeAll(async () => {
+    tenant = await newTenant("pdv-walk-in-slot-guard");
+    await setTenantSegment(tenant.tenantId, "barbearia");
+  });
+
+  /** Agendamento do mesmo profissional cobrindo `[now-5min, now+25min)`. */
+  function insertScheduled(catalog: WalkInCatalog) {
+    const startsAt = new Date(Date.now() - 5 * 60_000);
+    return serviceClient().from("appointments").insert({
+      tenant_id: tenant.tenantId,
+      origin: "agendado",
+      customer_id: catalog.customerId,
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      starts_at: startsAt.toISOString(),
+      ends_at: new Date(startsAt.getTime() + 30 * 60_000).toISOString(),
+      price_cents: 10_000,
+      status: "pendente",
+    });
+  }
+
+  it("agendado ativo no horário bloqueia walk-in (23P01) e vira 409 SLOT_CONFLICT", async () => {
+    const catalog = await seedWalkInCatalog(tenant.tenantId, {
+      linkService: true,
+      withCustomer: true,
+    });
+    const scheduled = await insertScheduled(catalog);
+    expect(scheduled.error).toBeNull();
+
+    // Banco: a venda aberta não pode se sobrepor a um agendamento existente.
+    const rpc = await callCreateWalkIn({
+      tenantId: tenant.tenantId,
+      actorId: tenant.admin.id,
+      professionalId: catalog.professionalId,
+      serviceId: catalog.serviceId,
+    });
+    expect(rpc.error?.code).toBe("23P01");
+    expect(mapRpcError(rpc.error).status).toBe(409);
+
+    // Contrato: a Edge devolve 409 SLOT_CONFLICT com mensagem pt-BR, nunca 500.
+    const edge = await edgeWalkIn(tenant.admin, {
+      professional_id: catalog.professionalId,
+      service_id: catalog.serviceId,
+      creation_idempotency_key: randomUUID(),
+    });
+    expect(edge.status).toBe(409);
+    expect(edge.json?.code).toBe("SLOT_CONFLICT");
+    expect(String(edge.json?.message ?? "")).toMatch(/ocupado/i);
+
+    expect(appointmentCount(tenant.tenantId, catalog.professionalId)).toBe(1);
+  });
+
+  it("walk-in aberto (em_atendimento) bloqueia agendamento sobreposto (23P01)", async () => {
+    const catalog = await seedWalkInCatalog(tenant.tenantId, {
+      linkService: true,
+      withCustomer: true,
+    });
+    const walkInId = await createWalkInOk({
+      tenantId: tenant.tenantId,
+      actorId: tenant.admin.id,
+      professionalId: catalog.professionalId,
+      serviceId: catalog.serviceId,
+    });
+
+    const scheduled = await insertScheduled(catalog);
+    expect(scheduled.error?.code).toBe("23P01");
+    expect(await getAppointmentStatus(walkInId)).toBe("em_atendimento");
+    expect(appointmentCount(tenant.tenantId, catalog.professionalId)).toBe(1);
+  });
+
+  it("walk-in concluído libera a janela: venda seguinte sucede (regressão do fix)", async () => {
+    const catalog = await seedWalkInCatalog(tenant.tenantId, {
+      linkService: true,
+      withCustomer: true,
+    });
+    const firstId = await createWalkInOk({
+      tenantId: tenant.tenantId,
+      actorId: tenant.admin.id,
+      professionalId: catalog.professionalId,
+      serviceId: catalog.serviceId,
+    });
+
+    const concluded = await register(
+      tenant.tenantId,
+      tenant.admin.id,
+      firstId,
+      [{ method: "dinheiro", amount_cents: 10_000 }],
+      randomUUID(),
+      true,
+    );
+    expect(concluded.error).toBeNull();
+    expect(await getAppointmentStatus(firstId)).toBe("concluido");
+
+    // Mesmo profissional, dentro da duração da venda anterior: o concluído sai
+    // do índice, então a segunda venda não colide (o bug reportado).
+    const second = await callCreateWalkIn({
+      tenantId: tenant.tenantId,
+      actorId: tenant.admin.id,
+      professionalId: catalog.professionalId,
+      serviceId: catalog.serviceId,
+      creationIdempotencyKey: randomUUID(),
+    });
+    expect(second.error).toBeNull();
+    const secondId = String(second.data?.id ?? "");
+    expect(secondId).not.toBe("");
+    expect(secondId).not.toBe(firstId);
+    expect(await getAppointmentStatus(secondId)).toBe("em_atendimento");
+    expect(appointmentCount(tenant.tenantId, catalog.professionalId)).toBe(2);
   });
 });
 

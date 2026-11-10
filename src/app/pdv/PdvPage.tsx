@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus } from "lucide-react";
@@ -53,6 +53,21 @@ function todayInTenantTz(timeZone: string): string {
 }
 
 /**
+ * Estado inicial do formulário de venda — também o alvo do reset pós-conclusão
+ * (decisão 1a: limpar tudo). Profissional travado (papel `professional`) é
+ * reposto com o próprio id para o campo nunca ficar vazio e inválido.
+ */
+function initialWalkInValues(professionalId: string): WalkInInput {
+  return {
+    professionalId,
+    selection: { kind: "service", serviceId: "" },
+    customerName: "",
+    customerPhone: "",
+    whatsappOptIn: false,
+  };
+}
+
+/**
  * Tela PDV — balcão (`/app/pdv`, ADR-23): segunda porta do checkout existente.
  * Esquerda: serviço/pacote + profissional + cliente (anônimo default).
  * Direita: total + checkout em modo "venda nova". Mobile empilhado.
@@ -93,13 +108,7 @@ export function PdvPage() {
 
   const form = useForm<WalkInInput>({
     resolver: zodResolver(walkInSchema),
-    defaultValues: {
-      professionalId: "",
-      selection: { kind: "service", serviceId: "" },
-      customerName: "",
-      customerPhone: "",
-      whatsappOptIn: false,
-    },
+    defaultValues: initialWalkInValues(""),
   });
 
   const professionals = professionalsQuery.data ?? [];
@@ -110,6 +119,19 @@ export function PdvPage() {
     if (canScheduleForAnyProfessional || !userId) return null;
     return professionals.find((p) => p.profile_id === userId) ?? null;
   }, [canScheduleForAnyProfessional, userId, professionals]);
+
+  // Papel `professional`: o Select fica travado; o id precisa estar no form.
+  // Sem isto o campo fica vazio e o operador não consegue vender.
+  useEffect(() => {
+    if (ownProfessional) form.setValue("professionalId", ownProfessional.id);
+  }, [ownProfessional, form]);
+
+  /** Reset total do formulário após concluir a venda (decisão 1a). */
+  function resetSaleForm() {
+    form.reset(initialWalkInValues(ownProfessional?.id ?? ""));
+    setIdentify(false);
+    form.clearErrors();
+  }
 
   if (payments === null) {
     return (
@@ -144,6 +166,14 @@ export function PdvPage() {
     selection.kind === "service"
       ? (services.find((s) => s.id === selection.serviceId)?.name ?? "")
       : (combos.find((c) => c.id === selection.comboId)?.name ?? "");
+
+  // Erro da seleção (união discriminada) — superfície acessível do campo.
+  const selectionError = (() => {
+    const errors = form.formState.errors.selection as
+      | { message?: string; serviceId?: { message?: string }; comboId?: { message?: string } }
+      | undefined;
+    return errors?.serviceId?.message ?? errors?.comboId?.message ?? errors?.message;
+  })();
 
   const pendingToday = (todayQuery.data ?? []).filter(
     (a) => a.status === "em_atendimento" || a.status === "confirmado",
@@ -199,9 +229,8 @@ export function PdvPage() {
       form.clearErrors(["customerName", "customerPhone"]);
     } catch (error) {
       if (error instanceof PaymentApiError) {
-        // Código conhecido → mensagem do próprio código; desconhecido → fallback
-        // do PDV. A Edge não devolve `23P01` (mapRpcError só traduz PT4xx),
-        // então não há conflito de agenda a mapear aqui.
+        // Código conhecido → mensagem do próprio código (inclui `SLOT_CONFLICT`,
+        // 409 da constraint de agenda). Desconhecido → fallback do PDV.
         const message = Object.prototype.hasOwnProperty.call(PAYMENT_ERROR_MAP, error.code)
           ? paymentErrorMessage(messages, error.code)
           : messages.pdv.createdError;
@@ -233,7 +262,11 @@ export function PdvPage() {
                   render={({ field }) => (
                     <Select
                       value={field.value || "nenhum"}
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        // "nenhum"/vazio é sentinela visual do Select, nunca valor de domínio.
+                        if (!value || value === "nenhum") return;
+                        field.onChange(value);
+                      }}
                       disabled={!canScheduleForAnyProfessional || !!ownProfessional}
                     >
                       <SelectTrigger id="pdv-profissional" className="w-full">
@@ -265,9 +298,14 @@ export function PdvPage() {
                     render={({ field }) => (
                       <Select
                         value={field.value || "nenhum"}
-                        onValueChange={(value) =>
-                          form.setValue("selection", { kind: "service", serviceId: value }, { shouldValidate: true })
-                        }
+                        onValueChange={(value) => {
+                          if (!value || value === "nenhum") return;
+                          form.setValue(
+                            "selection",
+                            { kind: "service", serviceId: value },
+                            { shouldValidate: true },
+                          );
+                        }}
                       >
                         <SelectTrigger id="pdv-servico" className="w-full">
                           <SelectValue placeholder={messages.pdv.service} />
@@ -289,9 +327,14 @@ export function PdvPage() {
                     render={({ field }) => (
                       <Select
                         value={field.value || "nenhum"}
-                        onValueChange={(value) =>
-                          form.setValue("selection", { kind: "combo", comboId: value }, { shouldValidate: true })
-                        }
+                        onValueChange={(value) => {
+                          if (!value || value === "nenhum") return;
+                          form.setValue(
+                            "selection",
+                            { kind: "combo", comboId: value },
+                            { shouldValidate: true },
+                          );
+                        }}
                       >
                         <SelectTrigger id="pdv-servico" className="w-full">
                           <SelectValue placeholder={messages.pdv.combo} />
@@ -323,6 +366,11 @@ export function PdvPage() {
                   >
                     {selection.kind === "service" ? messages.pdv.combo : messages.pdv.service}
                   </Button>
+                ) : null}
+                {selectionError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {selectionError}
+                  </p>
                 ) : null}
               </div>
 
@@ -496,6 +544,7 @@ export function PdvPage() {
           }}
           onCompleted={() => {
             setCaptureTarget(null);
+            resetSaleForm();
             toast.success(messages.pdv.saleCompleted);
             void todayQuery.refetch();
           }}

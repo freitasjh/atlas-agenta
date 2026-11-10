@@ -23,6 +23,8 @@
   "include": [
     "tests/integration",
     "vitest.integration.config.ts",
-    "supabase/functions/_shared/super-admin-bootstrap.ts"
+    "supabase/functions/_shared/super-admin-bootstrap.ts",
+    "supabase/functions/_shared/http.ts",
+    "supabase/functions/_shared/http-cors.ts"
   ]
 }
