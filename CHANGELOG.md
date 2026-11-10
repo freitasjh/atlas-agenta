@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.1.3](https://github.com/freitasjh/atlas-agenta/compare/atlas-agenda-v0.1.2...atlas-agenda-v0.1.3) (2026-11-10)
+
+
+### Features
+
+* **adr-001:** schema tenants endereco + saneamento P1 timestamps ([89c2813](https://github.com/freitasjh/atlas-agenta/commit/89c2813408eadb9c3e87f1fe3bb00a2889e56004))
+* **adr-001:** schema tenants endereco + saneamento P1 timestamps ([c818517](https://github.com/freitasjh/atlas-agenta/commit/c81851786519bdbd4cb706837b9ac865ed373d7f))
+* **adr-002:** RPC 14 params + Edge signup validacao server + 409 ([7d5bf0f](https://github.com/freitasjh/atlas-agenta/commit/7d5bf0f8aec38400e69d5852ce12a34df77fc0be))
+* **adr-002:** RPC 14 params + Edge signup validacao server + 409 ([76a189f](https://github.com/freitasjh/atlas-agenta/commit/76a189f3c9224a1489b3845c1761917f959e421a))
+* **adr-003:** CadastroPage 4 blocos + mascaras + ViaCEP + signup com… ([9b6726a](https://github.com/freitasjh/atlas-agenta/commit/9b6726a3afa0ec512056898df7fb4bb3eafb5ba7))
+* **adr-003:** CadastroPage 4 blocos + mascaras + ViaCEP + signup completo ([0af4312](https://github.com/freitasjh/atlas-agenta/commit/0af4312cd24d8642e9a8a9823fd894bbaed236cd))
+* bootstrap cria operador junto (fim do backfill manual) ([62c9b40](https://github.com/freitasjh/atlas-agenta/commit/62c9b401ecfa901c648b630ad884a8fa90bd319d))
+* bootstrap cria operador junto (fim do backfill manual) ([71058c5](https://github.com/freitasjh/atlas-agenta/commit/71058c55c5b91fd56b256b6ebc001be3cef0cfa7))
+* **cobranca:** formas de pagamento no fechamento (ledger + split + P… ([75e079e](https://github.com/freitasjh/atlas-agenta/commit/75e079ea3190b0e0fa5fb3ab58ce58bc288229c9))
+* **cobranca:** formas de pagamento no fechamento (ledger + split + PIX sob escolha + relatorios) ([0752eb2](https://github.com/freitasjh/atlas-agenta/commit/0752eb277e2d992c04ded2b2e7c5a48cd0f7f01d))
+* grade horarios lote + mensal read-only + exceções ([f4662be](https://github.com/freitasjh/atlas-agenta/commit/f4662be8f12ae79c130809ef8656aa7b1e9594ef))
+* grade horarios lote + mensal read-only + exceções ([8334119](https://github.com/freitasjh/atlas-agenta/commit/83341198a3a8cd6c71fb37a83c1aa6646eee8a70))
+* P0 isolamento operadores internos + MFA AAL2 ([ca82ba3](https://github.com/freitasjh/atlas-agenta/commit/ca82ba3bd3c3a5d2db2d6f7513bbf088fa770549))
+* P0 isolamento operadores internos + MFA AAL2 ([b208ee1](https://github.com/freitasjh/atlas-agenta/commit/b208ee1c4a0f762ac4b8202fd4c1c9f71cdbdd9b))
+* **pdv-adr21:** migration origin/nullable/idempotency + RPC create_walk_in_appointment ([9cc2099](https://github.com/freitasjh/atlas-agenta/commit/9cc2099c83ea17ed00f01ca9701aa3d279b37ac4))
+* **pdv-adr22:** Edge create-walk-in + audit + register tolera anônimo + can_view_qr walk-in ([f972ee5](https://github.com/freitasjh/atlas-agenta/commit/f972ee5257d389fdce56cc144431f79ab5bb80b1))
+* **pdv-adr23:** tela /app/pdv 2 colunas + sidebar + botao agenda + badge Balcao + A-concluir-hoje ([a38dc56](https://github.com/freitasjh/atlas-agenta/commit/a38dc56537ffab51c480362481930983f3f8db95))
+* **pdv-adr24:** fechamento balcao so-leitura admin + filtro origin ([449fcf3](https://github.com/freitasjh/atlas-agenta/commit/449fcf35a450332c37df32be9a7b48beca30204b))
+* **pdv-adr25:** testes+QA checkpoints, workflow-state pdv-balcao (Testing 90%) ([eb1af2d](https://github.com/freitasjh/atlas-agenta/commit/eb1af2d29b12b286a4dd273c9e717b71bebd1918))
+* seed super_admin default no db reset (dev-only, idempotente) ([f805f05](https://github.com/freitasjh/atlas-agenta/commit/f805f05d1dccc29f0da4545d242b17e3c002518b))
+* seed super_admin default no db reset (dev-only, idempotente) ([7393d08](https://github.com/freitasjh/atlas-agenta/commit/7393d08d82569b713a0175f39ad0f906077d86c7))
+* telemetria planos 4 views + 4 RPCs + 2 cards ([b6730d2](https://github.com/freitasjh/atlas-agenta/commit/b6730d23c1782c36c0f000db91f4d6176ceb2bab))
+* telemetria planos 4 views + 4 RPCs + 2 cards ([9c1ebc4](https://github.com/freitasjh/atlas-agenta/commit/9c1ebc47de6ca473363b98a4503e47493cd84064))
+
+
+### Bug Fixes
+
+* **functions:** queryOptionalById aceita thenable e call sites tipados ([0384dc7](https://github.com/freitasjh/atlas-agenta/commit/0384dc78c9d4b81b146f0ee78d700c7bc2fff717))
+* **pdv:** checkout de venda anônima sem 500 INTERNAL ([0cf6f99](https://github.com/freitasjh/atlas-agenta/commit/0cf6f9900cc38977a29a67423e137c4b860dc9b3))
+* **pdv:** checkout de venda anônima sem 500 INTERNAL ([9292e4d](https://github.com/freitasjh/atlas-agenta/commit/9292e4dded9bb531831d2a964fe3d5131d013aa7))
+* **pdv:** prova do settlement em Vitest e reset de cliente por venda ([6f30fc6](https://github.com/freitasjh/atlas-agenta/commit/6f30fc63aaef108912e04acac1289063131300c4))
+* **tests:** zera falhas da suíte de integração (unit 930/930, integração 302/302) ([b2bdf39](https://github.com/freitasjh/atlas-agenta/commit/b2bdf3987f0faf690f648d0124055234ef778100))
+* **tests:** zera falhas da suíte de integração e adiciona matriz walk-in ([171d598](https://github.com/freitasjh/atlas-agenta/commit/171d598f915df1e96a27f36af964c6619674ac2c))
+
 ## [0.1.2](https://github.com/freitasjh/atlas-agenta/compare/atlas-agenda-v0.1.1...atlas-agenda-v0.1.2) (2026-11-04)
 
 
