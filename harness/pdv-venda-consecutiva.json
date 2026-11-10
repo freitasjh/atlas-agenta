@@ -4,7 +4,7 @@
   "agent": "developer-engineer",
   "phase": "BugReview",
   "iteration": 2,
-  "gitSha": "7ffff8d",
+  "gitSha": "a7560b1 (codigo+evidencia da iteracao 2)",
   "commands": [
     {
       "cmd": "npx supabase db reset (1x)",
@@ -38,9 +38,21 @@
     }
   ],
   "counts": {
-    "unit": { "passed": 942, "failed": 0, "skipped": 0 },
-    "it": { "passed": 312, "failed": 0, "skipped": 0 },
-    "functions": { "passed": 449, "failed": 0, "skipped": 0 }
+    "unit": {
+      "passed": 942,
+      "failed": 0,
+      "skipped": 0
+    },
+    "it": {
+      "passed": 312,
+      "failed": 0,
+      "skipped": 0
+    },
+    "functions": {
+      "passed": 449,
+      "failed": 0,
+      "skipped": 0
+    }
   },
   "predicate": {
     "constraint": "appointments_no_overlap",
@@ -96,7 +108,10 @@
     "sessoes/atlas-agenda/2026-11-09-pdv-venda-consecutiva-iteracao-2"
   ],
   "cleanup": {
-    "ports": [5173, 54321],
+    "ports": [
+      5173,
+      54321
+    ],
     "note": "dev-down.sh encerrou Vite e supabase functions serve por PID (conferindo o dono); nunca pkill -f; porta 5173 livre. Stack Supabase local permanece de pe (dev-down sem --all, por desenho)."
   },
   "selfReported": false
