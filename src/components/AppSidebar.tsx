@@ -2,7 +2,11 @@ import {
   BarChart3,
   CalendarDays,
   Clock,
+  Gift,
+  Hourglass,
+  Landmark,
   LayoutDashboard,
+  Megaphone,
   Receipt,
   Settings,
   Store,
@@ -23,7 +27,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ onNavigate }: AppSidebarProps) {
-  const { isAdmin, isProfessional, canViewCommission, canRegisterPayments } = usePermissions();
+  const { isAdmin, isReceptionist, isProfessional, canViewCommission, canRegisterPayments } = usePermissions();
   const { commission, payments } = useSegmentFeatures();
   const { userId } = useCurrentUser();
   const professionalsQuery = useProfessionals({ activeOnly: true, enabled: isProfessional });
@@ -38,6 +42,9 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
 
   items.push({ to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true });
   items.push({ to: "/app/agenda", label: "Agenda", icon: CalendarDays });
+  if (isAdmin || isReceptionist) {
+    items.push({ to: "/app/lista-espera", label: "Lista de espera", icon: Hourglass });
+  }
   // PDV balcão (ADR-23): mesmo gating do checkout — salão/barbearia, 3 papéis.
   if (payments === true && canRegisterPayments) {
     items.push({ to: "/app/pdv", label: "PDV", icon: Store });
@@ -45,7 +52,16 @@ export function AppSidebar({ onNavigate }: AppSidebarProps) {
   items.push({ to: "/app/clientes", label: "Clientes", icon: Users });
 
   if (isAdmin) {
+    items.push({ to: "/app/campanhas", label: "Campanhas", icon: Megaphone });
+    items.push({ to: "/app/fidelidade", label: "Fidelidade", icon: Gift });
     items.push({ to: "/app/cobrancas", label: "Cobranças", icon: Receipt });
+  }
+
+  // Financeiro (Fase 5 ADR-01): skeleton hub gated por segmento `payments`
+  // (admin-only). O gating fino por entitlement vive dentro da página
+  // (`EntitlementGate` por capacidade); a trava real de dados é o RLS.
+  if (isAdmin && payments === true) {
+    items.push({ to: "/app/financeiro", label: "Financeiro", icon: Landmark });
   }
 
   if (isProfessional && ownProfessional) {

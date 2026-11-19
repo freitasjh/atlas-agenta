@@ -40,7 +40,7 @@ $$;
 -- ----------------------------------------------------------------------------
 select tests.create_user('10000000-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'admin', 'Admin A');
 
-update tenants set segment = 'clinica', plan = 'clinica', subscription_status = 'ativo'
+update tenants set segment = 'clinica', plan = 'premium', subscription_status = 'ativo'
  where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 insert into professionals (id, tenant_id, name) values

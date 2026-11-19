@@ -44,8 +44,8 @@ $$;
 -- Fixture: tenant A (clínica) com cliente, profissional, serviço e três atendimentos.
 -- Tenant B com um cliente próprio, para provar a amarração entre tenants.
 insert into tenants (id, legal_name, owner_email, segment, plan) values
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Clínica A (teste)', 'clinica-a@teste.invalido', 'clinica', 'clinica'),
-  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Clínica B (teste)', 'clinica-b@teste.invalido', 'clinica', 'clinica');
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Clínica A (teste)', 'clinica-a@teste.invalido', 'clinica', 'premium'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Clínica B (teste)', 'clinica-b@teste.invalido', 'clinica', 'premium');
 
 insert into customers (id, tenant_id, name, phone) values
   ('a3333333-3333-4333-8333-333333333331', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Cliente A1', '+5511900000001'),

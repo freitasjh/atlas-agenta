@@ -45,6 +45,20 @@ export interface ConnectionStateResult {
   state: EvolutionState;
 }
 
+/**
+ * Erro tipado para "instância não existe no Evolution" (HTTP 404).
+ * Permite ao consumidor (`handleCheck`) reconciliar a linha local para
+ * `desconectado` em vez de tratar como falha transitória best-effort.
+ * Subclasse de `Error` — o contrato da porta (`Promise<ConnectionStateResult>`,
+ * falha vira `Error` pt-BR) segue intacto (ADR-17).
+ */
+export class EvolutionInstanceNotFoundError extends Error {
+  constructor(message = "A instância do WhatsApp não existe no servidor de WhatsApp.") {
+    super(message);
+    this.name = "EvolutionInstanceNotFoundError";
+  }
+}
+
 /** Porta estável: a Edge Function só conhece esta interface, nunca o provedor concreto. */
 export interface EvolutionAdapter {
   pair(instanceName: string): Promise<PairResult>;
@@ -492,6 +506,13 @@ export class RealEvolutionAdapter implements EvolutionAdapter {
       path: `/instance/connectionState/${encodeURIComponent(instanceName)}`,
     });
     if (!stateRes.ok) {
+      // 404 = a instância NÃO existe mais no Evolution (ex.: apagada no painel).
+      // Erro TIPADO para o `handleCheck` reconciliar a linha local para
+      // `desconectado` (fim do polling infinito da UI) em vez de best-effort.
+      if (stateRes.status === 404) {
+        console.error(`getConnectionState: instância ausente no Evolution — ${instanceName}`);
+        throw new EvolutionInstanceNotFoundError();
+      }
       console.error(`getConnectionState: consulta falhou (status ${stateRes.status})`);
       throw new Error("Não foi possível consultar o estado do WhatsApp.");
     }

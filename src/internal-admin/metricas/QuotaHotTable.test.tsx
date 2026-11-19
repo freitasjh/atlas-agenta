@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 function row(partial: Partial<QuotaHotRow> & { tenant_id: string }): QuotaHotRow {
   return {
     trade_name: "Empresa Quente",
-    plan: "individual",
+    plan: "starter",
     profs: 1,
     prof_limit: 1,
     appts: 128,

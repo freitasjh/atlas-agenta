@@ -351,6 +351,31 @@ Deno.test("erro PT409 da RPC vira 409 com código estável", async () => {
   strictEqual(body.code, "AMOUNT_EXCEEDS_REMAINING");
 });
 
+Deno.test("PACKAGE_CREDIT_AVAILABLE (PT409) vira 409 sem gateway nem escrita extra", async () => {
+  const state = baseState({
+    rpc: (name) => {
+      if (name === "register_appointment_payments") {
+        return { data: null, error: { code: "PT409", message: "PACKAGE_CREDIT_AVAILABLE" } };
+      }
+      return { data: null, error: null };
+    },
+  });
+  const response = await handlerFor(state)(
+    request({
+      body: {
+        appointment_id: APPOINTMENT_ID,
+        idempotency_key: KEY,
+        close_appointment: true,
+        payments: [{ method: "dinheiro", amount_cents: 10_000 }],
+      },
+    }),
+  );
+  strictEqual(response.status, 409);
+  const body = await response.json();
+  strictEqual(body.code, "PACKAGE_CREDIT_AVAILABLE");
+  strictEqual(state.calls.includes("rpc:reserve_appointment_charge"), false);
+});
+
 Deno.test("erro não-domínio vira 500 INTERNAL sem ecoar mensagem", async () => {
   const state = baseState({
     rpc: (name) => {

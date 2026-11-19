@@ -8,6 +8,7 @@ import type { PlanSlug } from "@/lib/plans";
 /** Estados da máquina de estados do agendamento. */
 export const APPOINTMENT_STATUSES = [
   "pendente",
+  "aguardando_deposito",
   "confirmado",
   "em_atendimento",
   "concluido",
@@ -36,7 +37,7 @@ export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
  * confiável: validado por zod (`adminTenantRowSchema`) antes do uso.
  *
  * `plan` reusa `PlanSlug` de `src/lib/plans.ts` (mesmos valores do enum
- * persistido `tenants.plan`: `individual|clinica|pro`) — fonte única de slugs
+ * persistido `tenants.plan`: `free|starter|premium|enterprise`) — fonte única de slugs
  * e rótulos de plano, sem duplicar o enum aqui.
  */
 export interface TenantListItem {
@@ -78,6 +79,13 @@ export interface CurrentTenant {
   timezone: string;
   /** Ramo de negócio do tenant; `null` = legado/genérico. */
   segment: BusinessSegment | null;
+  /**
+   * Slug do plano (`tenants.plan`: `free|starter|premium|enterprise`,
+   * CHECK `tenants_plan_check`). String aberta de propósito: o catálogo
+   * (`get_plans()`) é a SSoT dos slugs vigentes — valor fora do catálogo
+   * degrada para `null` no consumo, nunca derruba o parse do tenant.
+   */
+  plan: string | null;
 }
 
 /**
@@ -93,9 +101,21 @@ export interface Service {
   tenant_id: string;
   name: string;
   duration_minutes: number;
+  processing_minutes: number;
   price_cents: number;
+  backbar_cost_cents: number;
   active: boolean;
   created_at: string;
+  /**
+   * Config de depósito/sinal (Fase 4, ADR-02). Opcionais: backend anterior à
+   * migration não retorna as colunas — ausência = depósito desabilitado.
+   */
+  deposit_enabled?: boolean;
+  deposit_type?: "percent" | "fixed" | null;
+  deposit_value?: number;
+  deposit_deadline_hours?: number;
+  deposit_refund_policy?: "total" | "partial" | "none";
+  deposit_refund_percent?: number | null;
 }
 
 /**
@@ -276,8 +296,15 @@ export interface Appointment {
   professional_id: string;
   service_id: string | null;
   combo_id: string | null;
+  /**
+   * Vínculo opcional ao crédito de pacote (Fase 2, ADR-02): nulo = avulso.
+   * FK composta por tenant no banco; a baixa de 1 sessão é efeito automático
+   * do trigger ao entrar em `concluido`.
+   */
+  package_credit_id: string | null;
   starts_at: string;
   ends_at: string;
+  processing_minutes: number;
   price_cents: number;
   status: AppointmentStatus;
   confirmed_at: string | null;
@@ -300,7 +327,7 @@ export interface Appointment {
  */
 export interface AppointmentWithRelations extends Appointment {
   customers: { name: string; whatsapp_opt_in: boolean } | null;
-  services: { name: string } | null;
+  services: { name: string; processing_minutes?: number } | null;
   /**
    * Join embutido do pacote quando o agendamento veio de um combo (`combo_id`
    * preenchido, XOR com `service_id`). `null` quando é serviço avulso ou a
@@ -310,7 +337,60 @@ export interface AppointmentWithRelations extends Appointment {
    */
   combos: { name: string; price_cents: number } | null;
   professionals: { name: string } | null;
+  resources: { name: string }[];
   commission_cents: number | null;
+}
+
+/**
+ * Linha de `package_credits` — crédito de pacote por cliente (Fase 2, ADR-02).
+ * 1 linha por venda; sem DELETE físico e sem UPDATE de valor (correção = venda
+ * nova). `used_sessions` só anda pela baixa automática ao `concluido` (trigger)
+ * ou pelo `redeem_session` direto. Dinheiro em centavos inteiros; tempos UTC.
+ * Shape lido sob RLS — o cliente nunca envia `tenant_id`.
+ */
+export type ResourceType = "sala" | "equipamento" | "cadeira";
+
+export interface Resource {
+  id: string;
+  tenant_id: string;
+  name: string;
+  type: ResourceType;
+  capacity: number;
+  color: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export type PackageCreditStatus = "active" | "exhausted" | "expired";
+
+export interface PackageCredit {
+  id: string;
+  tenant_id: string;
+  customer_id: string;
+  service_id: string;
+  total_sessions: number;
+  used_sessions: number;
+  price_cents: number;
+  validity_days: number;
+  expires_at: string;
+  status: PackageCreditStatus;
+  created_at: string;
+}
+
+/**
+ * Linha retornada por `get_package_balance(p_customer_id)` — saldo por crédito
+ * (leitura escopada ao cliente, sob RLS). `remaining = total - used`;
+ * `expired` é flag ao vivo (`expires_at <= now()`), nunca status gravado.
+ */
+export interface PackageBalance {
+  credit_id: string;
+  service_id: string;
+  total_sessions: number;
+  used_sessions: number;
+  remaining: number;
+  expires_at: string;
+  expired: boolean;
+  status: PackageCreditStatus;
 }
 
 /**
@@ -411,4 +491,68 @@ export interface Message {
   failure_reason: string | null;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+/** Categoria de produto (ADR-02). */
+export type ProductCategory = "backbar" | "retail" | "both";
+
+/** Linha de `products` (ADR-02). Dinheiro em centavos; saldo materializado em `stock_qty`. */
+export interface Product {
+  id: string;
+  tenant_id: string;
+  name: string;
+  sku: string | null;
+  category: ProductCategory;
+  unit: string;
+  cost_cents: number;
+  price_cents: number;
+  min_qty: number;
+  active: boolean;
+  commission_pct: number;
+  stock_qty: number;
+  created_at: string;
+}
+
+/** Linha de `product_professionals` (N:N). */
+export interface ProductProfessional {
+  id: string;
+  tenant_id: string;
+  product_id: string;
+  professional_id: string;
+  created_at: string;
+}
+
+/** Tipo de movimento de estoque (ADR-03). */
+export type StockMovementType = "consume" | "replenish" | "adjust";
+
+/** Linha de `stock_movements` (ledger append-only). */
+export interface StockMovement {
+  id: string;
+  tenant_id: string;
+  product_id: string;
+  movement_type: StockMovementType;
+  qty_delta: number;
+  qty_before: number | null;
+  qty_after: number | null;
+  reason: string | null;
+  appointment_id: string | null;
+  batch: string | null;
+  expires_at: string | null;
+  supplier: string | null;
+  unit_cost_cents: number | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Status de alerta de estoque (ADR-03). */
+export type StockStatus = "ok" | "low" | "critical";
+
+/** Linha retornada por `list_low_stock()` / `get_stock_alerts()`. */
+export interface StockAlert {
+  product_id: string;
+  product_name: string;
+  stock_qty: number;
+  min_qty: number;
+  status: StockStatus;
+  next_expires_at: string | null;
 }

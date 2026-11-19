@@ -40,7 +40,7 @@ const ROW = {
   asaas_payment_id: "pay-1",
   status: "pendente",
   amount_cents: 9900,
-  plan: "individual",
+  plan: "starter",
   billing_period: "monthly",
   pix_qr_code: "qr",
   pix_copy_paste: "code",
@@ -100,7 +100,7 @@ describe("useCreateSubscriptionCharge", () => {
     await act(async () => {
       await result.current.mutateAsync({
         tenant_id: "11111111-2222-3333-4444-555555555555",
-        plan: "individual",
+        plan: "starter",
         billing_period: "monthly",
       });
     });
@@ -110,7 +110,7 @@ describe("useCreateSubscriptionCharge", () => {
     expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({
       body: {
         tenant_id: "11111111-2222-3333-4444-555555555555",
-        plan: "individual",
+        plan: "starter",
         billing_period: "monthly",
       },
     });
@@ -126,7 +126,7 @@ describe("useCreateSubscriptionCharge", () => {
     await expect(
       result.current.mutateAsync({
         tenant_id: "11111111-2222-3333-4444-555555555555",
-        plan: "individual",
+        plan: "starter",
         billing_period: "monthly",
       }),
     ).rejects.toBeTruthy();

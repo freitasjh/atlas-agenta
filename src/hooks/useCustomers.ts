@@ -38,11 +38,13 @@ export interface CustomerInput {
   active: boolean;
 }
 
-/** Lista de clientes do tenant, opcionalmente só os ativos. */
-export function useCustomers(options?: { activeOnly?: boolean }) {
+/** Lista de clientes do tenant, opcionalmente só os ativos. Sem entitlement, nem dispara request (gating RF-23). */
+export function useCustomers(options?: { activeOnly?: boolean; enabled?: boolean }) {
   const activeOnly = options?.activeOnly ?? false;
+  const enabled = options?.enabled ?? true;
   return useQuery<Customer[]>({
     queryKey: [...CUSTOMERS_KEY, { activeOnly }],
+    enabled,
     queryFn: async () => {
       let query = supabase
         .from("customers")

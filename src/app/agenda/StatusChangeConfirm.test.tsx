@@ -8,11 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * admin — a Edge Function aceita admin/receptionist/professional).
  */
 
-const { warningMock, chargeMock, statusMock, onClose } = vi.hoisted(() => ({
+const { warningMock, chargeMock, statusMock, onClose, singleMock } = vi.hoisted(() => ({
   warningMock: vi.fn(),
   chargeMock: vi.fn(),
   statusMock: vi.fn(),
   onClose: vi.fn(),
+  singleMock: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: singleMock }) }),
+    }),
+  },
 }));
 
 vi.mock("sonner", () => ({
@@ -60,8 +69,11 @@ beforeEach(() => {
   warningMock.mockReset();
   chargeMock.mockReset();
   statusMock.mockReset();
+  singleMock.mockReset();
   onClose.mockReset();
   statusMock.mockResolvedValue(undefined);
+  // Sem vínculo pós-concluir por padrão: segue a cobrança (comportamento anterior).
+  singleMock.mockResolvedValue({ data: null, error: null });
 });
 
 afterEach(() => cleanup());
@@ -99,6 +111,27 @@ describe("StatusChangeConfirm — cobrança PIX", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
 
     await screen.findByText(paymentsMessages.pix.generatedTitle);
+    expect(warningMock).not.toHaveBeenCalled();
+  });
+
+  it("auto-vínculo pós-concluir (refetch com crédito) pula o PIX sem dupla cobrança", async () => {
+    // Pré-concluir sempre null na sessão do pacote; o trigger gravou no concluir.
+    singleMock.mockResolvedValueOnce({
+      data: { package_credit_id: "cr-1" },
+      error: null,
+    });
+    chargeMock.mockRejectedValue(new Error("não deve ser chamado"));
+    render(
+      <StatusChangeConfirm
+        change={{ appointment: APPOINTMENT, to: "concluido" }}
+        onClose={onClose}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(chargeMock).not.toHaveBeenCalled();
     expect(warningMock).not.toHaveBeenCalled();
   });
 });

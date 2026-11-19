@@ -2,12 +2,21 @@ import { useMemo } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
+import { WeekDayOccupancy } from "@/app/agenda/WeekDayOccupancy";
+import {
+  summarizeWeekDays,
+  type WeekDayOccupancySummary,
+} from "@/app/agenda/model/weekOccupancy";
 import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { Button } from "@/components/ui/button";
 import { toTenantLocal, weekRangeOf } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
-import type { AppointmentWithRelations } from "@/types/domain";
+import type {
+  AppointmentWithRelations,
+  Professional,
+  WorkingHour,
+} from "@/types/domain";
 
 /** `YYYY-MM-DD` (zero-pad) do `starts_at` no fuso do tenant. */
 function tenantDayKey(utcIso: string, timeZone: string): string {
@@ -69,6 +78,12 @@ interface AgendaCalendarWeekProps {
    * por coluna agrupando por `starts_at` convertido ao fuso do tenant.
    */
   appointments: AppointmentWithRelations[];
+  /**
+   * Base cheia da semana para a % de ocupação (sem recortes de UX como
+   * serviço/status — espelho da `summaryBaseQuery` da ADR-02). Ausente =
+   * usa `appointments`. As lanes seguem sempre com `appointments` (filtrada).
+   */
+  occupancyAppointments?: AppointmentWithRelations[];
   /** `YYYY-MM-DD` de hoje no fuso do tenant, para destacar a coluna. */
   todayIso: string;
   /** Pode exibir a linha de comissão nos blocos (gating resolvido no pai). */
@@ -85,6 +100,16 @@ interface AgendaCalendarWeekProps {
   paymentsMessages?: PaymentsMessages;
   /** Capacidade do cliente de registrar pagamentos (ação "Pagamento"). */
   canRegisterPayments?: boolean;
+  /**
+   * Profissionais visíveis no filtro atual (para o corte grade×cards e o
+   * denominador de ocupação). Ausente = derivados dos agendamentos.
+   */
+  professionals?: Professional[];
+  /**
+   * Grade semanal (`working_hours`) para o denominador real de ocupação.
+   * Ausente/vazia = estimado 08–18 com apoio "estimado" (sem request nova).
+   */
+  workingHours?: WorkingHour[];
 }
 
 /**
@@ -102,7 +127,8 @@ interface AgendaCalendarWeekProps {
  *
  * No mobile (abaixo de `sm`) a grade de 7 colunas não cabe em 360px, então
  * degrada para **uma coluna de dia navegável por setas** (anterior/próximo
- * movem o dia em foco em ±1 e carregam aquele dia).
+ * movem o dia em foco em ±1 e carregam aquele dia), com o % de ocupação do
+ * dia em foco no topo.
  *
  * O dia de hoje é destacado por peso + `text-primary` (nunca só por cor — há o
  * número do dia e o rótulo textual). Os horários dos blocos vêm no fuso do
@@ -112,6 +138,7 @@ export function AgendaCalendarWeek({
   day,
   timeZone,
   appointments,
+  occupancyAppointments,
   todayIso,
   showCommission = false,
   onSelectDay,
@@ -120,6 +147,8 @@ export function AgendaCalendarWeek({
   onOpenPayment,
   paymentsMessages,
   canRegisterPayments = false,
+  professionals,
+  workingHours = [],
 }: AgendaCalendarWeekProps) {
   // Monta a semana (segunda a domingo) que contém o dia em foco. Mesma fonte
   // única (`weekRangeOf`) que a `AgendaPage` usa para buscar o intervalo, então
@@ -184,6 +213,118 @@ export function AgendaCalendarWeek({
     ));
   };
 
+  // Profissionais visíveis: do filtro (pai) ou derivados da lane. O corte
+  // grade×cards (ADR-05) usa essa lista — ≤3 mostra a grade real (uma
+  // sub-lane por profissional), >3 lista os blocos em cards.
+  const visibleProfessionalIds = useMemo(() => {
+    if (professionals && professionals.length > 0) {
+      return professionals.map((p) => p.id);
+    }
+    return [...new Set(appointments.map((a) => a.professional_id))];
+  }, [professionals, appointments]);
+  const gradeMode = visibleProfessionalIds.length <= 3;
+
+  // % de ocupação por dia, client-side sobre os 7 dias já buscados (sem
+  // request nova). Usa a base cheia (`occupancyAppointments`) para o numerador
+  // — o filtro de recorte (serviço/status) refina as lanes sem encolher a %,
+  // espelhando a `summaryBaseQuery` da ADR-02. Mesma conta do ResumoDoDia
+  // (ADR-01) para o mesmo fixture.
+  const summariesByDay = useMemo(() => {
+    const occupancySource = occupancyAppointments ?? appointments;
+    const summaries = summarizeWeekDays({
+      appointments: occupancySource,
+      weekDays,
+      timeZone,
+      workingHours,
+      professionalIds:
+        professionals && professionals.length > 0
+          ? professionals.map((p) => p.id)
+          : [],
+    });
+    return new Map<string, WeekDayOccupancySummary>(
+      summaries.map((s) => [s.day, s]),
+    );
+  }, [occupancyAppointments, appointments, weekDays, timeZone, workingHours, professionals]);
+
+  /** Nome do profissional para a sub-lane (prop ou relação da linha). */
+  function professionalName(professionalId: string): string {
+    return (
+      professionals?.find((p) => p.id === professionalId)?.name ??
+      appointments.find((a) => a.professional_id === professionalId)
+        ?.professionals?.name ??
+      "Outros"
+    );
+  }
+
+  /**
+   * Lane em modo grade (≤3 visíveis): uma sub-lane por profissional, com o
+   * nome como rótulo. Agendamentos fora da lista visível caem em "Outros".
+   */
+  const renderGradeLane = (columnDay: string) => {
+    const lane = byDay.get(columnDay) ?? [];
+    if (lane.length === 0) {
+      return (
+        <p className="px-1 py-2 text-xs text-muted-foreground">
+          Sem agendamentos.
+        </p>
+      );
+    }
+    const known = new Set(visibleProfessionalIds);
+    const groups = visibleProfessionalIds.map((id) => ({
+      id,
+      items: lane.filter((a) => a.professional_id === id),
+    }));
+    const orphans = lane.filter((a) => !known.has(a.professional_id));
+    if (orphans.length > 0) {
+      groups.push({ id: "__outros__", items: orphans });
+    }
+    return groups
+      .filter((g) => g.items.length > 0)
+      .map((group) => (
+        <div
+          key={group.id}
+          data-testid={`week-grade-${group.id}`}
+          className="space-y-1 border-t border-dashed border-border/60 pt-1 first:border-t-0 first:pt-0"
+        >
+          <p className="px-1 text-[11px] font-medium text-muted-foreground">
+            {group.id === "__outros__"
+              ? "Outros"
+              : professionalName(group.id)}
+          </p>
+          {group.items.map((appointment) => (
+            <div key={appointment.id} className="h-16">
+              <AppointmentBlock
+                appointment={appointment}
+                timeZone={timeZone}
+                compact
+                showCommission={showCommission}
+                onOpen={onOpenAppointment}
+                paymentFlag={paymentFlags?.get(appointment.id)}
+                onOpenPayment={onOpenPayment}
+                messages={paymentsMessages}
+                canRegisterPayments={canRegisterPayments}
+              />
+            </div>
+          ))}
+        </div>
+      ));
+  };
+
+  /** Cabeçalho de ocupação do dia (texto + barra, sem R$). */
+  const renderOccupancy = (columnDay: string) => {
+    const summary = summariesByDay.get(columnDay);
+    if (!summary) return null;
+    return (
+      <WeekDayOccupancy
+        day={columnDay}
+        occupied={summary.occupied}
+        capacity={summary.capacity}
+        ocupacaoPct={summary.ocupacaoPct}
+        estimated={summary.estimated}
+      />
+    );
+  };
+
   const focusWeekdayLong = WEEKDAY_LONG[weekdayOf(day)] ?? "";
 
   return (
@@ -221,7 +362,10 @@ export function AgendaCalendarWeek({
             <ChevronRight aria-hidden="true" />
           </Button>
         </div>
-        <div className="flex flex-col gap-1 p-1">{renderLane(day)}</div>
+        <div className="flex flex-col gap-1 p-1">
+          {renderOccupancy(day)}
+          {gradeMode ? renderGradeLane(day) : renderLane(day)}
+        </div>
       </div>
 
       {/* sm+: navegação por semana (±7 + Hoje) + grade de 7 colunas. */}
@@ -294,9 +438,10 @@ export function AgendaCalendarWeek({
                   {dayNumber(columnDay)}
                 </span>
               </button>
+              {renderOccupancy(columnDay)}
 
               <div className="flex flex-col gap-1 p-1">
-                {renderLane(columnDay)}
+                {gradeMode ? renderGradeLane(columnDay) : renderLane(columnDay)}
               </div>
             </div>
           );

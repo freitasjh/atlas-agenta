@@ -152,6 +152,23 @@ describe("FE-04 conflito exceção × appointment", () => {
     });
     expect(conflict).toBeNull();
   });
+
+  // G3: concluído é histórico — não deve bloquear o fechamento do dia.
+  it("concluído não bloqueia folga (histórico não é reserva de slot)", () => {
+    const conflict = findOverrideConflict({
+      ...base,
+      isClosed: true,
+      appointments: [
+        {
+          id: "a1",
+          startsAt: "2025-03-15T14:00:00.000Z",
+          endsAt: "2025-03-15T15:00:00.000Z",
+          status: "concluido",
+        },
+      ],
+    });
+    expect(conflict).toBeNull();
+  });
 });
 
 describe("FE-05 a11y basics", () => {

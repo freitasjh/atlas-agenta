@@ -12,10 +12,15 @@ import { SUBSCRIPTION_STATUSES } from "@/types/domain";
  */
 
 /**
- * Form do dialog "Mudar status" (ADR-07): destino + motivo opcional (≤280,
- * trim). O destino é validado como enum de domínio; a trava de *transição*
- * válida é do servidor (a UI só esconde destinos inválidos — ver
- * `subscription-status.ts`). Mensagens de usuário em pt-BR.
+ * Form do dialog "Mudar status" (ADR-07): destino + motivo (≤280, trim). O
+ * destino é validado como enum de domínio; a trava de *transição* válida é do
+ * servidor (a UI só esconde destinos inválidos — ver `subscription-status.ts`).
+ *
+ * ADR-11 endureceu suspender/retomar: o servidor exige motivo não vazio para
+ * `bloqueado` e para a retomada `bloqueado → ativo`. O schema base continua
+ * opcional porque o destino sozinho não revela o status atual; o dialog
+ * (`MudarStatusDialog`) aplica a obrigatoriedade com o tenant em mãos. Mensagens
+ * de usuário em pt-BR.
  */
 export const changeStatusFormSchema = z.object({
   // Sem destino escolhido o campo chega `undefined`; `required_error`/`invalid_type_error`

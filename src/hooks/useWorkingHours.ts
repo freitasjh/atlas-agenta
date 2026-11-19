@@ -144,6 +144,33 @@ export function useWorkingHours(professionalId: string | null) {
 }
 
 /**
+ * Grades da lista visível (ADR-05, correção review): um único `.in()` pelos
+ * ids, agregado para o calendário. Quando "todos" estão à vista, cada
+ * profissional contribui com a própria grade; sem linha para o
+ * dia/profissional, o denominador cai no estimado (sem inventar precisão).
+ * `ids` vazio = desabilitado (`data` ausente → estimado).
+ */
+export function useWorkingHoursMany(professionalIds: string[]) {
+  const sorted = [...new Set(professionalIds.filter(Boolean))].sort();
+  const key = sorted.join(",");
+  return useQuery<WorkingHour[]>({
+    queryKey: ["working-hours", "many", key],
+    enabled: sorted.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("working_hours")
+        .select(
+          "id, tenant_id, professional_id, weekday, start_time, end_time, break_start, break_end, created_at",
+        )
+        .in("professional_id", sorted)
+        .order("weekday", { ascending: true });
+      if (error) throw error;
+      return workingHourListSchema.parse(data);
+    },
+  });
+}
+
+/**
  * Salva a grade inteira do profissional: delete-all + reinsert das faixas
  * habilitadas. `professional_id` vai no corpo (não é `tenant_id`); o RLS e a FK
  * composta garantem que o profissional é do tenant do usuário.

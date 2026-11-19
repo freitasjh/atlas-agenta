@@ -1,0 +1,134 @@
+{
+  "adrs": [
+    {
+      "branch": "adr/salao-barbearia/01-entitlements-t12",
+      "depends_on": [],
+      "file": "adr-01-entitlements-t12.md",
+      "id": "ADR-01",
+      "scope": "T1.2 estendido: chaves estoque + comissaoProduto, degradação, gating",
+      "status": "approved",
+      "title": "Entitlements T1.2: estoque + comissaoProduto"
+    },
+    {
+      "branch": "adr/salao-barbearia/02-produtos-backend",
+      "depends_on": [
+        "ADR-01"
+      ],
+      "file": "adr-02-produtos-backend.md",
+      "id": "ADR-02",
+      "scope": "Tabela products + product_professionals N:N, RLS/RBAC, migration",
+      "status": "approved",
+      "title": "Produtos (catálogo) backend"
+    },
+    {
+      "branch": "adr/salao-barbearia/03-estoque-backend",
+      "depends_on": [
+        "ADR-02"
+      ],
+      "file": "adr-03-estoque-backend.md",
+      "id": "ADR-03",
+      "scope": "stock_movements append-only + trigger saldo + RPCs consume/replenish/adjust + alertas",
+      "status": "approved",
+      "title": "Estoque (saldo + movimentações) backend"
+    },
+    {
+      "branch": "adr/salao-barbearia/04-comissao-produto-formula-backend",
+      "depends_on": [
+        "ADR-02"
+      ],
+      "file": "adr-04-comissao-produto-formula-backend.md",
+      "id": "ADR-04",
+      "scope": "services.backbar_cost_cents, professional_commissions.commission_type, appointment_commissions origin/backbar, trigger + report RPC",
+      "status": "approved",
+      "title": "Comissão por produto + fórmula (preço−backbar)×%"
+    },
+    {
+      "branch": "adr/salao-barbearia/05-varejo-pdv-backend",
+      "depends_on": [
+        "ADR-02",
+        "ADR-03",
+        "ADR-04"
+      ],
+      "file": "adr-05-varejo-pdv-backend.md",
+      "id": "ADR-05",
+      "scope": "appointments product_id/qty + create-walk-in produto + consumo ao concluir + comissão origin product",
+      "status": "approved",
+      "title": "Varejo PDV (venda de produto) backend"
+    },
+    {
+      "branch": "adr/salao-barbearia/06-split-timing-backend",
+      "depends_on": [],
+      "file": "adr-06-split-timing-backend.md",
+      "id": "ADR-06",
+      "scope": "appointments.processing_minutes + services.processing_minutes + herança trigger",
+      "status": "approved",
+      "title": "Split-timing (processamento) backend"
+    },
+    {
+      "branch": "adr/salao-barbearia/07-recursos-backend",
+      "depends_on": [
+        "ADR-06",
+        "ADR-02"
+      ],
+      "file": "adr-07-recursos-backend.md",
+      "id": "ADR-07",
+      "scope": "resources + service_resources + appointment_resources + RPCs conflito + triggers",
+      "status": "approved",
+      "title": "Recursos agendáveis backend"
+    },
+    {
+      "branch": "adr/salao-barbearia/08-produtos-estoque-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02",
+        "ADR-03"
+      ],
+      "file": "adr-08-produtos-estoque-ui.md",
+      "id": "ADR-08",
+      "scope": "ProdutosPage + EstoquePage + reposição + inventário wizard + movimentações",
+      "status": "approved",
+      "title": "Produtos & Estoque UI"
+    },
+    {
+      "branch": "adr/salao-barbearia/09-varejo-pdv-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-04",
+        "ADR-05",
+        "ADR-08"
+      ],
+      "file": "adr-09-varejo-pdv-ui.md",
+      "id": "ADR-09",
+      "scope": "PdvPage segmented Serviço|Produto|Combo + selector/stepper/preview + checkout reuso",
+      "status": "approved",
+      "title": "Varejo PDV UI"
+    },
+    {
+      "branch": "adr/salao-barbearia/10-comissao-config-relatorio-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02",
+        "ADR-04",
+        "ADR-08"
+      ],
+      "file": "adr-10-comissao-config-relatorio-ui.md",
+      "id": "ADR-10",
+      "scope": "Config comissão (tipo/backbar/produto) + preview + relatório Origem/filtro/tooltip",
+      "status": "approved",
+      "title": "Comissão config & relatório UI"
+    },
+    {
+      "branch": "adr/salao-barbearia/11-split-timing-recursos-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-06",
+        "ADR-07"
+      ],
+      "file": "adr-11-split-timing-recursos-ui.md",
+      "id": "ADR-11",
+      "scope": "Agenda split (sólido/listrado) + SlotPicker recurso + RecursosPage + view por recurso",
+      "status": "approved",
+      "title": "Split-timing & Recursos UI"
+    }
+  ]
+}

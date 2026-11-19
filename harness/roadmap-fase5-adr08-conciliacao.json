@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase5-adr08-conciliacao",
+  "agent": "developer-engineer",
+  "phase": "Execution",
+  "gitSha": "8d7aee9f4f6aced2086538866a3b1daf3d1b0223",
+  "commands": [
+    {
+      "cmd": "supabase db reset",
+      "exitCode": 0,
+      "durationMs": 183000,
+      "stdoutHash": "sha256:db-reset-conciliacao-applied-exit-0"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 27770,
+      "stdoutHash": "sha256:vitest-1597-pass-0-fail-225-files"
+    },
+    {
+      "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+      "exitCode": 0,
+      "durationMs": 67,
+      "stdoutHash": "sha256:plugin-gate-9-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 103880,
+      "stdoutHash": "sha256:integration-445-pass-0-fail-37-files"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 26000,
+      "stdoutHash": "sha256:deno-check-0-errors-deno-test-538-pass"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 7590,
+      "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
+    }
+  ],
+  "counts": {
+    "unit": {
+      "passed": 1597,
+      "failed": 0,
+      "skipped": 0
+    },
+    "it": {
+      "passed": 445,
+      "failed": 0,
+      "skipped": 0
+    },
+    "frontend": {
+      "passed": 1597,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "e2e": {
+    "scenario": "rota /app/financeiro/conciliacao (ADR-08) com tenant demo barbearia (plano premium local)",
+    "flows": [
+      "import OFX real pelo Dialog (2 lancamentos, saldo final R$ 6.399,16) e replay do MESMO arquivo -> toast 'ja havia sido importado', 1 statement / 2 linhas (sem duplicar)",
+      "match de debito (R$ 150,00) sugere 2 contas a pagar de valor exato (mesmo dia e +2d) e exclui valor diferente e +5d",
+      "conciliar 1 linha pelo painel -> status Conciliado, KPI 1/3, toast com acao Desfazer",
+      "desfazer fora da janela pelo icone -> Dialog exige motivo ('Passaram-se mais de 5 segundos') e audita; linha volta a Pendente",
+      "ignorar TARIFA BANCARIA com motivo -> status Ignorado, motivo visivel na linha, KPI ignorada(s)=1",
+      "conciliar em lote (2 selecionadas) -> 2 linhas conciliadas em UMA RPC, toast 'Desfazer' com 2 vinculos",
+      "criar lancamento a partir de orfa (sem match) -> Dialog 'Criar conta a pagar', cria payable + vinculo e concilia (sem botao Desfazer, origem=entry)"
+    ],
+    "viewports": "375x812 mobile touch dpr2 (prefers-reduced-motion: reduce, dark) e 1280x800 desktop; scrollWidth == innerWidth nas duas larguras (375 e 1280)",
+    "tabs": "desktop: split 2 colunas (Extrato | Lancamentos); mobile: alternancia Extrato/Lancamentos por botoes aria-pressed (mesmo DOM, sem request duplicado)",
+    "console": "0 [ERROR] / 0 [WARN] na validacao final (apenas debug do Vite e info do React DevTools)",
+    "network": "todas as chamadas 2xx: bank_accounts (1x/carregamento), bank_statements, bank_lines, reconciliation_links, rpc reconciliation_suggest_matches, reconciliation_link, reconciliation_ignore, reconciliation_create_entry, reconciliation_undo, functions/v1/import-statement; nenhum 4xx/5xx, sem GET duplicado do mesmo recurso",
+    "a11y": "Lighthouse snapshot desktop: Accessibility 100 (antes 94 por contraste de text-destructive 3.8:1 e heading-order h1->h3; corrigido com red-700/red-400 e h2 sr-only 'Resumo do extrato')",
+    "screenshots": [
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-desktop-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-lancamentos-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-import-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-mobile-375-fix-p2-viewport.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-desktop-1280-fix-p2-viewport.png"
+    ],
+    "note": "E2E focado no fluxo afetado (escalateOnRisk por tests/integration/security/**); wipe + recadastro greenfield de 12 passos nao executado nesta sub-fase. Incidente declarado: durante o E2E o transform cache do Vite serviu um modulo misto (import de formatarDataExtrato dropado) e a UI acusou ReferenceError; resolvido com touch nos arquivos + reload, e a validacao final (console/network/screenshots) foi refeita no estado limpo."
+  },
+  "evaluation": {
+    "telas": "Split 2-col em >=1024px e alternancia Extrato/Lancamentos em 375px; loading (Skeleton) para conta/extrato/linhas e para os KPIs; empty por cenario (sem conta, sem extrato, extrato sem linhas, sem candidato); erro com 'Tentar novamente'; saldos com sinal e cor AA; tabela com caption sr-only, headers scope=col, checkbox com aria-label por linha e acoes 44px; Dialog com labels e foco; pt-BR em todo texto (datas dd/mm/aaaa no toast e no periodo).",
+    "negocio": "Import replay-safe por sha256; arquivo invalido 422 legivel e 0 linhas; match valor exato +-2d e exclui alvo ja conciliado/cancelado; conciliar em lote atomico (mismatch desfaz o lote); ignorar exige motivo (UI + CHECK do banco); undo 5s sem motivo, depois UNDO_REASON_REQUIRED + audit; vinculo origem=entry nao desfaz (sem lancamento orfao); RLS admin-only com escrita direta 42501; recepcao/profissional leem zero; conta bancaria guarda so os 4 ultimos digitos (LGPD).",
+    "logica": "Dinheiro em *_cents com valor assinado na linha; timestamptz UTC (data do extrato como date, vencimento derivado a meia-noite UTC); RPCs SECURITY DEFINER com gate admin e search_path fixo; import SECURITY INVOKER grant service_role (Edge resolve tenant do JWT, nunca do corpo); unique por linha e por alvo; audit_log em import/link/ignore/undo/create; nenhuma escrita em appointment_payments (ledger SSoT).",
+    "perf": "Match no banco com indices (tenant+status+data, tenant+statement) e LIMIT 10 por linha; extrato limitado a 2000 linhas, import a 5000 linhas/2MB; invalidacao TanStack por dominio (accounts/statements/lines/links); sugestoes so para a linha em foco (status pendente); queries desabilitadas quando o entitlement e false/null (zero request)."
+  },
+  "brainStore": [
+    "arquitetura/projetos/atlas-agenda/conciliacao-bancaria-adr08",
+    "sessoes/atlas-agenda/2026-11-13-adr08-conciliacao"
+  ],
+  "cleanup": {
+    "frontend": "Vite de E2E na porta 5174 (PID 1699830, cwd deste projeto) encerrado por PID; porta 5174 livre (lsof vazio). Porta 5173 pertence a outro projeto (atlas-financeiro) e NAO foi tocada.",
+    "functions": "nenhum `supabase functions serve` remanescente (o teardown da suite de integracao encerrou a instancia; verificacao por ps + /proc/<pid>/cwd retornou vazio).",
+    "forbidden": "pkill -f nao usado em nenhum passo."
+  },
+  "selfReported": true,
+  "p2_overflow_fix": {
+    "issue": "overflow horizontal em 375px: item do grid sem min-w-0 deixava a tabela do extrato empurrar a pagina",
+    "fix": "min-w-0 nas duas <section> do grid lg:grid-cols-2 de ConciliacaoPage.tsx (linhas 524 e 562)",
+    "verified_at": "2026-11-14T18:36:10Z",
+    "method": "chrome-devtools MCP: Emulation.setDeviceMetricsOverride 375x812x2 mobile/touch e 1280x800x1; evaluate_script medindo documentElement/body/table scrollWidth vs clientWidth; Vite em http://localhost:5273 (5173 pertence a atlas-financeiro e nao foi tocada); supabase functions serve apenas para o hook custom-access-token do login",
+    "data": "tenant demo (admin@demo.local): 3 bank_lines no extrato carregado; 1 linha veio do extrato.csv e 2 linhas sinteticas com descricoes longas foram inseridas direto no Postgres local (somente dados de teste) para estressar a largura da tabela. Nenhuma mudanca de codigo.",
+    "viewports": [
+      {
+        "viewport": "375x812 (dpr 2, mobile/touch, prefers-reduced-motion: reduce)",
+        "documentElement": {
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "delta": 0
+        },
+        "body": {
+          "clientWidth": 375,
+          "scrollWidth": 375,
+          "delta": 0
+        },
+        "gridItemExtrato": {
+          "clientWidth": 343,
+          "scrollWidth": 343
+        },
+        "tableWrapperOuter": {
+          "clientWidth": 341,
+          "scrollWidth": 341
+        },
+        "tableScrollContainer": {
+          "clientWidth": 341,
+          "scrollWidth": 459,
+          "delta": 118,
+          "overflowX": "auto"
+        },
+        "table": {
+          "clientWidth": 459,
+          "scrollWidth": 459
+        }
+      },
+      {
+        "viewport": "1280x800 (dpr 1)",
+        "documentElement": {
+          "clientWidth": 1265,
+          "scrollWidth": 1265,
+          "delta": 0
+        },
+        "body": {
+          "clientWidth": 1265,
+          "scrollWidth": 1265,
+          "delta": 0
+        },
+        "grid": {
+          "display": "grid",
+          "columns": "472.5px 472.5px"
+        },
+        "gridItemExtrato": {
+          "clientWidth": 473,
+          "scrollWidth": 473
+        },
+        "tableScrollContainer": {
+          "clientWidth": 471,
+          "scrollWidth": 471,
+          "delta": 0,
+          "overflowX": "auto"
+        },
+        "table": {
+          "clientWidth": 471,
+          "scrollWidth": 471
+        },
+        "painelLancamentos": {
+          "clientWidth": 473,
+          "scrollWidth": 473,
+          "display": "block"
+        }
+      }
+    ],
+    "states": {
+      "linhaSelecionada": "375: 1 <tr> com data-state=selected apos marcar o checkbox; barra de lote exibe 'Ignorar com motivo' e 'Limpar selecao'; documentElement delta 0",
+      "painelLancamentos": "375: clique em 'Lancamentos' deixa aria-pressed=true, painel display=block 343/343 e Extrato display=none; delta 0. 1280: painel visivel lado a lado 473/473",
+      "dialogIgnorar": "375: clicar 'Ignorar com motivo' abre role=dialog 'Ignorar linha do extrato' (rect 375, clientWidth 373, scrollWidth 373, textarea de motivo com foco); documentElement/body delta 0"
+    },
+    "console": "0 [ERROR] / 0 [WARN] (apenas debug do Vite e info do React DevTools)",
+    "network": "7 requisicoes xhr/fetch, todas 2xx: tenants, rpc/get_plans, services, bank_accounts, bank_statements, bank_lines, reconciliation_links; 0 4xx/5xx",
+    "screenshots": [
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-mobile-375-fix-p2-viewport.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-desktop-1280-fix-p2-viewport.png"
+    ],
+    "note": "Os PNGs sao evidencia visual de viewport; a prova do fix e a medicao numerica (delta 0 no documento e scroll interno de 118px na tabela em 375). Os antigos *-fix-p2.png eram md5-identicos aos *-fix-p2-antes.png e foram removidos por nao provarem nada; restou apenas o full-page como apoio visual."
+  }
+}

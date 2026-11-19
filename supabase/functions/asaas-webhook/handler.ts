@@ -42,6 +42,19 @@ interface ChargeRow {
   appointment_id: string | null;
 }
 
+/**
+ * Conta a receber avulsa com PIX do gateway (ADR-07). Localizada por
+ * `asaas_payment_id` — o `externalReference` nunca é a fonte da busca.
+ */
+interface ReceivableRow {
+  id: string;
+  tenant_id: string;
+  status: string;
+}
+
+const RECEIVABLE_SELECT = "id, tenant_id, status";
+
+
 interface SettleResult {
   anomaly?: string | null;
   replayed?: boolean;
@@ -236,6 +249,149 @@ async function dispatchRefund(
   return { status: charge.status };
 }
 
+/** Localiza conta a receber avulsa pelo pagamento do gateway (ADR-07). */
+async function findReceivableByPayment(
+  service: SupabaseClient,
+  paymentId: string,
+): Promise<ReceivableRow | null> {
+  const { data, error } = await service
+    .from("receivables")
+    .select(RECEIVABLE_SELECT)
+    .eq("asaas_payment_id", paymentId)
+    .limit(2);
+  if (error) throw error;
+  const rows = (data ?? []) as ReceivableRow[];
+  // 0 = não é avulsa; >1 = id duplicado entre tenants (anomalia): nunca escolher um.
+  return rows.length === 1 ? rows[0] : null;
+}
+
+/**
+ * Evento de conta avulsa (ADR-07): só `settle` tem efeito de receita. Os demais
+ * ciclos do gateway não rebaixam nem cancelam a conta (cancelamento é manual e
+ * auditado); ficam registrados como ignorados, uma vez por evento (dedupe já
+ * reservou o evento antes desta chamada).
+ */
+async function handleReceivableEvent(
+  service: SupabaseClient,
+  receivable: ReceivableRow,
+  payment: PaymentPayload,
+  eventId: string,
+  eventType: string,
+  kind: ReturnType<typeof classifyAsaasEvent>,
+): Promise<{ status: string; code?: string }> {
+  if (kind === "settle") {
+    const paidAt =
+      parseGatewayDate(payment.paymentDate) ?? parseGatewayDate(payment.confirmedDate) ?? null;
+    // Valor REALMENTE pago: a RPC baixa no máximo o saldo e audita o excedente.
+    // Nunca engolir a diferença entre o PIX e o recebimento registrado.
+    const paidValueCents = centsFromGatewayValue(payment.value);
+    const { data, error } = await service.rpc("receivable_settle_webhook", {
+      p_tenant_id: receivable.tenant_id,
+      p_receivable_id: receivable.id,
+      p_paid_at: paidAt,
+      p_event_id: eventId,
+      p_paid_value_cents: paidValueCents,
+    });
+    if (error) {
+      // Conta cancelada: anomalia de negócio, sem retry infinito.
+      if (error.code === "PT409" && error.message === "RECEIVABLE_CANCELLED") {
+        return { status: receivable.status, code: "RECEIVABLE_CANCELLED" };
+      }
+      throw error;
+    }
+    const result = (data ?? {}) as { status?: string; replayed?: boolean };
+    return {
+      status: result.status ?? "pago",
+      code: result.replayed ? "REPLAYED" : undefined,
+    };
+  }
+
+  await writeAudit(service, {
+    tenantId: receivable.tenant_id,
+    action: "receivable_gateway_event_ignored",
+    targetType: "receivable",
+    targetId: receivable.id,
+    metadata: {
+      event_id: eventId,
+      event_type: eventType,
+      payment_id: payment.id,
+      status: receivable.status,
+    },
+  });
+  return { status: receivable.status };
+}
+
+/**
+ * Webhook de conta avulsa: mesma ordem do fluxo de cobrança (dedupe durável
+ * antes do efeito, `processed_at` só depois), mudando apenas o efeito — a
+ * liquidação vive em `receivable_settle_webhook` (service role).
+ */
+async function handleReceivableWebhook(
+  service: SupabaseClient,
+  receivable: ReceivableRow,
+  payment: PaymentPayload,
+  rawEvent: string,
+  eventId: string,
+  eventType: string,
+): Promise<Response> {
+  let begin: "process" | "already_processed";
+  try {
+    begin = await beginEvent(service, {
+      tenantId: receivable.tenant_id,
+      eventId,
+      paymentId: payment.id,
+      eventType: rawEvent,
+    });
+  } catch {
+    return jsonResponse(INTERNAL_ERROR, 500);
+  }
+
+  if (begin === "already_processed") {
+    logEvent("asaas_webhook", {
+      event_id: eventId,
+      event_type: eventType,
+      tenant_id: receivable.tenant_id,
+      receivable_id: receivable.id,
+      status: receivable.status,
+      code: "DUPLICATE",
+    });
+    return jsonResponse({ ok: true }, 200);
+  }
+
+  let statusAfter = receivable.status;
+  let code: string | undefined;
+  try {
+    const result = await handleReceivableEvent(
+      service,
+      receivable,
+      payment,
+      eventId,
+      eventType,
+      classifyAsaasEvent(rawEvent),
+    );
+    statusAfter = result.status;
+    code = result.code;
+  } catch {
+    return jsonResponse(INTERNAL_ERROR, 500);
+  }
+
+  try {
+    await finishEvent(service, eventId, payment.id);
+  } catch {
+    return jsonResponse(INTERNAL_ERROR, 500);
+  }
+
+  logEvent("asaas_webhook", {
+    event_id: eventId,
+    event_type: eventType,
+    tenant_id: receivable.tenant_id,
+    receivable_id: receivable.id,
+    status: statusAfter,
+    code,
+  });
+  return jsonResponse({ ok: true }, 200);
+}
+
 export function createHandler(options: HandlerOptions) {
   return async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -274,14 +430,32 @@ export function createHandler(options: HandlerOptions) {
       .maybeSingle();
     if (lookupError) return jsonResponse(INTERNAL_ERROR, 500);
 
+    // Sem cobrança de atendimento, o mesmo pagamento pode ser de conta avulsa
+    // (ADR-07). A busca é por `asaas_payment_id`, nunca pelo externalReference.
+    let receivable: ReceivableRow | null = null;
+    if (!charge) {
+      try {
+        receivable = await findReceivableByPayment(service, payment.id);
+      } catch {
+        return jsonResponse(INTERNAL_ERROR, 500);
+      }
+    }
+
     let expectedToken: string | null;
     try {
-      expectedToken = await resolveExpectedToken(service, charge as ChargeRow | null);
+      expectedToken = await resolveExpectedToken(
+        service,
+        (charge as ChargeRow | null) ?? receivable,
+      );
     } catch {
       return jsonResponse(INTERNAL_ERROR, 500);
     }
     if (!isAuthorized(headerToken, expectedToken)) {
       return jsonResponse({ error: "Token inválido." }, 401);
+    }
+
+    if (!charge && receivable) {
+      return handleReceivableWebhook(service, receivable, payment, payload.event, payload.id, eventType);
     }
 
     // Cobrança desconhecida não entra em `webhook_events` (tenant_id not null):

@@ -25,8 +25,7 @@ import {
   type SubscriptionCharge,
 } from "@/hooks/useSubscriptionCharges";
 import { usePlanDivergences } from "@/hooks/usePlanDivergences";
-
-import { PLANS } from "@/lib/plans";
+import { usePlansCatalog } from "@/hooks/usePlansCatalog";
 import type { TenantListItem } from "@/types/domain";
 
 function formatCents(cents: number): string {
@@ -54,11 +53,13 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function AssinaturasPage() {
   const tenantsQuery = useAdminTenants();
+  const plansQuery = usePlansCatalog();
+  const plansCatalog = plansQuery.data ?? [];
   const chargesQuery = useSubscriptionCharges();
   const createMutation = useCreateSubscriptionCharge();
 
   const [tenantId, setTenantId] = React.useState("");
-  const [plan, setPlan] = React.useState("individual");
+  const [plan, setPlan] = React.useState("starter");
   const [result, setResult] = React.useState<{
     pix_qr_code?: string | null;
     pix_copy_paste?: string | null;
@@ -151,12 +152,20 @@ export function AssinaturasPage() {
           </div>
           <div className="space-y-2">
             <Label>Plano</Label>
-            <Select value={plan} onValueChange={setPlan}>
+            <Select
+              value={plan}
+              onValueChange={setPlan}
+              disabled={plansQuery.isLoading}
+            >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue
+                  placeholder={
+                    plansQuery.isLoading ? "Carregando planos…" : "Selecione"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
-                {PLANS.map((p) => (
+                {plansCatalog.map((p) => (
                   <SelectItem key={p.slug} value={p.slug}>
                     {p.nome}
                   </SelectItem>
@@ -166,7 +175,7 @@ export function AssinaturasPage() {
           </div>
           <p className="text-xs text-muted-foreground">
             Cobrança mensal. Não há plano anual — o valor é o preço mensal do
-            plano em <code>supabase/functions/_shared/plans.json</code>.
+            plano no catálogo (tabela <code>public.plans</code>).
           </p>
           <Button
             type="button"

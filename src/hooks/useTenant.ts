@@ -22,6 +22,10 @@ export const tenantSchema = z.object({
   // Valor inesperado do banco degrada para `null` (genérico) em vez de
   // derrubar o parse do tenant — nunca transforma dado sujo em negação de acesso.
   segment: z.enum(BUSINESS_SEGMENTS).nullable().catch(null),
+  // Slug aberto (não enum): o catálogo `get_plans()` é a SSoT dos slugs
+  // vigentes. Valor fora do catálogo (legado, sujo) degrada no consumo
+  // (`usePlanEntitlements` → `null`), nunca aqui.
+  plan: z.string().nullable().catch(null),
 });
 
 /**
@@ -44,7 +48,7 @@ export function useTenant() {
       const { data, error } = await supabase
         .from("tenants")
         .select(
-          "id, trade_name, legal_name, subscription_status, timezone, segment",
+          "id, trade_name, legal_name, subscription_status, timezone, segment, plan",
         )
         .single();
       if (error) throw error;

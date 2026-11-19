@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { professionalSchema } from "@/lib/validations/catalog";
+import {
+  applyDepositEntitlement,
+  professionalSchema,
+  type ServiceInput,
+} from "@/lib/validations/catalog";
 
 /**
  * Cobertura do campo opcional `commissionBps` do `professionalSchema` (ADR-06).
@@ -28,5 +32,41 @@ describe("professionalSchema.commissionBps", () => {
 
   it("recusa bps não inteiro", () => {
     expect(professionalSchema.safeParse({ ...base, commissionBps: 12.5 }).success).toBe(false);
+  });
+});
+
+/**
+ * Strip de entitlement do depósito (ADR-12 §4): sem `deposito` liberado, o
+ * submit do ServiceFormDialog nunca envia config editável.
+ */
+describe("applyDepositEntitlement", () => {
+  const base: ServiceInput = {
+    name: "Corte",
+    durationMinutes: 30,
+    processingMinutes: 0,
+    priceCents: 10000,
+    backbarCostCents: 0,
+    active: true,
+    deposit: {
+      enabled: true,
+      type: "percent",
+      value: 30,
+      deadlineHours: 48,
+      refundPolicy: "total",
+      refundPercent: null,
+    },
+  };
+
+  it("sem entitlement: força o bloco desabilitado", () => {
+    const sanitized = applyDepositEntitlement(base, false);
+    expect(sanitized.deposit?.enabled).toBe(false);
+    expect(sanitized.deposit?.type).toBeNull();
+    // Demais campos do serviço passam intactos.
+    expect(sanitized.name).toBe("Corte");
+    expect(sanitized.priceCents).toBe(10000);
+  });
+
+  it("com entitlement: passa o input intacto", () => {
+    expect(applyDepositEntitlement(base, true)).toEqual(base);
   });
 });

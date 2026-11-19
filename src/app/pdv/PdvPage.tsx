@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus } from "lucide-react";
+import { Plus, Minus } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
 import { StatePanel } from "@/components/StatePanel";
+import { EntitlementGate } from "@/components/EntitlementGate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,17 +19,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { PaymentCaptureDialog } from "@/app/agenda/pagamentos/PaymentCaptureDialog";
 import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+import { fidelidadeMessages } from "@/app/fidelidade/fidelidade-messages";
 import { WalkInBadge } from "@/app/pdv/WalkInBadge";
+import { LoyaltyApplyPanel, type LoyaltyApplied } from "@/app/pdv/LoyaltyApplyPanel";
 
 import { usePermissions } from "@/hooks/usePermissions";
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useApplyCouponToClosing, useRedeemGiftCard } from "@/hooks/useFidelidade";
 import { useProfessionals } from "@/hooks/useProfessionals";
 import { useServices } from "@/hooks/useServices";
 import { useCombos } from "@/hooks/useCombos";
+import { useProducts } from "@/hooks/useProducts";
+import { usePlanEntitlements } from "@/hooks/usePlanEntitlements";
 import { useAppointments } from "@/hooks/useAppointments";
 import { useCreateCustomer } from "@/hooks/useCustomers";
 import { newCreationKey, useCreateWalkIn } from "@/hooks/useWalkIn";
@@ -39,6 +46,7 @@ import { paymentErrorMessage } from "@/app/agenda/pagamentos/payment-error-messa
 import { PaymentApiError, PAYMENT_ERROR_MAP } from "@/lib/payment-errors";
 import { toast } from "sonner";
 import type { AppointmentWithRelations } from "@/types/domain";
+import type { Product } from "@/types/domain";
 
 const messages = paymentsMessages;
 
@@ -52,23 +60,48 @@ function todayInTenantTz(timeZone: string): string {
   }).format(new Date());
 }
 
-/**
- * Tela PDV — balcão (`/app/pdv`, ADR-23): segunda porta do checkout existente.
- * Esquerda: serviço/pacote + profissional + cliente (anônimo default).
- * Direita: total + checkout em modo "venda nova". Mobile empilhado.
- * Gating: `payments === true` (salão/barbearia); `null` = loading.
- */
+function initialWalkInValues(professionalId: string): WalkInInput {
+  return {
+    professionalId,
+    selection: { kind: "service", serviceId: "" },
+    customerName: "",
+    customerPhone: "",
+    whatsappOptIn: false,
+  };
+}
+
+const initialLoyalty: LoyaltyApplied = {
+  couponCode: null,
+  discountCents: 0,
+  giftCode: null,
+  giftCents: 0,
+  totalFinalCents: 0,
+};
+
+/** Chave de idempotência por aplicação de fidelidade (um cupom + um gift por venda). */
+function newLoyaltyKey(): string {
+  const random = globalThis.crypto?.randomUUID?.();
+  if (typeof random === "string" && random.length > 0) return random;
+  return `loyalty-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+type SaleKind = "service" | "product" | "combo";
+
 export function PdvPage() {
-  const { canRegisterPayments, canScheduleForAnyProfessional } = usePermissions();
+  const { canRegisterPayments, canScheduleForAnyProfessional, canViewCommission } = usePermissions();
   const { payments, combos: combosFeature } = useSegmentFeatures();
+  const entitlements = usePlanEntitlements();
   const { tenant, userId } = useCurrentUser();
   const timeZone = tenant?.timezone ?? "America/Sao_Paulo";
 
   const professionalsQuery = useProfessionals({ activeOnly: true });
   const servicesQuery = useServices({ activeOnly: true });
   const combosQuery = useCombos({ activeOnly: true });
+  const productsQuery = useProducts({ activeOnly: true, enabled: entitlements?.estoque === true });
   const createWalkIn = useCreateWalkIn();
   const createCustomer = useCreateCustomer();
+  const applyCoupon = useApplyCouponToClosing();
+  const redeemGift = useRedeemGiftCard();
 
   const today = todayInTenantTz(timeZone);
   const todayQuery = useAppointments({
@@ -87,29 +120,109 @@ export function PdvPage() {
     };
   } | null>(null);
 
-  // Estado explícito da identificação: o checkbox não pode derivar de campos
-  // vazios, senão marcar nunca revela os inputs (bug do balcão).
   const [identify, setIdentify] = useState(false);
+  const [loyalty, setLoyalty] = useState<LoyaltyApplied>(initialLoyalty);
+  const [activeKind, setActiveKind] = useState<SaleKind>("service");
+  const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [selectedComboId, setSelectedComboId] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [qty, setQty] = useState(1);
 
   const form = useForm<WalkInInput>({
     resolver: zodResolver(walkInSchema),
-    defaultValues: {
-      professionalId: "",
-      selection: { kind: "service", serviceId: "" },
-      customerName: "",
-      customerPhone: "",
-      whatsappOptIn: false,
-    },
+    defaultValues: initialWalkInValues(""),
   });
 
   const professionals = professionalsQuery.data ?? [];
   const services = servicesQuery.data ?? [];
   const combos = combosFeature ? (combosQuery.data ?? []) : [];
+  const products = entitlements?.estoque ? (productsQuery.data ?? []) : [];
+  const estoqueEntitled = entitlements?.estoque === true;
+  const comissaoProdutoEntitled = entitlements?.comissaoProduto === true;
 
   const ownProfessional = useMemo(() => {
     if (canScheduleForAnyProfessional || !userId) return null;
     return professionals.find((p) => p.profile_id === userId) ?? null;
   }, [canScheduleForAnyProfessional, userId, professionals]);
+
+  useEffect(() => {
+    if (ownProfessional) form.setValue("professionalId", ownProfessional.id);
+  }, [ownProfessional, form]);
+
+  const selection = useMemo<WalkInInput["selection"]>(() => {
+    if (activeKind === "service") return { kind: "service", serviceId: selectedServiceId };
+    if (activeKind === "product") return { kind: "product", productId: selectedProductId, qty };
+    return { kind: "combo", comboId: selectedComboId };
+  }, [activeKind, selectedServiceId, selectedProductId, qty, selectedComboId]);
+
+  useEffect(() => {
+    form.setValue("selection", selection);
+  }, [selection, form]);
+
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === selectedProductId) ?? null,
+    [products, selectedProductId],
+  );
+
+  const selectedTotal = useMemo(() => {
+    if (selection.kind === "service") {
+      return services.find((s) => s.id === selection.serviceId)?.price_cents ?? 0;
+    }
+    if (selection.kind === "combo") {
+      return combos.find((c) => c.id === selection.comboId)?.price_cents ?? 0;
+    }
+    return selectedProduct ? selectedProduct.price_cents * qty : 0;
+  }, [selection, services, combos, selectedProduct, qty]);
+
+  const selectedServiceName = useMemo(() => {
+    if (selection.kind === "service") {
+      return services.find((s) => s.id === selection.serviceId)?.name ?? "";
+    }
+    if (selection.kind === "combo") {
+      return combos.find((c) => c.id === selection.comboId)?.name ?? "";
+    }
+    return selectedProduct?.name ?? "";
+  }, [selection, services, combos, selectedProduct]);
+
+  const selectionError = (() => {
+    const errors = form.formState.errors.selection as
+      | { message?: string; serviceId?: { message?: string }; comboId?: { message?: string }; productId?: { message?: string } }
+      | undefined;
+    return (
+      errors?.serviceId?.message ??
+      errors?.comboId?.message ??
+      errors?.productId?.message ??
+      errors?.message
+    );
+  })();
+
+  const insufficientStock =
+    selectedProduct !== null && qty > selectedProduct.stock_qty;
+  const outOfStock = selectedProduct !== null && selectedProduct.stock_qty <= 0;
+
+  const canPreviewCommission =
+    canViewCommission && comissaoProdutoEntitled && selectedProduct !== null;
+
+  const commissionCents = selectedProduct
+    ? Math.round((selectedProduct.price_cents * qty * selectedProduct.commission_pct) / 100)
+    : 0;
+
+  const pendingToday = (todayQuery.data ?? []).filter(
+    (a) => a.status === "em_atendimento" || a.status === "confirmado",
+  );
+
+  function resetSaleForm() {
+    form.reset(initialWalkInValues(ownProfessional?.id ?? ""));
+    setActiveKind("service");
+    setSelectedServiceId("");
+    setSelectedComboId("");
+    setSelectedProductId("");
+    setQty(1);
+    setIdentify(false);
+    // Fidelidade nunca vaza para a próxima venda (cupom/gift da anterior).
+    setLoyalty(initialLoyalty);
+    form.clearErrors();
+  }
 
   if (payments === null) {
     return (
@@ -132,24 +245,19 @@ export function PdvPage() {
     );
   }
 
-  const selection = form.watch("selection");
-  const selectedProfessional = professionals.find(
-    (p) => p.id === form.watch("professionalId"),
-  );
-  const selectedTotal =
-    selection.kind === "service"
-      ? (services.find((s) => s.id === selection.serviceId)?.price_cents ?? 0)
-      : (combos.find((c) => c.id === selection.comboId)?.price_cents ?? 0);
-  const selectedServiceName =
-    selection.kind === "service"
-      ? (services.find((s) => s.id === selection.serviceId)?.name ?? "")
-      : (combos.find((c) => c.id === selection.comboId)?.name ?? "");
-
-  const pendingToday = (todayQuery.data ?? []).filter(
-    (a) => a.status === "em_atendimento" || a.status === "confirmado",
-  );
-
   async function onSubmit(input: WalkInInput) {
+    if (input.selection.kind === "product") {
+      const sel = input.selection;
+      const product = products.find((p) => p.id === sel.productId);
+      if (!product) {
+        toast.error(messages.pdv.createdError);
+        return;
+      }
+      if (sel.qty < 1 || sel.qty > product.stock_qty) {
+        toast.error(messages.pdv.insufficientStock);
+        return;
+      }
+    }
     const hasCustomer =
       (input.customerName?.trim().length ?? 0) > 0 &&
       (input.customerPhone?.trim().length ?? 0) > 0;
@@ -176,6 +284,50 @@ export function PdvPage() {
         customerId,
         creationIdempotencyKey: newCreationKey(),
       });
+      // Aplicação autoritativa pós-criação (atendimento real): cupom via
+      // `apply_coupon_to_closing` + gift via `redeem_gift_card`, ambos
+      // idempotentes e com trilha em `audit_log`. O fechamento captura o
+      // total final do servidor (settlement já é coupon-aware).
+      const saleLoyalty: LoyaltyApplied = { ...loyalty };
+      let totalFinal = selectedTotal;
+      if (saleLoyalty.couponCode) {
+        try {
+          const applied = await applyCoupon.mutateAsync({
+            appointmentId: created.appointmentId,
+            code: saleLoyalty.couponCode,
+            idempotencyKey: newLoyaltyKey(),
+          });
+          totalFinal =
+            applied.total_final_cents ??
+            Math.max(0, totalFinal - applied.discount_cents);
+          saleLoyalty.discountCents = applied.discount_cents;
+        } catch {
+          saleLoyalty.couponCode = null;
+          saleLoyalty.discountCents = 0;
+          toast.error(fidelidadeMessages.pdv.couponInvalid);
+        }
+      }
+      if (saleLoyalty.giftCode && saleLoyalty.giftCents > 0) {
+        const amount = Math.min(saleLoyalty.giftCents, totalFinal);
+        if (amount > 0) {
+          try {
+            await redeemGift.mutateAsync({
+              appointmentId: created.appointmentId,
+              code: saleLoyalty.giftCode,
+              amountCents: amount,
+              idempotencyKey: newLoyaltyKey(),
+            });
+            totalFinal = Math.max(0, totalFinal - amount);
+            saleLoyalty.giftCents = amount;
+          } catch {
+            saleLoyalty.giftCode = null;
+            saleLoyalty.giftCents = 0;
+            toast.error(fidelidadeMessages.pdv.giftInvalid);
+          }
+        }
+      }
+      saleLoyalty.totalFinalCents = totalFinal;
+      setLoyalty(saleLoyalty);
       toast.success(messages.pdv.successCreated);
       setCaptureTarget({
         appointment: {
@@ -185,13 +337,10 @@ export function PdvPage() {
             : messages.pdv.anonymous,
           serviceName: selectedServiceName,
           professionalName: selectedProfessional?.name ?? "",
-          totalCents: selectedTotal,
+          totalCents: totalFinal,
           status: "em_atendimento",
         },
       });
-      // Cliente é por venda: sem reset, a identificação da venda anterior vaza
-      // para a próxima e pode gravar `customer_id` errado (customers não tem
-      // unique por telefone). Profissional/serviço permanecem para agilizar.
       setIdentify(false);
       form.setValue("customerName", "");
       form.setValue("customerPhone", "");
@@ -199,9 +348,6 @@ export function PdvPage() {
       form.clearErrors(["customerName", "customerPhone"]);
     } catch (error) {
       if (error instanceof PaymentApiError) {
-        // Código conhecido → mensagem do próprio código; desconhecido → fallback
-        // do PDV. A Edge não devolve `23P01` (mapRpcError só traduz PT4xx),
-        // então não há conflito de agenda a mapear aqui.
         const message = Object.prototype.hasOwnProperty.call(PAYMENT_ERROR_MAP, error.code)
           ? paymentErrorMessage(messages, error.code)
           : messages.pdv.createdError;
@@ -212,7 +358,19 @@ export function PdvPage() {
     }
   }
 
-  const busy = createWalkIn.isPending || createCustomer.isPending;
+  const busy =
+    createWalkIn.isPending ||
+    createCustomer.isPending ||
+    applyCoupon.isPending ||
+    redeemGift.isPending;
+  const selectedProfessional = professionals.find(
+    (p) => p.id === form.watch("professionalId"),
+  );
+
+  const submitDisabled =
+    busy ||
+    !canRegisterPayments ||
+    (activeKind === "product" && (selectedProduct === null || insufficientStock || outOfStock));
 
   return (
     <div className="space-y-6">
@@ -233,7 +391,10 @@ export function PdvPage() {
                   render={({ field }) => (
                     <Select
                       value={field.value || "nenhum"}
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        if (!value || value === "nenhum") return;
+                        field.onChange(value);
+                      }}
                       disabled={!canScheduleForAnyProfessional || !!ownProfessional}
                     >
                       <SelectTrigger id="pdv-profissional" className="w-full">
@@ -256,18 +417,33 @@ export function PdvPage() {
                 ) : null}
               </div>
 
-              <div className="space-y-1">
-                <Label htmlFor="pdv-servico">{messages.pdv.service}</Label>
-                {selection.kind === "service" ? (
+              <Tabs value={activeKind} onValueChange={(value) => setActiveKind(value as SaleKind)} className="w-full">
+                <TabsList aria-label={messages.pdv.segmentedAria} className="w-full">
+                  <TabsTrigger value="service" className="flex-1" onClick={() => setActiveKind("service")}>
+                    {messages.pdv.segmentedService}
+                  </TabsTrigger>
+                  <TabsTrigger value="product" className="flex-1" onClick={() => setActiveKind("product")}>
+                    {messages.pdv.segmentedProduct}
+                  </TabsTrigger>
+                  {combosFeature ? (
+                    <TabsTrigger value="combo" className="flex-1" onClick={() => setActiveKind("combo")}>
+                      {messages.pdv.segmentedCombo}
+                    </TabsTrigger>
+                  ) : null}
+                </TabsList>
+                <TabsContent value={activeKind} className="space-y-1 mt-0">
+                  <Label htmlFor="pdv-servico">{messages.pdv.service}</Label>
+                {activeKind === "service" ? (
                   <Controller
                     control={form.control}
                     name="selection.serviceId"
                     render={({ field }) => (
                       <Select
                         value={field.value || "nenhum"}
-                        onValueChange={(value) =>
-                          form.setValue("selection", { kind: "service", serviceId: value }, { shouldValidate: true })
-                        }
+                        onValueChange={(value) => {
+                          if (!value || value === "nenhum") return;
+                          setSelectedServiceId(value);
+                        }}
                       >
                         <SelectTrigger id="pdv-servico" className="w-full">
                           <SelectValue placeholder={messages.pdv.service} />
@@ -282,6 +458,120 @@ export function PdvPage() {
                       </Select>
                     )}
                   />
+                ) : activeKind === "product" ? (
+                  <EntitlementGate entitled={estoqueEntitled} recurso="Estoque" acaoLabel="Operar estoque">
+                    <div className="space-y-3">
+                      {productsQuery.isLoading ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : productsQuery.isError ? (
+                      <StatePanel
+                        titulo={messages.pdv.createdError}
+                        descricao={messages.pdv.createdError}
+                      >
+                        <Button variant="outline" onClick={() => void productsQuery.refetch()}>
+                          Tentar novamente
+                        </Button>
+                      </StatePanel>
+                    ) : products.length === 0 ? (
+                      <StatePanel
+                        titulo={messages.pdv.productPlaceholder}
+                        descricao={messages.pdv.productPlaceholder}
+                      />
+                    ) : (
+                      <Controller
+                        control={form.control}
+                        name="selection.productId"
+                        render={({ field }) => (
+                          <Select
+                            value={field.value || "nenhum"}
+                            onValueChange={(value) => {
+                              if (!value || value === "nenhum") return;
+                              setSelectedProductId(value);
+                            }}
+                          >
+                            <SelectTrigger id="pdv-servico" className="w-full">
+                              <SelectValue placeholder={messages.pdv.productPlaceholder} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {products.map((p: Product) => (
+                                <SelectItem key={p.id} value={p.id} disabled={p.stock_qty <= 0}>
+                                  {p.name} — {formatCentsToBRL(p.price_cents)}
+                                  {p.stock_qty <= 0 ? ` (${messages.pdv.outOfStock})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    )}
+                    {products.some((p: Product) => p.stock_qty <= 0) ? (
+                      <p className="text-sm text-destructive" role="alert">
+                        {messages.pdv.outOfStockAlert}
+                      </p>
+                    ) : null}
+                    <div className="space-y-1">
+                      <Label htmlFor="pdv-qty">{messages.pdv.qty}</Label>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setQty((q) => Math.max(1, q - 1))}
+                          aria-label={messages.pdv.decreaseQty}
+                        >
+                          <Minus aria-hidden="true" />
+                        </Button>
+                        <Input
+                          id="pdv-qty"
+                          type="number"
+                          min={1}
+                          max={selectedProduct?.stock_qty}
+                          value={qty}
+                          onChange={(e) => {
+                            const next = Number(e.target.value);
+                            setQty(Number.isFinite(next) && next > 0 ? next : 1);
+                          }}
+                          aria-valuenow={qty}
+                          className="w-20 text-center"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() =>
+                            setQty((q) =>
+                              selectedProduct ? Math.min(selectedProduct.stock_qty, q + 1) : q + 1,
+                            )
+                          }
+                          aria-label={messages.pdv.increaseQty}
+                        >
+                          <Plus aria-hidden="true" />
+                        </Button>
+                      </div>
+                      {selectedProduct ? (
+                        <p className="text-xs text-muted-foreground">
+                          {messages.pdv.stockAvailable.replace("{qty}", String(selectedProduct.stock_qty))}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1">
+                      <Label>{messages.pdv.unitPrice}</Label>
+                      <p className="text-sm font-medium tabular-nums">
+                        {selectedProduct ? formatCentsToBRL(selectedProduct.price_cents) : "—"}
+                      </p>
+                    </div>
+                    {insufficientStock ? (
+                      <p className="text-sm text-destructive" role="alert">
+                        {messages.pdv.insufficientStock}
+                      </p>
+                    ) : null}
+                    {canPreviewCommission ? (
+                      <p className="text-sm text-muted-foreground">
+                        {messages.pdv.commissionPreview.replace("{value}", formatCentsToBRL(commissionCents))}
+                      </p>
+                    ) : null}
+                  </div>
+                  </EntitlementGate>
                 ) : (
                   <Controller
                     control={form.control}
@@ -289,9 +579,10 @@ export function PdvPage() {
                     render={({ field }) => (
                       <Select
                         value={field.value || "nenhum"}
-                        onValueChange={(value) =>
-                          form.setValue("selection", { kind: "combo", comboId: value }, { shouldValidate: true })
-                        }
+                        onValueChange={(value) => {
+                          if (!value || value === "nenhum") return;
+                          setSelectedComboId(value);
+                        }}
                       >
                         <SelectTrigger id="pdv-servico" className="w-full">
                           <SelectValue placeholder={messages.pdv.combo} />
@@ -307,24 +598,13 @@ export function PdvPage() {
                     )}
                   />
                 )}
-                {combosFeature ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      form.setValue(
-                        "selection",
-                        selection.kind === "service"
-                          ? { kind: "combo", comboId: "" }
-                          : { kind: "service", serviceId: "" },
-                      )
-                    }
-                  >
-                    {selection.kind === "service" ? messages.pdv.combo : messages.pdv.service}
-                  </Button>
+                {selectionError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {selectionError}
+                  </p>
                 ) : null}
-              </div>
+              </TabsContent>
+              </Tabs>
 
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -413,11 +693,26 @@ export function PdvPage() {
                 </p>
               </div>
 
-              <Button type="submit" disabled={busy || !canRegisterPayments} className="w-full">
+              <Button type="submit" disabled={submitDisabled} className="w-full">
                 <Plus aria-hidden="true" />
                 {busy ? messages.pdv.creating : messages.pdv.createSale}
               </Button>
             </form>
+            <div className="pt-4">
+              <LoyaltyApplyPanel
+                totalCents={selectedTotal}
+                hasCustomer={identify}
+                entitled={entitlements?.fidelidade === true}
+                onApplied={(applied) => setLoyalty(applied)}
+              />
+              {loyalty.discountCents > 0 || loyalty.giftCents > 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground" role="status">
+                  {loyalty.couponCode ? `Cupom ${loyalty.couponCode} · ` : ""}
+                  {loyalty.giftCode ? `Gift ${loyalty.giftCode} · ` : ""}
+                  Total final {formatCentsToBRL(loyalty.totalFinalCents)}
+                </p>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
 
@@ -496,6 +791,7 @@ export function PdvPage() {
           }}
           onCompleted={() => {
             setCaptureTarget(null);
+            resetSaleForm();
             toast.success(messages.pdv.saleCompleted);
             void todayQuery.refetch();
           }}

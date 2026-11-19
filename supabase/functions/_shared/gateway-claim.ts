@@ -167,6 +167,29 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Espera a linha ganhar `asaas_payment_id` (quem pegou o claim está criando).
+ * Genérico sobre `charges` e `receivables`: o leitor devolve o estado atual.
+ * Retorna o estado quando o gateway anexou os dados; `null` quando o TTL acabou,
+ * a linha foi cancelada ou ficou paga sem QR.
+ */
+export async function waitForGatewayData(
+  read: () => Promise<ChargeState | null>,
+  timeoutMs = claimWaitTimeoutMs(),
+  intervalMs = 250,
+): Promise<ChargeState | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = await read();
+    if (!state) return null;
+    if (state.status === "pago") return state;
+    if (state.status === "cancelado") return null;
+    if (state.asaas_payment_id) return state;
+    await sleep(intervalMs);
+  }
+  return null;
+}
+
+/**
  * Espera a cobrança ganhar `asaas_payment_id` (quem pegou o claim está criando).
  * Retorna a cobrança quando o gateway anexou os dados; `null` quando o TTL acabou,
  * a cobrança foi cancelada ou ficou paga sem QR.
@@ -178,16 +201,45 @@ export async function waitForClaimedGatewayData(
   timeoutMs = claimWaitTimeoutMs(),
   intervalMs = 250,
 ): Promise<ChargeState | null> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const charge = await readChargeState(service, tenantId, chargeId);
-    if (!charge) return null;
-    if (charge.status === "pago") return charge;
-    if (charge.status === "cancelado") return null;
-    if (charge.asaas_payment_id) return charge;
-    await sleep(intervalMs);
+  return await waitForGatewayData(
+    () => readChargeState(service, tenantId, chargeId),
+    timeoutMs,
+    intervalMs,
+  );
+}
+
+/** Porta de claim/leitura de uma linha que hospeda cobrança do gateway. */
+export interface GatewayClaimAdapter {
+  /** Estado atual da linha (`null` quando ela não existe mais). */
+  read: () => Promise<ChargeState | null>;
+  /** Tenta o claim atômico; devolve o token quando esta chamada ganhou. */
+  claim: () => Promise<{ claimed: boolean; claimToken: string | null; state: ChargeState | null }>;
+}
+
+export type GatewayClaimOutcome =
+  | { handle: "claimed"; claimToken: string; state: ChargeState | null }
+  | { handle: "reused"; claimToken: null; state: ChargeState };
+
+/**
+ * Adquire o direito exclusivo de falar com o gateway para UMA linha.
+ * - claim ganho ⇒ `handle: "claimed"` (o chamador é o único que pode criar);
+ * - claim perdido ⇒ espera os dados do vencedor; sem dados no TTL ⇒
+ *   `409 GATEWAY_IN_PROGRESS` (retryable), nunca cria uma segunda cobrança.
+ */
+export async function acquireGatewayClaim(
+  adapter: GatewayClaimAdapter,
+  waitTimeoutMs = claimWaitTimeoutMs(),
+): Promise<GatewayClaimOutcome> {
+  const claim = await adapter.claim();
+  if (claim.claimed) {
+    if (!claim.claimToken) throw new ApiError(500, "INTERNAL");
+    return { handle: "claimed", claimToken: claim.claimToken, state: claim.state };
   }
-  return null;
+
+  const waited = await waitForGatewayData(adapter.read, waitTimeoutMs);
+  if (waited) return { handle: "reused", claimToken: null, state: waited };
+
+  throw new ApiError(409, "GATEWAY_IN_PROGRESS");
 }
 
 /** Timeout de espera do claim (default 5s; testes podem zerar via env). */

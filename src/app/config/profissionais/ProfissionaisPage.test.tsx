@@ -11,7 +11,10 @@ vi.mock("@/hooks/useSegmentFeatures", () => ({
 }));
 
 vi.mock("@/hooks/useProfessionalCommission", () => ({
-  useProfessionalCommission: () => ({ data: 0, isLoading: false }),
+  useProfessionalCommission: () => ({
+    data: { commissionBps: 0, commissionType: "price" },
+    isLoading: false,
+  }),
   useUpsertProfessionalCommission: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 

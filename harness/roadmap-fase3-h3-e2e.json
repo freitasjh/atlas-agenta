@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase3-h3-e2e",
+  "agent": "qa-engineer",
+  "phase": "Testing",
+  "gitSha": "8d7aee9f4f6aced2086538866a3b1daf3d1b0223",
+  "commands": [
+    { "cmd": "npm test", "exitCode": 0, "durationMs": 20490, "stdoutHash": "self-reported" },
+    { "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"", "exitCode": 0, "durationMs": 67, "stdoutHash": "self-reported" },
+    { "cmd": "npm run build", "exitCode": 0, "durationMs": 7470, "stdoutHash": "self-reported" },
+    { "cmd": "npm run test:integration", "exitCode": 0, "durationMs": 79130, "stdoutHash": "self-reported" },
+    { "cmd": "npm run test:functions", "exitCode": 0, "durationMs": 19000, "stdoutHash": "self-reported (deno gate ref)" }
+  ],
+  "counts": {
+    "unit": { "passed": 1297, "failed": 0, "skipped": 0 },
+    "it": { "passed": 333, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 1297, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "browser": "chrome-devtools",
+    "flow": "salao/barbearia (plan temporariamente premium, revertido a starter)",
+    "console": "zero [ERROR]/[WARN] nas paginas finais (agenda, pdv, comissoes, recursos, produtos)",
+    "network": "sem 4xx/5xx inesperados; warn transiente de formato de data durante criacao de agendamento (nao bloqueante)",
+    "screenshots": [
+      ".spec/roadmap-fase3/salao-barbearia/harness/01-agenda-1280.png",
+      ".spec/roadmap-fase3/salao-barbearia/harness/02-agenda-375.png",
+      ".spec/roadmap-fase3/salao-barbearia/harness/03-pdv-1280.png",
+      ".spec/roadmap-fase3/salao-barbearia/harness/04-comissoes-1280.png",
+      ".spec/roadmap-fase3/salao-barbearia/harness/05-recursos-1280.png"
+    ],
+    "coverage": [
+      "login admin@demo.local",
+      "agenda criar agendamento (Coloracao)",
+      "pendente -> em_atendimento -> concluido com pagamento Dinheiro",
+      "PDV varejo (Pomada Modeladora, estoque 10->9)",
+      "comissao relatorio (R$4,50 produto + R$0,00 servico)",
+      "recursos CRUD (Sala 1)",
+      "gating estoque por plano (starter bloqueia, premium habilita)"
+    ],
+    "blocked": [
+      "Radix Select de categoria no ProductFormDialog nao atualiza via chrome-devtools; produto inserido via SQL para viabilizar PDV"
+    ]
+  },
+  "evaluation": {
+    "h4-telas": "agenda/pdv/comissoes/recursos renderizam em 1280 e 375; sem scroll-X observado",
+    "h4-negocio": "estoque decrementa; comissao por produto (10%) apurada; recurso criado; gating por plano funciona",
+    "h4-logica": "status machine ok; pagamento Dinheiro quitado; comprovante gerado",
+    "h4-perf": "agenda e pdv carregam rapido; sem N+1 observavel no E2E"
+  },
+  "brainStore": ["sessoes/atlas-agenda/2026-11-12-h3-salao-barbearia"],
+  "cleanup": {
+    "frontendPort5174": "free",
+    "functionsPid": "edge runtime container removido",
+    "supabase": "stopped",
+    "ports54321_54322": "free",
+    "orphans": false,
+    "note": "nenhum pkill -f utilizado; portas encerradas por PID/container"
+  },
+  "selfReported": true
+}

@@ -70,8 +70,12 @@ export const appointmentRowSchema = z
     // `combo_id` pode não vir na resposta até o SELECT embutir o pacote
     // (ADR-06/07); ausente → `undefined` → normalizado para `null`.
     combo_id: z.string().nullable().optional(),
+    // Vínculo ao crédito de pacote (Fase 2, ADR-02/ADR-06): mesmo padrão —
+    // ausente na resposta → `undefined` → normalizado para `null` (avulso).
+    package_credit_id: z.string().nullable().optional(),
     starts_at: z.string(),
     ends_at: z.string(),
+    processing_minutes: z.number().int().default(0),
     price_cents: z.number().int(),
     status: z.enum(APPOINTMENT_STATUSES),
     confirmed_at: z.string().nullable(),
@@ -84,6 +88,7 @@ export const appointmentRowSchema = z
       .object({
         name: z.string(),
         duration_minutes: z.number().int(),
+        processing_minutes: z.number().int().default(0),
         price_cents: z.number().int(),
       })
       .nullable(),
@@ -97,13 +102,34 @@ export const appointmentRowSchema = z
     // Pode não vir na resposta (ex.: insert/update que não seleciona o embed):
     // ausente → `undefined` → normaliza para `null`.
     appointment_commissions: commissionEmbedSchema.optional(),
+    appointment_resources: z
+      .array(
+        z.object({
+          resources: z.object({ name: z.string() }).nullable().optional(),
+        }),
+      )
+      .nullable()
+      .optional(),
   })
-  .transform(({ appointment_commissions, combo_id, combos, ...rest }) => ({
-    ...rest,
-    combo_id: combo_id ?? null,
-    combos: combos ?? null,
-    commission_cents: normalizeCommissionCents(appointment_commissions ?? null),
-  }));
+  .transform(
+    ({
+      appointment_commissions,
+      appointment_resources,
+      combo_id,
+      combos,
+      package_credit_id,
+      ...rest
+    }) => ({
+      ...rest,
+      combo_id: combo_id ?? null,
+      combos: combos ?? null,
+      package_credit_id: package_credit_id ?? null,
+      commission_cents: normalizeCommissionCents(appointment_commissions ?? null),
+      resources: (appointment_resources ?? [])
+        .map((row) => row.resources)
+        .filter((r): r is { name: string } => !!r && typeof r.name === "string"),
+    }),
+  );
 
 export const appointmentListSchema = z.array(appointmentRowSchema);
 
@@ -112,7 +138,7 @@ export const appointmentListSchema = z.array(appointmentRowSchema);
  * extra (reusa o cache da agenda) e é recortado pelo RLS financeiro da ADR-02:
  * receptionist não recebe a relação, professional só a própria. */
 export const APPOINTMENT_SELECT =
-  "id, tenant_id, origin, customer_id, professional_id, service_id, combo_id, starts_at, ends_at, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents)";
+  "id, tenant_id, origin, customer_id, professional_id, service_id, combo_id, package_credit_id, starts_at, ends_at, processing_minutes, price_cents, status, confirmed_at, confirmed_via, created_at, customers(name, whatsapp_opt_in), services(name, duration_minutes, processing_minutes, price_cents), combos(name, price_cents), professionals(name), appointment_commissions(commission_cents), appointment_resources(resources(name))";
 
 const APPOINTMENTS_KEY = ["appointments"] as const;
 

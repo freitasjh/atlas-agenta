@@ -24,6 +24,11 @@ export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
  * `{ action: 'set_status', tenantId, status, reason? }`. O contrato usa camelCase, alinhado ao
  * consumidor (ADR-04/05). `reason` é motivo curto não-PII (≤280). `tenantId` é o ALVO; o ator vem
  * do JWT no servidor.
+ *
+ * ADR-11 (suspender/retomar): a **suspensão** (`status="bloqueado"`) exige motivo não vazio aqui,
+ * no schema. A **retomada** (`bloqueado → ativo`) também exige, mas o status atual só é conhecido
+ * depois de carregar o tenant — essa checagem fica no handler; as demais transições (ex.:
+ * `trial → ativo`) seguem com motivo opcional para não quebrar o contrato legado da ADR-03.
  */
 export const setStatusInputSchema = z.object({
   action: z.literal("set_status"),
@@ -36,8 +41,22 @@ export type SetStatusInput = z.infer<typeof setStatusInputSchema>;
 /**
  * Discriminated union por `action` (extensível a novas ações do admin). Campos extras (ex.: um
  * `changed_by`/`role` forjado) são simplesmente IGNORADOS por não estarem no schema.
+ *
+ * A obrigatoriedade do motivo da **suspensão** (`status="bloqueado"`) fica no refine da union (o
+ * `z.discriminatedUnion` exige membros `ZodObject`, então o refine vem depois da união). A
+ * retomada (`bloqueado → ativo`) depende do status atual e é validada no handler.
  */
-export const requestSchema = z.discriminatedUnion("action", [setStatusInputSchema]);
+export const requestSchema = z
+  .discriminatedUnion("action", [setStatusInputSchema])
+  .superRefine((input, ctx) => {
+    if (input.action === "set_status" && input.status === "bloqueado" && !input.reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reason"],
+        message: "Informe o motivo da suspensão.",
+      });
+    }
+  });
 export type RequestBody = z.infer<typeof requestSchema>;
 
 /** DTO de sucesso de `set_status` — contrato validado pela UI (ADR-04/05). */

@@ -22,6 +22,8 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { DepositStep, type DepositStepStatus } from "@/public/DepositStep";
+import { calcDepositCents, type DepositCharge } from "@/lib/validations/deposit";
 import { env } from "@/lib/env";
 
 const SUPABASE_URL = env.VITE_SUPABASE_URL;
@@ -40,6 +42,11 @@ interface Service {
   name: string;
   duration_minutes: number;
   price_cents: number;
+  deposit_enabled?: boolean;
+  deposit_type?: "percent" | "fixed" | null;
+  deposit_value?: number;
+  deposit_deadline_hours?: number;
+  deposit_refund_policy?: "total" | "partial" | "none";
 }
 
 interface Professional {
@@ -154,6 +161,9 @@ export function AgendarPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [booking, setBooking] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [depositCharge, setDepositCharge] = useState<DepositCharge | null>(null);
+  const [depositStatus, setDepositStatus] =
+    useState<DepositStepStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const stepIndex = ["service", "professional", "datetime", "customer", "confirm"].indexOf(step);
@@ -215,9 +225,11 @@ export function AgendarPage() {
 
   async function handleBooking() {
     if (!selectedService || !selectedProfessional || !selectedSlot) return;
+    const serviceDepositEnabled = selectedService.deposit_enabled === true;
     try {
       setBooking(true);
       setError(null);
+      if (serviceDepositEnabled) setDepositStatus("loading");
       const res = await fetch(`${SUPABASE_URL}/functions/v1/public-book`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
@@ -231,7 +243,21 @@ export function AgendarPage() {
         }),
       });
       if (res.ok) {
+        let body: unknown = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
         setSuccess(true);
+        if (serviceDepositEnabled) {
+          const charge = parseDepositCharge(body, selectedService);
+          setDepositCharge(charge);
+          setDepositStatus(charge ? "ready" : "error");
+        } else {
+          setDepositCharge(null);
+          setDepositStatus("idle");
+        }
       } else {
         let message = "Erro ao agendar";
         try {
@@ -241,17 +267,85 @@ export function AgendarPage() {
           // ignore
         }
         setError(message);
+        if (serviceDepositEnabled) {
+          setDepositCharge(null);
+          setDepositStatus("error");
+        }
       }
     } catch {
       setError("Erro ao agendar");
+      if (serviceDepositEnabled) {
+        setDepositCharge(null);
+        setDepositStatus("error");
+      }
     } finally {
       setBooking(false);
+    }
+  }
+
+  /**
+   * Extrai a charge PIX do retorno do `public-book` (Fase 4, ADR-03) de forma
+   * defensiva: backend ausente/legado → `null` (DepositStep vira error + retry).
+   * Dado não confiável: valida tipos antes do uso.
+   */
+  function parseDepositCharge(
+    body: unknown,
+    service: Service,
+  ): DepositCharge | null {
+    const record =
+      typeof body === "object" && body !== null
+        ? (body as Record<string, unknown>)
+        : null;
+    const raw =
+      record !== null && typeof record["charge"] === "object"
+        ? (record["charge"] as Record<string, unknown>)
+        : record;
+    if (raw === null) return null;
+    const id = typeof raw["id"] === "string" ? raw["id"] : null;
+    const status = raw["status"];
+    const amountCents =
+      typeof raw["amount_cents"] === "number"
+        ? raw["amount_cents"]
+        : calcDepositCents(
+            service.price_cents,
+            (service.deposit_type ?? null) as "percent" | "fixed" | null,
+            service.deposit_value ?? 0,
+          );
+    if (id === null || (status !== "pendente" && status !== "pago")) return null;
+    const pixQrCode =
+      typeof raw["pix_qr_code"] === "string" ? raw["pix_qr_code"] : null;
+    const pixCopiaECola =
+      typeof raw["pix_copia_e_cola"] === "string"
+        ? raw["pix_copia_e_cola"]
+        : null;
+    const expiresAt =
+      typeof raw["expires_at"] === "string" ? raw["expires_at"] : null;
+    return {
+      id,
+      status,
+      amountCents,
+      pixQrCode,
+      pixCopiaECola,
+      expiresAt,
+    };
+  }
+
+  function depositRefundHint(service: Service): string {
+    switch (service.deposit_refund_policy) {
+      case "total":
+        return "Reembolso total ao cancelar dentro do prazo.";
+      case "partial":
+        return "Reembolso parcial ao cancelar (conforme política do serviço).";
+      default:
+        return "Sem reembolso em caso de cancelamento.";
     }
   }
 
   function resetAll() {
     setSuccess(false);
     setError(null);
+    setDepositCharge(null);
+    setDepositStatus("idle");
     setStep("service");
     setSelectedService(null);
     setSelectedProfessional(null);
@@ -305,6 +399,47 @@ export function AgendarPage() {
   }
 
   if (success) {
+    const depositRequired = selectedService?.deposit_enabled === true;
+    if (depositRequired && selectedService) {
+      const depositAmount = calcDepositCents(
+        selectedService.price_cents,
+        (selectedService.deposit_type ?? null) as "percent" | "fixed" | null,
+        selectedService.deposit_value ?? 0,
+      );
+      return (
+        <div className="min-h-screen bg-background">
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:ring-2 focus:ring-ring"
+          >
+            Pular para o conteúdo
+          </a>
+          <main
+            id="main"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6"
+          >
+            <DepositStep
+              serviceName={selectedService.name}
+              amountCents={depositAmount}
+              deadlineHours={selectedService.deposit_deadline_hours ?? 24}
+              refundHint={depositRefundHint(selectedService)}
+              status={depositStatus}
+              charge={depositCharge}
+              errorMessage={error}
+              onRetry={() => void handleBooking()}
+            />
+            <Button
+              variant="ghost"
+              onClick={resetAll}
+              className="w-full min-h-11"
+            >
+              Novo agendamento
+            </Button>
+          </main>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <main id="main" tabIndex={-1} className="w-full max-w-md">
@@ -806,13 +941,19 @@ export function AgendarPage() {
                   {booking ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                      Agendando...
+                      {selectedService?.deposit_enabled === true ? "Gerando PIX..." : "Agendando..."}
                     </>
                   ) : (
                     "Confirmar agendamento"
                   )}
                 </Button>
               </div>
+              {selectedService?.deposit_enabled === true ? (
+                <p className="text-xs text-muted-foreground">
+                  Este serviço exige um sinal via PIX. Após confirmar, você verá
+                  o QR Code e o código copia e cola.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         )}

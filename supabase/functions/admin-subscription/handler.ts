@@ -213,6 +213,13 @@ async function handleSetStatus(
     );
   }
 
+  // ADR-11 (suspender/retomar): a retomada (`bloqueado → ativo`) exige motivo não vazio, como a
+  // suspensão. A suspensão é validada no schema; aqui o status atual já foi carregado. As demais
+  // transições para `ativo` (ex.: `trial → ativo`) mantêm o motivo opcional da ADR-03.
+  if (status === "ativo" && currentStatus === "bloqueado" && !reason) {
+    return errorResponse("Informe o motivo da retomada.", 400);
+  }
+
   // Persiste + audita ATOMICAMENTE via a RPC (ADR-01). `p_changed_by` é SEMPRE o userId do JWT
   // (R-08/R-12), nunca do corpo. Se a trilha falhar, o status não muda.
   const { data: rpcData, error: rpcErr } = await service.rpc("admin_set_subscription_status", {

@@ -45,6 +45,9 @@ export interface AuditLogFilters {
   actor?: string | null;
   actorId?: string | null;
   ator?: string | null;
+  target_id?: string | null;
+  targetId?: string | null;
+  target?: string | null;
   from?: string | null;
   to?: string | null;
   start?: string | null;
@@ -127,10 +130,16 @@ export function filterAuditLog(
   filters?: AuditLogFilters | null,
 ): AuditLogEntry[] {
   const { action, actor, from, to } = normalizePeriod(filters ?? undefined);
+  const targetId = pickString(
+    filters?.target_id,
+    filters?.targetId,
+    (filters as Record<string, unknown> | null | undefined)?.["target"],
+  );
   const fromTime = from ? new Date(from).getTime() : NaN;
   const toTime = to ? new Date(to).getTime() : NaN;
 
   return entries.filter((entry) => {
+    if (targetId && entry.target_id !== targetId) return false;
     if (action && action !== "todos" && action !== "all" && entry.action !== action) {
       return false;
     }
@@ -150,17 +159,28 @@ export const filterAuditEntries = filterAuditLog;
 export const filterAuditLogEntries = filterAuditLog;
 
 /**
- * Query de `audit_log` (leitura sob RLS). Filtros aplicados client-side em
- * memória; não alteram a `queryKey`.
+ * Query de `audit_log` (leitura sob RLS). Filtros de ação/ator/período
+ * aplicados client-side em memória; `target_id` vai server-side (`.eq`) e
+ * entra na `queryKey`. Sempre limitada (mais recentes primeiro). `null`
+ * desabilita a query (drawer fechado); `undefined`/objeto habilita.
  */
 export function useAuditLog(filters?: AuditLogFilters | null) {
+  const targetId = pickString(
+    (filters as AuditLogFilters | null | undefined)?.target_id,
+    (filters as AuditLogFilters | null | undefined)?.targetId,
+    (filters as AuditLogFilters | null | undefined)?.target,
+  );
   const query = useQuery<AuditLogEntry[]>({
-    queryKey: AUDIT_LOG_KEY,
+    queryKey: targetId ? [...AUDIT_LOG_KEY, targetId] : AUDIT_LOG_KEY,
+    enabled: filters !== null,
+    staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("audit_log")
-        .select(AUDIT_LOG_SELECT)
-        .order("created_at", { ascending: false });
+      // biome-ignore lint/suspicious/noExplicitAny: eq condicional do query builder.
+      let builder: any = supabase.from("audit_log").select(AUDIT_LOG_SELECT);
+      if (targetId) builder = builder.eq("target_id", targetId);
+      const { data, error } = await builder
+        .order("created_at", { ascending: false })
+        .limit(200);
       if (error) throw error;
       return auditLogListSchema.parse(data ?? []);
     },

@@ -8,6 +8,8 @@ import { getSubscriptionStatusLabel } from "@/components/StatusBadge";
 import { useAdminTenants } from "@/hooks/useAdminTenants";
 import { SUBSCRIPTION_STATUSES, type TenantListItem } from "@/types/domain";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import {
   EmpresasFilters,
   type StatusFilter,
@@ -15,6 +17,8 @@ import {
 import { EmpresasTable } from "./EmpresasTable";
 import { MudarStatusDialog } from "./MudarStatusDialog";
 import { TrocarPlanoDialog } from "./TrocarPlanoDialog";
+import { OperacaoTab } from "./OperacaoTab";
+import { BackofficeMetricasTab } from "./BackofficeMetricasTab";
 
 /** Valor com debounce leve para a busca client-side (não refaz request). */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -105,57 +109,78 @@ export function EmpresasPage() {
         descricao="Empresas assinantes da plataforma: plano, status de assinatura e fim do trial."
       />
 
-      {tenantsQuery.isLoading ? (
-        <div className="space-y-2" aria-busy="true">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : tenantsQuery.isError ? (
-        <StatePanel
-          titulo="Não foi possível carregar as empresas"
-          descricao="Verifique a conexão e tente novamente."
-        >
-          <Button variant="outline" onClick={() => void tenantsQuery.refetch()}>
-            Tentar novamente
-          </Button>
-        </StatePanel>
-      ) : !hasTenants ? (
-        <StatePanel
-          titulo="Nenhuma empresa ainda"
-          descricao="As empresas assinantes aparecem aqui assim que o primeiro cadastro for criado."
-        />
-      ) : (
-        <>
-          {signature ? (
-            <p className="text-sm text-muted-foreground">{signature}</p>
-          ) : null}
+      <Tabs defaultValue="empresas" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="empresas">Empresas</TabsTrigger>
+          <TabsTrigger value="operacao">Operação</TabsTrigger>
+          <TabsTrigger value="metricas">Métricas</TabsTrigger>
+        </TabsList>
 
-          <EmpresasFilters
-            search={search}
-            onSearchChange={setSearch}
-            status={status}
-            onStatusChange={setStatus}
-          />
-
-          {filteredTenants.length === 0 ? (
+        <TabsContent value="empresas" className="space-y-6">
+          {tenantsQuery.isLoading ? (
+            <div className="space-y-2" aria-busy="true">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : tenantsQuery.isError ? (
             <StatePanel
-              titulo="Nenhuma empresa encontrada"
-              descricao="Ajuste a busca ou o filtro de status para ver outras empresas."
+              titulo="Não foi possível carregar as empresas"
+              descricao="Verifique a conexão e tente novamente."
+            >
+              <Button
+                variant="outline"
+                onClick={() => void tenantsQuery.refetch()}
+              >
+                Tentar novamente
+              </Button>
+            </StatePanel>
+          ) : !hasTenants ? (
+            <StatePanel
+              titulo="Nenhuma empresa ainda"
+              descricao="As empresas assinantes aparecem aqui assim que o primeiro cadastro for criado."
             />
           ) : (
-            <EmpresasTable
-              tenants={filteredTenants}
-              renderAction={(tenant) => (
-                <span className="inline-flex flex-wrap justify-end gap-2">
-                  <TrocarPlanoDialog tenant={tenant} />
-                  <MudarStatusDialog tenant={tenant} />
-                </span>
+            <>
+              {signature ? (
+                <p className="text-sm text-muted-foreground">{signature}</p>
+              ) : null}
+
+              <EmpresasFilters
+                search={search}
+                onSearchChange={setSearch}
+                status={status}
+                onStatusChange={setStatus}
+              />
+
+              {filteredTenants.length === 0 ? (
+                <StatePanel
+                  titulo="Nenhuma empresa encontrada"
+                  descricao="Ajuste a busca ou o filtro de status para ver outras empresas."
+                />
+              ) : (
+                <EmpresasTable
+                  tenants={filteredTenants}
+                  renderAction={(tenant) => (
+                    <span className="inline-flex flex-wrap justify-end gap-2">
+                      <TrocarPlanoDialog tenant={tenant} />
+                      <MudarStatusDialog tenant={tenant} />
+                    </span>
+                  )}
+                />
               )}
-            />
+            </>
           )}
-        </>
-      )}
+        </TabsContent>
+
+        <TabsContent value="operacao" className="space-y-6">
+          <OperacaoTab />
+        </TabsContent>
+
+        <TabsContent value="metricas" className="space-y-6">
+          <BackofficeMetricasTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

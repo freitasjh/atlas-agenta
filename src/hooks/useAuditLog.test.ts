@@ -61,11 +61,13 @@ const ROWS = [
 
 beforeEach(() => {
   fromMock.mockReset();
+  const limitMock = vi.fn(async () => ({ data: ROWS, error: null }));
+  const orderMock = vi.fn(() => ({ limit: limitMock }));
+  const eqMock = vi.fn(() => ({ order: orderMock }));
   fromMock.mockReturnValue({
-    select: () => ({
-      order: async () => ({ data: ROWS, error: null }),
-    }),
-  });
+    select: vi.fn(() => ({ eq: eqMock, order: orderMock })),
+    __mocks: { eqMock, orderMock, limitMock },
+  } as unknown);
 });
 
 afterEach(() => {
@@ -136,13 +138,54 @@ describe("useAuditLog", () => {
   });
 
   it("expõe isError em falha", async () => {
+    const limitMock = vi.fn(async () => ({ data: null, error: { message: "rls" } }));
+    const orderMock = vi.fn(() => ({ limit: limitMock }));
+    const eqMock = vi.fn(() => ({ order: orderMock }));
     fromMock.mockReturnValue({
-      select: () => ({
-        order: async () => ({ data: null, error: { message: "rls" } }),
-      }),
-    });
+      select: vi.fn(() => ({ eq: eqMock, order: orderMock })),
+    } as unknown);
 
     const { result } = renderWithClient(() => useAuditLog());
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+
+  it("aplica .eq server-side por target_id e .limit", async () => {
+    const limitMock = vi.fn(async () => ({ data: ROWS, error: null }));
+    const orderMock = vi.fn(() => ({ limit: limitMock }));
+    const eqMock = vi.fn(() => ({ order: orderMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock, order: orderMock }));
+    fromMock.mockReturnValue({ select: selectMock } as unknown);
+
+    const { result } = renderWithClient(() =>
+      useAuditLog({ target_id: "i2" }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(eqMock).toHaveBeenCalledWith("target_id", "i2");
+    expect(orderMock).toHaveBeenCalledWith("created_at", { ascending: false });
+    expect(limitMock).toHaveBeenCalledWith(200);
+    // filtro client-side reforça o server-side
+    expect(result.current.data?.map((e) => e.id)).toEqual(["a2"]);
+  });
+
+  it("sem target_id não aplica .eq mas aplica .limit", async () => {
+    const limitMock = vi.fn(async () => ({ data: ROWS, error: null }));
+    const orderMock = vi.fn(() => ({ limit: limitMock }));
+    const eqMock = vi.fn(() => ({ order: orderMock }));
+    const selectMock = vi.fn(() => ({ eq: eqMock, order: orderMock }));
+    fromMock.mockReturnValue({ select: selectMock } as unknown);
+
+    const { result } = renderWithClient(() => useAuditLog({ action: "todos" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(eqMock).not.toHaveBeenCalled();
+    expect(limitMock).toHaveBeenCalledWith(200);
+    expect(result.current.data).toHaveLength(3);
+  });
+
+  it("filters=null desabilita a query (drawer fechado)", async () => {
+    const { result } = renderWithClient(() => useAuditLog(null));
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });

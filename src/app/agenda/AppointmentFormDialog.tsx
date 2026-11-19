@@ -42,6 +42,7 @@ import {
   toTenantLocal,
 } from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
+import { isActiveAppointmentStatus } from "@/lib/scheduling-status";
 import {
   mapSchedulingError,
   type AppointmentInput as AppointmentMutationInput,
@@ -97,13 +98,23 @@ interface AppointmentFormDialogProps {
   dayAppointments: AppointmentWithRelations[];
   /**
    * Pré-preenchimento ao criar a partir de uma faixa vazia do calendário
-   * (ADR-08): profissional e/ou início (`HH:MM`). Ignorado em edição. Só tem
+   * (ADR-08) ou de Duplicar (ADR-03): profissional e/ou início (`HH:MM`),
+   * mais cliente/serviço/pacote na duplicação. Ignorado em edição. Só tem
    * efeito no (re)abrir.
    */
-  prefill?: { professionalId?: string; time?: string } | null;
+  prefill?: {
+    professionalId?: string;
+    time?: string;
+    customerId?: string;
+    serviceId?: string;
+    comboId?: string;
+  } | null;
 }
 
 /**
+ * @deprecated ADR-06 (Fase 1): substituído por `AppointmentDrawer` (Sheet +
+ * abas + wizard). Mantido até a migração completa; não adicionar lógica nova.
+ *
  * Diálogo de criar/editar agendamento. O operador escolhe **o que será feito**:
  * um **serviço avulso** (caminho de ADR-05) ou — só para o ramo salão, gated por
  * `useSegmentFeatures().combos` (ADR-06) — um **pacote**. A seleção é uma união
@@ -164,13 +175,26 @@ export function AppointmentFormDialog({
 
   const emptyValues: AppointmentInput = useMemo(
     () => ({
-      customerId: "",
+      customerId: prefill?.customerId ?? "",
       professionalId: lockedProfessionalId ?? prefill?.professionalId ?? "",
-      selection: { kind: "service", serviceId: "" },
+      selection: prefill?.comboId
+        ? { kind: "combo", comboId: prefill.comboId }
+        : {
+            kind: "service",
+            serviceId: prefill?.serviceId ?? "",
+          },
       date: day,
       time: prefill?.time ?? "",
     }),
-    [day, lockedProfessionalId, prefill?.professionalId, prefill?.time],
+    [
+      day,
+      lockedProfessionalId,
+      prefill?.professionalId,
+      prefill?.time,
+      prefill?.customerId,
+      prefill?.serviceId,
+      prefill?.comboId,
+    ],
   );
 
   const form = useForm<AppointmentInput>({
@@ -380,8 +404,8 @@ export function AppointmentFormDialog({
 
   /**
    * Conflito local: `[startUtc, endUtc)` sobrepõe um agendamento ativo do mesmo
-   * profissional no dia (ignora `cancelado`/`nao_compareceu` e o próprio, em
-   * edição). Espelha a constraint de exclusão parcial do banco.
+   * profissional no dia (ignora `cancelado`/`nao_compareceu`/`concluido` e o
+   * próprio, em edição). Espelha a constraint de exclusão parcial do banco.
    */
   function hasLocalConflict(startUtc: Date, endUtc: Date): boolean {
     const startMs = startUtc.getTime();
@@ -389,7 +413,7 @@ export function AppointmentFormDialog({
     return dayAppointments.some((item) => {
       if (appointment && item.id === appointment.id) return false;
       if (item.professional_id !== watchedProfessionalId) return false;
-      if (item.status === "cancelado" || item.status === "nao_compareceu") {
+      if (!isActiveAppointmentStatus(item.status)) {
         return false;
       }
       const itemStart = new Date(item.starts_at).getTime();

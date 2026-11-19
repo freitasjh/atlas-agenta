@@ -15,9 +15,14 @@ import { cn } from "@/lib/utils";
  * botões navegáveis por teclado com estado ativo (`aria-pressed`).
  */
 
-export type PeriodPreset = "mes" | "mes-passado" | "personalizado";
+export type PeriodPreset = "mes" | "mes-passado" | "6m" | "personalizado";
 
-const PRESETS: { value: PeriodPreset; label: string }[] = [
+export interface PeriodPresetOption {
+  value: PeriodPreset;
+  label: string;
+}
+
+const PRESETS: readonly PeriodPresetOption[] = [
   { value: "mes", label: "Este mês" },
   { value: "mes-passado", label: "Mês passado" },
   { value: "personalizado", label: "Personalizado" },
@@ -31,6 +36,7 @@ export function PeriodFilter({
   onStartChange,
   onEndChange,
   idPrefix,
+  presets = PRESETS,
 }: {
   preset: PeriodPreset;
   start: string;
@@ -40,6 +46,11 @@ export function PeriodFilter({
   onEndChange: (value: string) => void;
   /** Prefixo dos ids dos inputs (QA-ADR005-02: ids únicos por página). */
   idPrefix?: string;
+  /**
+   * Lista de presets exibida. Padrão: mês atual / mês passado / personalizado.
+   * O DRE (ADR-09) acrescenta `6m` para a série de seis meses.
+   */
+  presets?: readonly PeriodPresetOption[];
 }) {
   // Sem prefixo explícito, deriva um estável por instância (sem colisão).
   const autoId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -53,7 +64,7 @@ export function PeriodFilter({
         role="group"
         aria-label="Período do relatório"
       >
-        {PRESETS.map((option) => {
+        {presets.map((option) => {
           const active = preset === option.value;
           return (
             <Button
@@ -78,7 +89,7 @@ export function PeriodFilter({
           preset !== "personalizado" && "opacity-70",
         )}
       >
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label htmlFor={startId}>Início</Label>
           <Input
             id={startId}
@@ -89,7 +100,7 @@ export function PeriodFilter({
             onChange={(event) => onStartChange(event.target.value)}
           />
         </div>
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
           <Label htmlFor={endId}>Fim</Label>
           <Input
             id={endId}

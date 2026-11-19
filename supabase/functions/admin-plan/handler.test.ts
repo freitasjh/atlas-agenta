@@ -70,7 +70,7 @@ function fakeService(options: FakeOptions): { service: SupabaseClient; calls: Fa
     }),
     rpc: async (name: string, params: Record<string, unknown>) => {
       calls.rpc.push({ name, ...params });
-      return options.rpc ?? { data: [{ old_plan: "individual", new_plan: "clinica" }], error: null };
+      return options.rpc ?? { data: [{ old_plan: "starter", new_plan: "premium" }], error: null };
     },
   };
   return { service: service as unknown as SupabaseClient, calls };
@@ -81,7 +81,7 @@ const REASON = "Crescimento da equipe com motivo detalhado";
 
 function call(
   handler: (req: Request) => Promise<Response>,
-  body: unknown = { action: "set_plan", tenantId: TENANT_ID, plan: "clinica", reason: REASON },
+  body: unknown = { action: "set_plan", tenantId: TENANT_ID, plan: "premium", reason: REASON },
   token: string | null = TOKEN,
 ): Promise<Response> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -103,7 +103,7 @@ Deno.test("sem token: 401 pt-BR", async () => {
 });
 
 Deno.test("non-super_admin: 403 sem ler tenant alvo", async () => {
-  const fake = fakeService({ profile: { tenant_id: TENANT_ID, role: "admin" }, tenant: { plan: "individual" } });
+  const fake = fakeService({ profile: { tenant_id: TENANT_ID, role: "admin" }, tenant: { plan: "starter" } });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
   const res = await call(handler);
   strictEqual(res.status, 403);
@@ -124,21 +124,21 @@ Deno.test("must_change_password true: 403 password_change_required", async () =>
 });
 
 Deno.test("zod inválido (reason curto): 400 pt-BR", async () => {
-  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "individual" } });
+  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "starter" } });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
-  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "clinica", reason: "curto" });
+  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "premium", reason: "curto" });
   strictEqual(res.status, 400);
 });
 
 Deno.test("sucesso repassa override e changed_by do JWT", async () => {
-  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "individual" } });
+  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "starter" } });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
-  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "clinica", reason: REASON, override: true });
+  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "premium", reason: REASON, override: true });
   strictEqual(res.status, 200);
   deepStrictEqual(fake.calls.rpc[0], {
     name: "admin_set_tenant_plan",
     p_tenant_id: TENANT_ID,
-    p_new_plan: "clinica",
+    p_new_plan: "premium",
     p_changed_by: USER_ID,
     p_reason: REASON,
     p_override: true,
@@ -148,11 +148,11 @@ Deno.test("sucesso repassa override e changed_by do JWT", async () => {
 Deno.test("RPC PLAN_LIMIT: 409 pt-BR com code", async () => {
   const fake = fakeService({
     profile: SUPER_ADMIN,
-    tenant: { plan: "clinica" },
-    rpc: { data: null, error: { message: "PLAN_LIMIT: Limite do plano individual: máximo 1 profissional" } },
+    tenant: { plan: "premium" },
+    rpc: { data: null, error: { message: "PLAN_LIMIT: Limite do plano starter: máximo 1 profissional" } },
   });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
-  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "individual", reason: REASON });
+  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "starter", reason: REASON });
   strictEqual(res.status, 409);
   const body = await res.json() as { code?: string; error?: string };
   strictEqual(body.code, "PLAN_LIMIT");
@@ -162,27 +162,27 @@ Deno.test("RPC PLAN_LIMIT: 409 pt-BR com code", async () => {
 Deno.test("RPC tenant_not_found: 404 pt-BR", async () => {
   const fake = fakeService({
     profile: SUPER_ADMIN,
-    tenant: { plan: "clinica" },
+    tenant: { plan: "premium" },
     rpc: { data: null, error: { message: "tenant_not_found" } },
   });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
-  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "individual", reason: REASON });
+  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "starter", reason: REASON });
   strictEqual(res.status, 404);
 });
 
 Deno.test("RPC same_plan: 409 pt-BR", async () => {
   const fake = fakeService({
     profile: SUPER_ADMIN,
-    tenant: { plan: "individual" },
+    tenant: { plan: "starter" },
     rpc: { data: null, error: { message: "same_plan" } },
   });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
-  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "individual", reason: REASON });
+  const res = await call(handler, { action: "set_plan", tenantId: TENANT_ID, plan: "starter", reason: REASON });
   strictEqual(res.status, 409);
 });
 
 Deno.test("super_admin sem operador: 403 operator_required (AAL real)", async () => {
-  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "individual" }, operator: false });
+  const fake = fakeService({ profile: SUPER_ADMIN, tenant: { plan: "starter" }, operator: false });
   const handler = createAdminPlanHandler({ createService: () => fake.service });
   const res = await call(handler);
   strictEqual(res.status, 403);
@@ -193,7 +193,7 @@ Deno.test("super_admin sem operador: 403 operator_required (AAL real)", async ()
 Deno.test("super_admin operador sem factor verificado: 403 (aal1 real nega)", async () => {
   const fake = fakeService({
     profile: SUPER_ADMIN,
-    tenant: { plan: "individual" },
+    tenant: { plan: "starter" },
     operator: true,
     verifiedFactors: 0,
   });

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import {
   Dialog,
@@ -60,8 +61,8 @@ interface MudarStatusDialogProps {
 /**
  * Ação "Mudar status" por empresa (ADR-07): um gatilho abre um dialog com
  * react-hook-form + zod para o operador interno escolher um `subscription_status`
- * destino (+ motivo opcional ≤280) e consumir a Edge Function `admin-subscription`
- * via `useChangeSubscriptionStatus`.
+ * destino (+ motivo ≤280; obrigatório em suspender/retomar — ADR-11) e consumir
+ * a Edge Function `admin-subscription` via `useChangeSubscriptionStatus`.
  *
  * Segurança/contrato: a escrita de status **só** passa pela Edge Function (o
  * `tenantId` vai como alvo, nunca como credencial — o JWT do operador é a
@@ -86,10 +87,41 @@ export function MudarStatusDialog({ tenant }: MudarStatusDialogProps) {
   );
   const hasTransitions = allowedTransitions.length > 0;
 
+  /**
+   * ADR-11: suspender (`→ bloqueado`) e retomar (`bloqueado → ativo`) exigem
+   * motivo não vazio — o servidor é a trava canônica; aqui é a defesa de
+   * usabilidade com o status atual do tenant em mãos.
+   */
+  const formSchema = useMemo(
+    () =>
+      changeStatusFormSchema.superRefine((values, ctx) => {
+        const retomada =
+          values.status === "ativo" &&
+          tenant.subscription_status === "bloqueado";
+        if (
+          (values.status === "bloqueado" || retomada) &&
+          !values.reason?.trim()
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["reason"],
+            message: "Informe o motivo desta operação.",
+          });
+        }
+      }),
+    [tenant.subscription_status],
+  );
+
   const form = useForm<ChangeStatusFormValues>({
-    resolver: zodResolver(changeStatusFormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: { reason: "" },
   });
+
+  const statusSelecionado = form.watch("status");
+  const motivoObrigatorio =
+    statusSelecionado === "bloqueado" ||
+    (statusSelecionado === "ativo" &&
+      tenant.subscription_status === "bloqueado");
 
   // Ao (re)abrir, limpa o form e qualquer erro anterior — o destino começa sem
   // seleção para o super_admin escolher conscientemente.
@@ -189,7 +221,9 @@ export function MudarStatusDialog({ tenant }: MudarStatusDialogProps) {
                 name="reason"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Motivo (opcional)</FormLabel>
+                    <FormLabel>
+                      Motivo {motivoObrigatorio ? "(obrigatório)" : "(opcional)"}
+                    </FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Ex.: inadimplência confirmada pelo financeiro."

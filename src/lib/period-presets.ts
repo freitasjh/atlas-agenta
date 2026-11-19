@@ -35,6 +35,14 @@ export function resolvePresetRange(
     const { first, last } = monthRangeIso(today);
     return { start: first, end: last };
   }
+  if (preset === "6m") {
+    // Seis meses fechados: do dia 1º do mês inicial (5 meses atrás) ao último
+    // dia do mês de `today`. Uma barra por mês na série do DRE.
+    const { first, last } = monthRangeIso(today);
+    const [ano, mes] = first.split("-").map(Number);
+    const inicio = new Date(Date.UTC(ano, mes - 1 - 5, 1));
+    return { start: inicio.toISOString().slice(0, 10), end: last };
+  }
   const prevMonthLast = shiftIsoDate(monthRangeIso(today).first, -1);
   const { first, last } = monthRangeIso(prevMonthLast);
   return { start: first, end: last };

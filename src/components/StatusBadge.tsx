@@ -16,6 +16,10 @@ const APPOINTMENT_MAP: Record<
     label: "Pendente",
     className: "bg-status-pendente text-status-pendente-foreground",
   },
+  aguardando_deposito: {
+    label: "Aguardando depósito",
+    className: "bg-status-pendente text-status-pendente-foreground",
+  },
   confirmado: {
     label: "Confirmado",
     className: "bg-status-confirmado text-status-confirmado-foreground",

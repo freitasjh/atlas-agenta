@@ -6,6 +6,7 @@
  *
  * Códigos relevantes (espelham as travas do banco, ADR-02/03/04):
  *   23P01 exclusion_violation  -> conflito de horário do profissional
+ *   SLOT_CONFLICT (Edge)       -> mesmo conflito, já traduzido pelo contrato HTTP
  *   check_violation            -> transição de estado inválida (trigger)
  *   23503 foreign_key_violation / violação de RLS -> sem permissão
  */
@@ -43,8 +44,9 @@ export function mapSchedulingError(error: unknown): string {
   const code = readCode(error);
 
   // Conflito de horário (constraint de exclusão) — corrida que escapou da
-  // checagem local cai aqui, na mesma mensagem da checagem na app.
-  if (code === "23P01") return CONFLICT_MESSAGE;
+  // checagem local cai aqui, na mesma mensagem da checagem na app. `SLOT_CONFLICT`
+  // é o mesmo conflito já traduzido pela Edge (`23P01` -> 409).
+  if (code === "23P01" || code === "SLOT_CONFLICT") return CONFLICT_MESSAGE;
 
   // Transição de estado recusada pelo trigger (`raise ... errcode
   // 'check_violation'`). A UI já não deveria oferecer — defesa dupla.

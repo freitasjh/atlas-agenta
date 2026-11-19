@@ -10,6 +10,7 @@ import type { AppointmentStatus } from "@/types/domain";
  * (só oferece transições válidas, mensagens pt-BR); a trava real é o trigger.
  *
  *   pendente       -> confirmado | em_atendimento | cancelado | nao_compareceu
+ *   aguardando_deposito -> pendente | confirmado | cancelado (Fase 4, ADR-02)
  *   confirmado     -> em_atendimento | cancelado | nao_compareceu
  *   em_atendimento -> concluido | cancelado
  *   concluido      -> (final)
@@ -21,6 +22,7 @@ export const ALLOWED_TRANSITIONS: Record<
   AppointmentStatus[]
 > = {
   pendente: ["confirmado", "em_atendimento", "cancelado", "nao_compareceu"],
+  aguardando_deposito: ["pendente", "confirmado", "cancelado"],
   confirmado: ["em_atendimento", "cancelado", "nao_compareceu"],
   em_atendimento: ["concluido", "cancelado"],
   concluido: [],
@@ -66,21 +68,49 @@ export function getTransitionLabel(status: AppointmentStatus): string {
 
 /**
  * Status que **não** ocupam a agenda do profissional — espelham o
- * `where (status not in ('cancelado','nao_compareceu'))` da constraint
- * `appointments_no_overlap` (migration
- * `20250219092000_appointments_no_overlap.sql`). Ponto único para não divergir
- * da fonte da verdade do banco.
+ * `where (status not in ('cancelado','nao_compareceu','concluido'))` da
+ * constraint `appointments_no_overlap` (migration
+ * `20261113010000_appointments_no_overlap_concluido.sql`, que reescreveu a
+ * `20261112090000_appointments_no_overlap_origin.sql` — por sua vez derivada de
+ * `20250219092000_appointments_no_overlap.sql` — para tratar `concluido` como
+ * status final/histórico). Ponto único para não divergir da fonte da verdade do
+ * banco.
  */
 export const INACTIVE_APPOINTMENT_STATUSES: readonly AppointmentStatus[] = [
+  "cancelado",
+  "nao_compareceu",
+  "concluido",
+];
+
+/**
+ * True quando o agendamento está "ativo" e portanto ocupa o horário do
+ * profissional (deve descontar slots). `cancelado`/`nao_compareceu`/`concluido`
+ * liberam o horário — mesma regra da constraint de não-sobreposição no banco
+ * (AC-13).
+ */
+export function isActiveAppointmentStatus(status: AppointmentStatus): boolean {
+  return !INACTIVE_APPOINTMENT_STATUSES.includes(status);
+}
+
+/**
+ * Status que **não** representam atendimento, logo nunca contam como
+ * agendamento no recorte do dia. Diferente de `INACTIVE_APPOINTMENT_STATUSES`
+ * (que responde "ocupa o horário"), aqui `concluido` **entra** na contagem: é
+ * atendimento realizado, e esconder o histórico do dia esvazia o calendário de
+ * meses passados. Só saem `cancelado`/`nao_compareceu`, que nunca representaram
+ * atendimento.
+ */
+export const NON_COUNTED_APPOINTMENT_STATUSES: readonly AppointmentStatus[] = [
   "cancelado",
   "nao_compareceu",
 ];
 
 /**
- * True quando o agendamento está "ativo" e portanto ocupa o horário do
- * profissional (deve descontar slots). `cancelado`/`nao_compareceu` liberam o
- * horário — mesma regra da constraint de não-sobreposição no banco (AC-13).
+ * True quando o agendamento deve contar no badge da grade mensal. Distinto de
+ * `isActiveAppointmentStatus`: `concluido` não ocupa slot, mas é atendimento do
+ * dia — a contagem do calendário reflete todos os agendamentos, exceto
+ * cancelado/não-comparecido.
  */
-export function isActiveAppointmentStatus(status: AppointmentStatus): boolean {
-  return !INACTIVE_APPOINTMENT_STATUSES.includes(status);
+export function isCountedAppointmentStatus(status: AppointmentStatus): boolean {
+  return !NON_COUNTED_APPOINTMENT_STATUSES.includes(status);
 }

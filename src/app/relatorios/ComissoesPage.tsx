@@ -15,6 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -110,6 +116,7 @@ export function ComissoesPage() {
   const [start, setStart] = useState(initialRange.start);
   const [end, setEnd] = useState(initialRange.end);
   const [professionalId, setProfessionalId] = useState<string>("todos");
+  const [origin, setOrigin] = useState<string>("todos");
 
   // Ao trocar de preset fixo, deriva as bordas no fuso do tenant; no
   // personalizado, o usuário controla os dois inputs diretamente.
@@ -129,6 +136,7 @@ export function ComissoesPage() {
     startDate: start,
     endDate: end,
     professionalId: effectiveProfessionalId,
+    origin,
   });
 
   // QA-ADR005-01: clicar no preset já ativo refaz a query. Sem isso, com
@@ -262,6 +270,21 @@ export function ComissoesPage() {
             </Select>
           </div>
         ) : null}
+
+        <div className="space-y-1 sm:max-w-xs">
+          <Label htmlFor="relatorio-origem">Origem</Label>
+          <Select value={origin} onValueChange={setOrigin}>
+            <SelectTrigger id="relatorio-origem" aria-label="Filtrar por origem">
+              <SelectValue placeholder="Todas as origens" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todas as origens</SelectItem>
+              <SelectItem value="service">Serviço</SelectItem>
+              <SelectItem value="product">Produto</SelectItem>
+              <SelectItem value="combo">Combo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Conteúdo: loading / erro / vazio / dados. */}
@@ -297,15 +320,39 @@ export function ComissoesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Profissional</TableHead>
+                    <TableHead>Origem</TableHead>
                     <TableHead className="text-right">Atendimentos</TableHead>
                     <TableHead className="text-right">Comissão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((row) => (
-                    <TableRow key={row.professional_id}>
+                    <TableRow key={`${row.professional_id}-${row.origin}`}>
                       <TableCell className="font-medium">
                         {row.professional_name}
+                      </TableCell>
+                      <TableCell>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs">
+                                {row.origin === "service"
+                                  ? "Serviço"
+                                  : row.origin === "product"
+                                    ? "Produto"
+                                    : "Combo"}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs">
+                                Fórmula: comissão total{" "}
+                                {formatCentsToBRL(row.total_commission_cents)}{" "}
+                                · backbar{" "}
+                                {formatCentsToBRL(row.total_backbar_cost_cents)}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {row.appointment_count}
@@ -319,6 +366,7 @@ export function ComissoesPage() {
                 <TableFooter>
                   <TableRow>
                     <TableCell className="font-medium">Total</TableCell>
+                    <TableCell />
                     <TableCell className="text-right tabular-nums">
                       {totalAppointments}
                     </TableCell>
@@ -334,13 +382,20 @@ export function ComissoesPage() {
           {/* Mobile: cards (sem scroll horizontal). */}
           <ul className="space-y-3 sm:hidden">
             {rows.map((row) => (
-              <li key={row.professional_id}>
+              <li key={`${row.professional_id}-${row.origin}`}>
                 <Card>
                   <CardContent className="flex items-center justify-between gap-4 py-4">
                     <div className="min-w-0 space-y-1">
                       <p className="truncate font-medium">
                         {row.professional_name}
                       </p>
+                      <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs">
+                        {row.origin === "service"
+                          ? "Serviço"
+                          : row.origin === "product"
+                            ? "Produto"
+                            : "Combo"}
+                      </span>
                       <p className="text-xs text-muted-foreground tabular-nums">
                         {row.appointment_count}{" "}
                         {row.appointment_count === 1

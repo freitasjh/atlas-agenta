@@ -36,6 +36,7 @@ const baseRow = {
   legal_name: "Studio Lux LTDA",
   subscription_status: "ativo" as const,
   timezone: "America/Sao_Paulo",
+  plan: "premium",
 };
 
 describe("tenantSchema.segment", () => {

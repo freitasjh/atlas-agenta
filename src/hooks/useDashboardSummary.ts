@@ -126,7 +126,7 @@ function trendWeekRanges(
   return { starts, ends };
 }
 
-/** Contagens dos 6 status da máquina de estados. */
+/** Contagens dos status da máquina de estados (Fase 4: +`aguardando_deposito`). */
 const porStatusSchema = z.object({
   pendente: z.number().int(),
   confirmado: z.number().int(),
@@ -134,6 +134,8 @@ const porStatusSchema = z.object({
   concluido: z.number().int(),
   cancelado: z.number().int(),
   nao_compareceu: z.number().int(),
+  // RPC legada não retorna a chave — default 0 mantém o parse e o KPI verdes.
+  aguardando_deposito: z.number().int().default(0),
 });
 
 /** Um bucket (atual ou anterior) do `dashboard_agenda_overview`. */

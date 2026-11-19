@@ -6,10 +6,10 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 
-select plan(20);
+select plan(21);
 
--- Fixture: tenant A (admin A, plano individual, ativo) com 2 profs ativos
--- (acima do teto 1 → quente) + tenant B (clinica, ativo) + super_admin S.
+-- Fixture: tenant A (admin A, plano starter, ativo) com 2 profs ativos
+-- (acima do teto 1 → quente) + tenant B (premium, ativo) + super_admin S.
 select tests.create_user(
   '61515151-5151-4515-8515-515151515151',
   'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2',
@@ -29,10 +29,10 @@ select tests.create_user(
   'Sofia Super'
 );
 
-update public.tenants set plan = 'individual', subscription_status = 'ativo',
+update public.tenants set plan = 'starter', subscription_status = 'ativo',
   timezone = 'America/Sao_Paulo'
  where id = 'a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2';
-update public.tenants set plan = 'clinica', subscription_status = 'ativo',
+update public.tenants set plan = 'premium', subscription_status = 'ativo',
   timezone = 'America/Sao_Paulo'
  where id = 'b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2';
 
@@ -75,15 +75,21 @@ select ok(
   'anon sem EXECUTE nos RPCs'
 );
 
--- Paridade preço: CASE trava 5900/14900/25900 (espelho plans.json).
+-- Paridade preço: plan_price_cents lê a tabela `plans` (SSoT T1.0), que
+-- carrega 0/5900/14900/25900 (ladder T1.0b: free/starter/premium/enterprise).
 select ok(
   (select count(*)::int from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'plan_price_cents'
-     and pg_get_functiondef(p.oid) like '%5900%'
-     and pg_get_functiondef(p.oid) like '%14900%'
-     and pg_get_functiondef(p.oid) like '%25900%') = 1,
-  'plan_price_cents trava os 3 literais do plans.json'
+     and pg_get_functiondef(p.oid) ilike '%from public.plans%') = 1,
+  'plan_price_cents lê a tabela plans (SSoT)'
+);
+select is(
+  (select count(*)::int from public.plans
+    where active and (slug, price_cents) in
+      (('free',0),('starter',5900),('premium',14900),('enterprise',25900))),
+  4,
+  'tabela plans tem os 4 preços do catálogo'
 );
 
 -- PII: nenhuma view/RPC expõe owner_email/phone/document.
@@ -139,12 +145,12 @@ select throws_ok(
 reset role;
 select tests.clear_authentication();
 
--- Semântica: super_admin vê MRR = ativos × preço (1 ind + 1 cli = 5900+14900).
+-- Semântica: super_admin vê MRR = ativos × preço (1 starter + 1 premium = 5900+14900).
 select tests.authenticate_as('64545454-5454-4545-8545-545454545454', 'authenticated');
 select is(
   (public.admin_get_plan_mrr(to_char(now(), 'YYYY-MM'))->>'mrr_cents')::bigint,
   5900::bigint + 14900::bigint,
-  'MRR = ativos × preço (individual + clinica)'
+  'MRR = ativos × preço (starter + premium)'
 );
 select is(
   (public.admin_get_plan_mrr(to_char(now(), 'YYYY-MM'))->>'base_ativa')::int,

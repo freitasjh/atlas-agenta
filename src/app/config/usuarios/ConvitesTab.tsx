@@ -287,7 +287,8 @@ export function ConvitesTab() {
           <DialogHeader>
             <DialogTitle>Convidar membro</DialogTitle>
             <DialogDescription>
-              Envie um convite por e-mail para um novo membro da empresa.
+              Envie um convite por e-mail para um novo membro da empresa. O
+              e-mail pode demorar alguns minutos para chegar.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

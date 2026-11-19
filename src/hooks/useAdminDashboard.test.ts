@@ -16,7 +16,7 @@ function tenant(partial: Partial<TenantListItem>): TenantListItem {
     legal_name: partial.legal_name ?? "Legal",
     document: null,
     owner_email: "a@b.com",
-    plan: partial.plan ?? "individual",
+    plan: partial.plan ?? "starter",
     subscription_status: partial.subscription_status ?? "trial",
     trial_ends_at: partial.trial_ends_at ?? null,
     timezone: "America/Sao_Paulo",
@@ -26,9 +26,9 @@ function tenant(partial: Partial<TenantListItem>): TenantListItem {
 
 describe("useAdminDashboard filters", () => {
   const tenants = [
-    tenant({ id: "1", plan: "individual", subscription_status: "trial" }),
-    tenant({ id: "2", plan: "clinica", subscription_status: "ativo" }),
-    tenant({ id: "3", plan: "pro", subscription_status: "bloqueado" }),
+    tenant({ id: "1", plan: "starter", subscription_status: "trial" }),
+    tenant({ id: "2", plan: "premium", subscription_status: "ativo" }),
+    tenant({ id: "3", plan: "enterprise", subscription_status: "bloqueado" }),
   ];
 
   it("filter by status", () => {
@@ -38,13 +38,13 @@ describe("useAdminDashboard filters", () => {
   });
 
   it("filter by plan", () => {
-    const out = filterTenantsByStatusAndPlan(tenants, "todos", "pro");
+    const out = filterTenantsByStatusAndPlan(tenants, "todos", "enterprise");
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe("3");
   });
 
   it("filter by status and plan combined", () => {
-    const out = filterTenants(tenants, "ativo", "clinica");
+    const out = filterTenants(tenants, "ativo", "premium");
     expect(out).toHaveLength(1);
     expect(out[0].id).toBe("2");
   });

@@ -6,6 +6,7 @@ import { strict as assert } from "node:assert/strict";
 import {
   type EvolutionHttpResponse,
   evolutionFetch,
+  EvolutionInstanceNotFoundError,
   normalizePhoneForEvolution,
   RealEvolutionAdapter,
   toQrDataUrl,
@@ -139,7 +140,7 @@ Deno.test("pair: create com erro não-conflito → erro de criação", async () 
   );
 });
 
-Deno.test("getConnectionState 404 → erro pt-BR (reconciliação segue non-fatal)", async () => {
+Deno.test("getConnectionState 404 → EvolutionInstanceNotFoundError (reconcilia para desconectado)", async () => {
   stubFetch([
     { pathSuffix: "/instance/connectionState/tenant-x", method: "GET", respond: CONNECT_MISSING },
   ]);
@@ -147,6 +148,20 @@ Deno.test("getConnectionState 404 → erro pt-BR (reconciliação segue non-fata
   await assert.rejects(
     () => adapter.getConnectionState("tenant-x"),
     (err: Error) =>
+      err instanceof EvolutionInstanceNotFoundError &&
+      err.message === "A instância do WhatsApp não existe no servidor de WhatsApp.",
+  );
+});
+
+Deno.test("getConnectionState com erro diferente de 404 → erro genérico (sem reconciliação)", async () => {
+  stubFetch([
+    { pathSuffix: "/instance/connectionState/tenant-x", method: "GET", respond: { status: 502, ok: false, body: { error: "upstream" } } },
+  ]);
+  const adapter = new RealEvolutionAdapter(CREDENTIALS.apiUrl, CREDENTIALS.apiKey);
+  await assert.rejects(
+    () => adapter.getConnectionState("tenant-x"),
+    (err: Error) =>
+      !(err instanceof EvolutionInstanceNotFoundError) &&
       err.message === "Não foi possível consultar o estado do WhatsApp.",
   );
 });

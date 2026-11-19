@@ -24,6 +24,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { professionalSchema, type ProfessionalInput } from "@/lib/validations/catalog";
 import {
@@ -39,6 +46,8 @@ import {
 import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 import { usePermissions } from "@/hooks/usePermissions";
 import { formatBpsToPercent, parsePercentToBps } from "@/lib/commission";
+import { calcServiceCommissionCents } from "@/lib/commission-formula";
+import { formatCentsToBRL } from "@/lib/money";
 import type { Professional } from "@/types/domain";
 
 interface ProfessionalFormDialogProps {
@@ -103,6 +112,9 @@ export function ProfessionalFormDialog({
   // ("12,5") sem que a conversão para bps atrapalhe. A fonte de verdade é o
   // `commissionBps` do form; este draft é só a representação visível.
   const [commissionDraft, setCommissionDraft] = useState("");
+  const [commissionType, setCommissionType] = useState<"price" | "margin">(
+    "price",
+  );
 
   // Ao (re)abrir, sincroniza o form com o profissional selecionado (ou novo).
   useEffect(() => {
@@ -119,12 +131,14 @@ export function ProfessionalFormDialog({
   useEffect(() => {
     if (!open || !showCommission) return;
     if (isEdit && commissionQuery.data !== undefined) {
-      const bps = commissionQuery.data;
+      const bps = commissionQuery.data.commissionBps;
       form.setValue("commissionBps", bps, { shouldDirty: false });
       setCommissionDraft(bps > 0 ? formatBpsToPercent(bps) : "");
+      setCommissionType(commissionQuery.data.commissionType);
     } else if (!isEdit) {
       form.setValue("commissionBps", undefined, { shouldDirty: false });
       setCommissionDraft("");
+      setCommissionType("price");
     }
   }, [open, showCommission, isEdit, commissionQuery.data, form]);
 
@@ -157,6 +171,7 @@ export function ProfessionalFormDialog({
         await upsertCommission.mutateAsync({
           professionalId,
           commissionBps: values.commissionBps,
+          commissionType,
         });
       }
 
@@ -247,51 +262,99 @@ export function ProfessionalFormDialog({
               percentual pt-BR e converte na borda.
             */}
             {showCommission ? (
-              <FormField
-                control={form.control}
-                name="commissionBps"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel htmlFor="commission-pct">Comissão (%)</FormLabel>
-                    <FormControl>
-                      <div className="relative">
-                        <Input
-                          id="commission-pct"
-                          inputMode="decimal"
-                          autoComplete="off"
-                          placeholder="Ex.: 40"
-                          className="pr-8"
-                          value={commissionDraft}
-                          name={field.name}
-                          ref={field.ref}
-                          onBlur={field.onBlur}
-                          onChange={(event) => {
-                            const text = event.target.value;
-                            setCommissionDraft(text);
-                            if (text.trim() === "") {
-                              field.onChange(undefined);
-                              return;
-                            }
-                            const bps = parsePercentToBps(text);
-                            // Mantém o texto digitado; só grava bps quando válido.
-                            field.onChange(bps ?? undefined);
-                          }}
-                        />
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
-                        >
-                          %
-                        </span>
-                      </div>
-                    </FormControl>
-                    <FormDescription>
-                      Percentual que o barbeiro recebe por atendimento concluído.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-4 rounded-md border border-border p-3">
+                <div className="space-y-1">
+                  <FormLabel>Tipo de comissão (serviço)</FormLabel>
+                  <Select
+                    value={commissionType}
+                    onValueChange={(v) =>
+                      setCommissionType(v as "price" | "margin")
+                    }
+                  >
+                    <SelectTrigger aria-label="Tipo de comissão">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="price">Sobre o preço</SelectItem>
+                      <SelectItem value="margin">
+                        Sobre a margem (preço − backbar)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="commissionBps"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel htmlFor="commission-pct">Comissão (%)</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            id="commission-pct"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            placeholder="Ex.: 40"
+                            className="pr-8"
+                            value={commissionDraft}
+                            name={field.name}
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                            onChange={(event) => {
+                              const text = event.target.value;
+                              setCommissionDraft(text);
+                              if (text.trim() === "") {
+                                field.onChange(undefined);
+                                return;
+                              }
+                              const bps = parsePercentToBps(text);
+                              // Mantém o texto digitado; só grava bps quando válido.
+                              field.onChange(bps ?? undefined);
+                            }}
+                          />
+                          <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                          >
+                            %
+                          </span>
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        Percentual que o barbeiro recebe por atendimento concluído.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Preview em tempo real da fórmula (espelha o backend). */}
+                <div
+                  className="rounded-md bg-muted/40 p-2 text-sm"
+                  aria-live="polite"
+                >
+                  <p className="font-medium">Pré-visualização</p>
+                  <p className="text-muted-foreground">
+                    {commissionType === "margin"
+                      ? "Comissão = (preço − backbar) × %"
+                      : "Comissão = preço × %"}
+                  </p>
+                  {commissionType === "price" ? (
+                    <p className="tabular-nums">
+                      {formatCentsToBRL(
+                        calcServiceCommissionCents({
+                          priceCents: 10000,
+                          commissionPct:
+                            (form.watch("commissionBps") ?? 0) / 100,
+                          commissionType,
+                          backbarCostCents: 0,
+                        }),
+                      )}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
 
             {/*

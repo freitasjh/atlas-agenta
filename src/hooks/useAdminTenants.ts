@@ -37,9 +37,10 @@ const ADMIN_TENANTS_SELECT =
  * query entra em `isError` (a UI mostra o painel de erro). Busca/filtro são
  * estado de UI client-side (ADR-06) e **não** entram na `queryKey`.
  */
-export function useAdminTenants() {
+export function useAdminTenants(options: { enabled?: boolean } = {}) {
   return useQuery<TenantListItem[]>({
     queryKey: ADMIN_TENANTS_KEY,
+    enabled: options.enabled ?? true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("tenants")

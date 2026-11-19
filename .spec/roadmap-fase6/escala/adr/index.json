@@ -1,0 +1,137 @@
+{
+  "prd_id": "escala",
+  "prd": ".spec/roadmap-fase6/escala/PRD.md",
+  "ux_spec": ".spec/roadmap-fase6/escala/UX-SPEC.md",
+  "status": "accepted",
+  "generated_at": "2026-11-14",
+  "order": [
+    "adr-01",
+    "adr-02",
+    "adr-03",
+    "adr-04",
+    "adr-05",
+    "adr-06",
+    "adr-07",
+    "adr-08",
+    "adr-09",
+    "adr-10",
+    "adr-11",
+    "adr-12",
+    "adr-13",
+    "adr-14"
+  ],
+  "adrs": [
+    {
+      "id": "adr-01",
+      "file": "adr-01-entitlements-tolerantes.md",
+      "title": "Entitlements tolerantes de 20 chaves + units_limit",
+      "scope": "fullstack",
+      "status": "accepted",
+      "depends_on": []
+    },
+    {
+      "id": "adr-02",
+      "file": "adr-02-schema-units-memberships-backfill.md",
+      "title": "Schema units + unit_memberships + unit_id com backfill",
+      "scope": "backend",
+      "status": "accepted",
+      "depends_on": ["adr-01"]
+    },
+    {
+      "id": "adr-03",
+      "file": "adr-03-rls-rbac-unidade.md",
+      "title": "RLS/RBAC por unidade + conflito cross-unit",
+      "scope": "backend",
+      "status": "accepted",
+      "depends_on": ["adr-02"]
+    },
+    {
+      "id": "adr-04",
+      "file": "adr-04-contexto-unidade-frontend.md",
+      "title": "Contexto de unidade no frontend (?unidade, provider, query keys)",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-01", "adr-02", "adr-03"]
+    },
+    {
+      "id": "adr-05",
+      "file": "adr-05-crud-unidades-backend.md",
+      "title": "CRUD de unidades no backend + API do wizard",
+      "scope": "backend",
+      "status": "accepted",
+      "depends_on": ["adr-01", "adr-02", "adr-03"]
+    },
+    {
+      "id": "adr-06",
+      "file": "adr-06-consolidacao-rpcs.md",
+      "title": "Consolidação no backend (RPCs por unidade: dashboard, relatórios, DRE)",
+      "scope": "backend",
+      "status": "accepted",
+      "depends_on": ["adr-02", "adr-03"]
+    },
+    {
+      "id": "adr-07",
+      "file": "adr-07-financeiro-por-unidade.md",
+      "title": "Financeiro por unidade (unit_id derivado no ledger e em charges)",
+      "scope": "backend",
+      "status": "accepted",
+      "depends_on": ["adr-02", "adr-03"]
+    },
+    {
+      "id": "adr-08",
+      "file": "adr-08-templates-unidade-endereco.md",
+      "title": "Templates de mensagem com {unidade_endereco}",
+      "scope": "fullstack",
+      "status": "accepted",
+      "depends_on": ["adr-02", "adr-03"]
+    },
+    {
+      "id": "adr-09",
+      "file": "adr-09-ui-switcher-config-unidades.md",
+      "title": "UI: switcher de unidade + ConfigHub + lista/detalhe/wizard",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-01", "adr-04", "adr-05"]
+    },
+    {
+      "id": "adr-10",
+      "file": "adr-10-ui-agenda-por-unidade.md",
+      "title": "UI da agenda por unidade, agregada e conflito cross-unit",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-03", "adr-04", "adr-05", "adr-06", "adr-09"]
+    },
+    {
+      "id": "adr-11",
+      "file": "adr-11-ui-consolidacao.md",
+      "title": "UI de consolidação (dashboard, relatórios e financeiro com UnitFilter)",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-04", "adr-06", "adr-07", "adr-09"]
+    },
+    {
+      "id": "adr-12",
+      "file": "adr-12-pwa-shell-instalacao.md",
+      "title": "PWA shell: 5 tabs, /app/mais e instalação",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-01", "adr-04", "adr-09"]
+    },
+    {
+      "id": "adr-13",
+      "file": "adr-13-offline-readonly-agenda-mobile.md",
+      "title": "Offline somente leitura + agenda mobile do dia",
+      "scope": "frontend",
+      "status": "accepted",
+      "depends_on": ["adr-04", "adr-10", "adr-12"]
+    },
+    {
+      "id": "adr-14",
+      "file": "adr-14-backoffice-unidades.md",
+      "title": "Back-office: unidades no internal-admin (leitura + suspensão)",
+      "scope": "backoffice",
+      "status": "accepted",
+      "depends_on": ["adr-02", "adr-03", "adr-05"]
+    }
+  ]
+}

@@ -15,8 +15,8 @@ describe("PlanMrrCardView", () => {
           mrr_cents: 5900 + 14900,
           base_ativa: 2,
           by_plan: {
-            individual: { base: 1, mrr_cents: 5900 },
-            clinica: { base: 1, mrr_cents: 14900 },
+            starter: { base: 1, mrr_cents: 5900 },
+            premium: { base: 1, mrr_cents: 14900 },
           },
         }}
         isLoading={false}

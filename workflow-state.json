@@ -1,22 +1,22 @@
 {
-  "current_feature": "pdv-checkout-anonimo",
-  "current_phase": "BugCompleted",
-  "previous_phase": "BugReview",
-  "next_phase": null,
-  "type": "bugfix",
+  "current_feature": "roadmap-fase6-escala",
+  "current_phase": "Planning",
+  "previous_phase": "Completed",
+  "next_phase": "Execution",
+  "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-10T00:25:20.483Z",
-    "last_status": "passed",
+    "last_invoked_at": null,
+    "last_status": "pending",
     "critical_issues": 0,
     "attention_issues": 0,
-    "reviewer_notes": "Revisao 3 APPROVED: 0 criticos. 8 observacoes nao bloqueantes (dirs sem teste no script, espaco final, npm ci no CI, deno-version flutuante, drift de doc, helper sem teste proprio)."
+    "reviewer_notes": "Fase 6 iniciada — design de escala."
   },
   "harness_status": "passed",
-  "last_update": "2026-11-10T00:28:26.055Z",
-  "code_review_status": "passed",
+  "last_update": "2026-11-14T19:17:39.386317+00:00",
+  "code_review_status": "pending",
   "deno_gate": {
     "status": "passed",
-    "executed_at": "2026-11-10T00:28:26.055Z",
+    "executed_at": "2026-11-10T01:00:18.941Z",
     "deno_version": "2.9.8",
     "ci_deno_version": "v2.9.8",
     "check_functions": {
@@ -25,32 +25,218 @@
     },
     "test_functions": {
       "command": "npm run test:functions",
-      "test_files": 40,
-      "passed": 443,
+      "test_files": 41,
+      "passed": 449,
       "failed": 0,
       "newly_covered_orphans": [
         "supabase/functions/create-walk-in/handler.test.ts",
         "supabase/functions/_shared/internal-operator.test.ts",
         "supabase/functions/whatsapp/evolution-adapter.test.ts",
         "supabase/functions/_shared/nullable.test.ts"
+      ],
+      "removed_test_dirs": [
+        "supabase/functions/deactivate-user/",
+        "supabase/functions/reactivate-user/",
+        "supabase/functions/change-user-role/",
+        "supabase/functions/unlink-professional-profile/"
       ]
     },
-    "removed_test_dirs": [
-      "supabase/functions/deactivate-user/",
-      "supabase/functions/reactivate-user/",
-      "supabase/functions/change-user-role/",
-      "supabase/functions/unlink-professional-profile/"
-    ],
     "wrapper": "scripts/deno.sh",
     "ci_workflow": ".github/workflows/functions-tests.yml"
   },
   "follow_ups_created_at_basis": "2026-11-10T00:03:20.165780+00:00",
   "follow_ups": [
     {
-      "id": "23P01-slot-conflict",
-      "what": "O contrato de erro da Edge não mapeia a exclusão de slot (SQLSTATE 23P01 / appointments_no_overlap) para um código estável: hoje vira 500 INTERNAL. Dois walk-ins no mesmo profissional dentro da mesma janela (ou uma corrida de agendamento) expõem o problema. Corrigir exige alterar mapRpcError/contrato de erro da Edge — fora do escopo deste bugfix.",
-      "owner": "architect",
-      "created_at": "2026-11-10T00:03:20.165780+00:00"
+      "id": "public-booking-slots-paridade",
+      "what": "RPC public_booking_get_slots exclui so cancelado; alinhar para cancelado/nao_compareceu/concluido (Fase 3, EF live).",
+      "owner": "developer-engineer",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "asaas-cpf-cnpj-decisao",
+      "what": "Documento obrigatorio para todo cliente novo? Quando coletar — cadastro ou primeiro PIX? (gate de produto, destino Fase 5)",
+      "owner": "decisao-usuario",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "unlink-desativa-usuario",
+      "what": "Revogar acesso deve desativar o usuario? (decisao de produto)",
+      "owner": "decisao-usuario",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "smtp-template-tracking",
+      "what": "SMTP customizado + template branded + tracking (producao)",
+      "owner": "developer-engineer",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "i18n-fase1",
+      "what": "Migrar strings pt-BR literais quando a infra i18n for introduzida (Fase 1)",
+      "owner": "developer-engineer",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "harness-seal-host",
+      "what": "Publicar HARNESS_SEAL_JSON no host",
+      "owner": "host",
+      "created_at": "2026-11-10T17:57:18.225414+00:00"
+    },
+    {
+      "id": "pgtap-40-41-preexistente",
+      "what": "pgTAP 40-privilege-profiles e 41-privilege-tenants falham pré-existente (fixture, sem referência a package); registrar como débito P1 H2.",
+      "owner": "developer-engineer",
+      "created_at": "2026-11-11T02:23:08.980033+00:00"
+    },
+    {
+      "id": "create-subscription-charge-package-guard",
+      "what": "Endurecer create-subscription-charge contra sessão de pacote (refetch falhou → PIX sobre sessão consumida). Janela estreitíssima; follow-up não-bloqueante do review.",
+      "owner": "developer-engineer",
+      "created_at": "2026-11-11T15:37:44.711271+00:00"
+    },
+    {
+      "id": "crm-professional-filter-escopo",
+      "created_at": "2026-11-12T22:40:18.025111+00:00",
+      "status": "open",
+      "note": "customer_filter lista todos p/ professional; alinhar com agenda própria ou justificar."
+    },
+    {
+      "id": "crm-professional-consent-guard",
+      "created_at": "2026-11-12T22:40:18.025111+00:00",
+      "status": "open",
+      "note": "consent_update permite professional fora da agenda; alinhar guard."
+    },
+    {
+      "id": "retention-helpers-least-privilege",
+      "created_at": "2026-11-12T23:17:18.714474+00:00",
+      "status": "open",
+      "note": "revogar grant authenticated nos helpers + search_path fixo."
+    },
+    {
+      "id": "retention-coorte-tz-cast",
+      "created_at": "2026-11-12T23:17:18.714474+00:00",
+      "status": "open",
+      "note": "cast coorte TZ-dependente; usar at time zone UTC."
+    },
+    {
+      "id": "deposito-charge-type-filter",
+      "created_at": "2026-11-13T11:37:11.010259+00:00",
+      "status": "open",
+      "note": "useDepositCharge assume pending[0]; filtrar charge_type deposito quando exposto."
+    },
+    {
+      "id": "deposito-entitlement-server",
+      "created_at": "2026-11-13T11:37:11.010259+00:00",
+      "status": "open",
+      "note": "public-book confia em deposit_enabled sem checar entitlement no servidor; endurecer."
+    },
+    {
+      "id": "crm-minnoshow-server-rpc",
+      "created_at": "2026-11-13T12:52:50.001344+00:00",
+      "status": "open",
+      "note": "Plugar customer_filter server-side para noShowCount real (client-side 0 fail-closed)."
+    },
+    {
+      "id": "fiscal-chave-check",
+      "created_at": "2026-11-13T17:14:56.642440+00:00",
+      "status": "open",
+      "note": "CHECK 44 dígitos no banco (ADR-03)."
+    },
+    {
+      "id": "fiscal-revoke-truncate",
+      "created_at": "2026-11-13T17:14:56.642440+00:00",
+      "status": "open",
+      "note": "revoke truncate service_role em fiscal_events."
+    },
+    {
+      "id": "receber-pix-vivo-pago",
+      "created_at": "2026-11-13T23:17:37.534882+00:00",
+      "status": "open",
+      "note": "UI mostra Cancelar PIX em conta paga; pixVivo deve excluir pago/cancelado."
+    },
+    {
+      "id": "receber-dead-payment-states",
+      "created_at": "2026-11-13T23:17:37.534882+00:00",
+      "status": "open",
+      "note": "asaas.ts: ampliar estados mortos (OVERDUE/REFUNDED/CHARGEBACK)."
+    },
+    {
+      "id": "receber-clear-guard",
+      "created_at": "2026-11-13T23:17:37.534882+00:00",
+      "status": "open",
+      "note": "clear_receivable_gateway_data exige status=pendente (corrida webhook)."
+    },
+    {
+      "id": "receber-orphan-cancel-log",
+      "created_at": "2026-11-13T23:17:37.534882+00:00",
+      "status": "open",
+      "note": "logar falha de cancelamento do órfão."
+    },
+    {
+      "id": "conciliacao-lote-truncate",
+      "created_at": "2026-11-14T01:45:07.908888+00:00",
+      "status": "open",
+      "note": "useConciliarLote trunca 50 em silêncio; server aceita 200."
+    },
+    {
+      "id": "conciliacao-link-pago",
+      "created_at": "2026-11-14T01:45:07.908888+00:00",
+      "status": "open",
+      "note": "reconciliation_link aceita alvo pago por RPC direta."
+    },
+    {
+      "id": "conciliacao-categoria-len",
+      "created_at": "2026-11-14T01:45:07.908888+00:00",
+      "status": "open",
+      "note": "p_categoria sem validação de tamanho (23514 em vez de PT400)."
+    },
+    {
+      "id": "dre-copy-6m",
+      "created_at": "2026-11-14T13:41:14.129383+00:00",
+      "status": "open",
+      "note": "Copy barras somam tabela falsa >6m; condicionar ou limitar."
+    },
+    {
+      "id": "dre-hub-projetado-copy",
+      "created_at": "2026-11-14T13:41:14.129383+00:00",
+      "status": "open",
+      "note": "Hub diz saldo projetado; página diz realizado."
+    },
+    {
+      "id": "export-fiscal-authorized-null-teste",
+      "created_at": "2026-11-14T15:18:25.534223+00:00",
+      "status": "open",
+      "note": "Ramo authorized_at null sem teste integração."
+    },
+    {
+      "id": "export-ofx-leitura-tenant",
+      "created_at": "2026-11-14T15:18:25.534223+00:00",
+      "status": "open",
+      "note": "OFX lê tenant inteiro; filtrar por statement_id no banco."
+    },
+    {
+      "id": "sped-total-cancelada",
+      "created_at": "2026-11-14T15:18:25.534223+00:00",
+      "status": "open",
+      "note": "E990 fiscal soma cancelada; excluir ou renomear TOTAL_BRUTO."
+    },
+    {
+      "id": "dre-despesa-parcial-copy",
+      "created_at": "2026-11-14T18:21:05.287979+00:00",
+      "status": "open",
+      "note": "P3: DRE omite baixa parcial de despesas sem aviso; recebimento manual usa método default pix."
+    },
+    {
+      "id": "pgtap-reset-requirement",
+      "created_at": "2026-11-14T18:21:05.287979+00:00",
+      "status": "open",
+      "note": "pgTAP exige db reset; guard 00-helpers vs seed canônico."
+    },
+    {
+      "id": "edge-runtime-fragilidade",
+      "created_at": "2026-11-14T18:21:05.287979+00:00",
+      "status": "open",
+      "note": "Edge Runtime local morreu no meio (custom-access-token 500); reerguer."
     }
   ],
   "pendencies": [
@@ -83,12 +269,12 @@
     }
   ],
   "artifacts": {
-    "prd": null,
+    "prd": ".spec/roadmap-fase6/escala/PRD.md",
     "research": null,
     "adr_index": null,
     "spec": null,
     "plan": null,
-    "tasks": ".spec/bugs/pdv-checkout-anonimo/TASKS.md"
+    "tasks": null
   },
   "prd_adr": {
     "prd_id": "pdv-balcao",
@@ -203,6 +389,14 @@
       "progress": 100,
       "done": 5,
       "total": 5,
+      "status": "completed"
+    },
+    {
+      "name": "pdv-venda-consecutiva",
+      "stage": "BugCompleted",
+      "progress": 100,
+      "done": 4,
+      "total": 4,
       "status": "completed"
     }
   ],

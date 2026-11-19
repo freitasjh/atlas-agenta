@@ -56,13 +56,14 @@ export function createHandler(options: HandlerOptions) {
     if (begin === "already_processed") return jsonResponse({ ok: true }, 200);
 
     if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+      // Liquidação (plano imediato no upgrade, agendado no downgrade) numa
+      // única transação idempotente (ADR-10). Pago nunca é rebaixado: a RPC
+      // trata `pago` como no-op e o retry do webhook repete sem efeito.
       if (charge.status !== "pago") {
-        const { error: updErr } = await service.from("subscription_charges").update({ status: "pago", paid_at: new Date().toISOString() }).eq("id", charge.id);
-        if (updErr) return jsonResponse({ error: "Falha ao atualizar cobrança." }, 500);
-        const { error: tErr } = await service.from("tenants").update({ subscription_status: "ativo" }).eq("id", charge.tenant_id);
-        if (tErr) return jsonResponse({ error: "Falha ao atualizar tenant." }, 500);
-        const { error: auditErr } = await service.from("audit_log").insert({ tenant_id: charge.tenant_id, action: "subscription_paid", target_type: "subscription_charge", target_id: charge.id, metadata: { event } });
-        if (auditErr) return jsonResponse({ error: "Falha ao registrar auditoria." }, 500);
+        const { error: rpcErr } = await service.rpc("apply_subscription_payment", {
+          p_charge_id: charge.id,
+        });
+        if (rpcErr) return jsonResponse({ error: "Falha ao liquidar assinatura." }, 500);
       }
     } else if (event === "PAYMENT_OVERDUE") {
       if (charge.status !== "expirado") {
@@ -75,6 +76,13 @@ export function createHandler(options: HandlerOptions) {
       await finishEvent(service, eventId, paymentId);
     } catch {
       return jsonResponse({ error: "Falha ao marcar evento." }, 500);
+    }
+    // Efetiva downgrades vencidos de forma oportunista (ADR-10). Best-effort:
+    // nunca bloqueia o 200 do webhook; a trilha real está na RPC.
+    try {
+      await service.rpc("apply_due_scheduled_plans", {});
+    } catch {
+      // noop
     }
     return jsonResponse({ ok: true }, 200);
   };

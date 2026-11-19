@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase1-adr08-mobile-a11y",
+  "agent": "qa-engineer",
+  "phase": "Execution",
+  "gitSha": "8d7aee9f4f6a",
+  "commands": [{"cmd": "npx vitest run src/app/agenda", "exitCode": 0, "durationMs": 17650, "stdoutHash": "41files-261passed"}],
+  "counts": {
+    "unit": {"passed": 0, "failed": 0, "skipped": 0},
+    "it": {"passed": 0, "failed": 0, "skipped": 0},
+    "frontend": {"passed": 261, "failed": 0, "skipped": 0}
+  },
+  "e2e": {"tool": "chrome-devtools MCP", "backend": "UP :54321 + edge runtime", "frontend": "UP vite :5180"},
+  "evaluation": {"telas": "Lista/Dia/Semana+Drawer+filtros+KPIs+lote em 1280 e 375", "negocio": "maquina de estados respeitada", "melhorias": "skip-link p/ grade; foco inicial Drawer no 1o campo"},
+  "brainStore": ["sessoes/atlas-agenda/2026-11-10-adr08-qa-auditoria"],
+  "cleanup": {"processesFinalized": true, "portsFreed": [5180], "note": "edge runtime mantido UP; :5173 alheia intocada"},
+  "selfReported": true,
+  "veredito": "APROVADO COM RESSALVAS (2 follow-ups P2/P3, 0 bloqueios Fase 1)",
+  "fluxos": {"F1": "PASS", "F2-teclado": "PASS", "F3-dnd-teclado": "PASS", "F4-lote": "PASS"},
+  "network": "sessao limpa 448 reqs 0 4xx/5xx; console zero msgs",
+  "contrasteAA": "16.74/7.19/8.53",
+  "screenshots": ["harness/adr-08-agenda-dia-1280.png","harness/adr-08-agenda-lista-1280.png","harness/adr-08-agenda-semana-1280.png","harness/adr-08-agenda-dia-375.png","harness/adr-08-drawer-375.png"],
+  "defeitos": ["D1 foco-retorno-drawer P2", "D2 hitarea-fechar-sheet 16px P3", "D3 503-flake ambiente P2", "D4 lighthouse indisponivel (ferramenta)"]
+}

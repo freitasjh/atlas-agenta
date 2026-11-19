@@ -79,7 +79,7 @@ select is(
 -- AC-06 (PRD RF-04): admin A tenta trocar plano e zerar trial_ends_at.
 select tests.authenticate_as('51515151-5151-4515-8515-515151515151', 'authenticated');
 select throws_ok(
-  $$update tenants set plan = 'pro', trial_ends_at = null where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
+  $$update tenants set plan = 'enterprise', trial_ends_at = null where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'$$,
   '42501', 'permission denied for table tenants',
   'AC-06: admin não altera plan nem trial_ends_at'
 );
@@ -87,8 +87,8 @@ reset role;
 select tests.clear_authentication();
 select is(
   (select plan from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'),
-  'individual',
-  'AC-06: plano continua individual após a tentativa negada'
+  'starter',
+  'AC-06: plano continua starter após a tentativa negada'
 );
 select is(
   (select trial_ends_at from tenants where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'),
@@ -279,12 +279,12 @@ select is(
 );
 
 -- Bypass por DELETE e INSERT (review da ADR-03): sem o revoke de INSERT e DELETE, o super admin
--- apagava a empresa e a recriava com status ativo e plano pro. Com o revoke, os quatro casos dão
+-- apagava a empresa e a recriava com status ativo e plano enterprise. Com o revoke, os quatro casos dão
 -- 42501 de permissão antes da policy, e a empresa A continua como estava.
 select tests.authenticate_as('54545454-5454-4545-8545-545454545454', 'authenticated');
 select throws_ok(
   $$insert into tenants (id, legal_name, owner_email, subscription_status, plan)
-    values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'Empresa injetada', 'injetada@teste.invalido', 'ativo', 'pro')$$,
+    values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', 'Empresa injetada', 'injetada@teste.invalido', 'ativo', 'enterprise')$$,
   '42501', 'permission denied for table tenants',
   'INSERT: super admin não cria empresa pelo cliente'
 );

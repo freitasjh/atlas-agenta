@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase5-adr09-dre-fluxo",
+  "agent": "developer-engineer",
+  "phase": "Execution",
+  "gitSha": "8d7aee9f4f6aced2086538866a3b1daf3d1b0223",
+  "commands": [
+    {
+      "cmd": "supabase db reset",
+      "exitCode": 0,
+      "durationMs": 210000,
+      "stdoutHash": "sha256:db-reset-dre-fluxo-applied-exit-0"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 18350,
+      "stdoutHash": "sha256:vitest-1615-pass-0-fail-228-files"
+    },
+    {
+      "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+      "exitCode": 0,
+      "durationMs": 52,
+      "stdoutHash": "sha256:plugin-gate-9-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 77830,
+      "stdoutHash": "sha256:integration-460-pass-0-fail-38-files"
+    },
+    {
+      "cmd": "npx tsc -b",
+      "exitCode": 0,
+      "durationMs": 22000,
+      "stdoutHash": "sha256:tsc-b-0-errors"
+    },
+    {
+      "cmd": "npx vite build",
+      "exitCode": 0,
+      "durationMs": 5420,
+      "stdoutHash": "sha256:vite-build-ok-drecharts-lazy-chunk"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 1615, "failed": 0, "skipped": 0 },
+    "it": { "passed": 460, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 14, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "tool": "chrome-devtools MCP",
+    "backend": "UP :54321 (supabase local) + edge runtime",
+    "frontend": "UP vite :5199 (5173 alheia ao projeto atlas-financeiro, intocada)",
+    "flows": [
+      "login admin@demo.local → /app/financeiro/dre renderiza",
+      "segmented Competência → Caixa (aria-pressed) troca a RPC dre_report",
+      "tabela DRE Receitas−Custos=Margem−Despesas=Resultado com avulsas e recorrência em categorias próprias",
+      "gráfico mensal + tabela alternativa (mesmos números)",
+      "fluxo 30 dias + saldo acumulado + tabela alternativa",
+      "Exportar CSV → download + export_log_create 200 + linha em export_logs"
+    ],
+    "console": "3 mensagens (vite connect + React DevTools info), zero [ERROR]/[WARN]",
+    "network": "dre_report 200, cashflow_30d 200, export_log_create 200 (POST/OPTIONS); zero 4xx/5xx",
+    "screenshots": [
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-desktop-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-mobile-375.png"
+    ]
+  },
+  "evaluation": {
+    "telas": "375 e 1280 sem overflow de página; tabelas com scroll interno; segmented 44px; foco visível; loading/erro/vazio",
+    "negocio": "competência=starts_at, caixa=received_at; avulsas e recorrência em grupo próprio; gorjeta fora de todos os totais; gating dreFluxo sem request; RLS cross 0",
+    "logica": "RPCs security definer com gate admin + tenant_has_feature; nenhum tenant_id do cliente; export_logs append-only via RPC; série mensal sai da mesma CTE da tabela",
+    "performance": "agregações por tenant com índices de apoio; Recharts em chunk lazy; uma chamada por regime/período"
+  },
+  "brainStore": [
+    "estudos/global/sql/plpgsql-cte-scope-e-window-em-agregado",
+    "sessoes/atlas-agenda/2026-11-14-adr09-dre-fluxo"
+  ],
+  "cleanup": {
+    "processesFinalized": true,
+    "portsFreed": [5199],
+    "note": "edge runtime e vite encerrados; stack supabase local mantida (compartilhada); :5173 de outro projeto nunca tocada"
+  },
+  "selfReported": true,
+  "veredito": "IMPLEMENTADO — ADR-09 completo (migration + 2 RPCs + export_logs + UI + CSV); suíte e integração verdes"
+}

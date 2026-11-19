@@ -21,6 +21,7 @@ import {
 } from "./schemas.ts";
 // `SendResponse` é usado nas assinaturas de `sendResponse()` e nos retornos de condição.
 import { createEvolutionAdapter } from "./evolution-adapter.ts";
+import { decideCheckWrite } from "./reconcile.ts";
 import {
   DEFAULT_TEMPLATE_BODIES,
   formatDataHora,
@@ -223,25 +224,40 @@ async function handleCheck(
   const instanceName = `tenant-${tenantId}`;
   const adapter = createEvolutionAdapter();
 
-  // Consulta o estado REAL da Evolution. Falha é NÃO-fatal: devolve o estado atual da linha.
+  // Consulta o estado REAL da Evolution. Falha NÃO-fatal por padrão: devolve o
+  // estado atual da linha — EXCETO 404 tipado (instância apagada no Evolution),
+  // que reconcilia a linha para `desconectado` (débito P2 whatsapp-check-404).
   let realState: Awaited<ReturnType<typeof adapter.getConnectionState>> | null = null;
+  let checkError: unknown = null;
   try {
     realState = await adapter.getConnectionState(instanceName);
   } catch (err) {
     // Nunca logar corpo cru/token/QR — só motivo técnico curto.
     console.error("check: adapter falhou", err instanceof Error ? err.message : "erro");
+    checkError = err;
     realState = null;
   }
 
-  // Reconciliação idempotente: só quando a Evolution confirma `open`, transiciona para
-  // `conectado` + last_connected_at. Gravar o mesmo `conectado` repetido é inócuo.
-  if (realState?.state === "open") {
+  // Reconciliação idempotente (decisão pura em `decideCheckWrite`, testada isolado):
+  // - `open` → `conectado` + last_connected_at (gravar repetido é inócuo);
+  // - 404 tipado → `desconectado` (instância não existe mais no provedor).
+  const write = decideCheckWrite(realState, checkError);
+  if (write === "conectado") {
     const { error: updateErr } = await service
       .from("whatsapp_instances")
       .update({ connection_status: "conectado", last_connected_at: new Date().toISOString() })
       .eq("tenant_id", tenantId);
     if (updateErr) {
       console.error("check: falha ao reconciliar estado", updateErr.message);
+      return errorResponse("Não foi possível atualizar o estado da conexão.", 500);
+    }
+  } else if (write === "desconectado") {
+    const { error: updateErr } = await service
+      .from("whatsapp_instances")
+      .update({ connection_status: "desconectado" })
+      .eq("tenant_id", tenantId);
+    if (updateErr) {
+      console.error("check: falha ao reconciliar instância ausente", updateErr.message);
       return errorResponse("Não foi possível atualizar o estado da conexão.", 500);
     }
   }

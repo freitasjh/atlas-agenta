@@ -12,7 +12,7 @@ describe("PlanAnalyticsCardView", () => {
     render(
       <PlanAnalyticsCardView
         conversion={{ coorte: 10, convertidos: 4, taxa: 40 }}
-        churn={{ by_plan: { individual: { base: 5, churned: 1, taxa: 20 } } }}
+        churn={{ by_plan: { starter: { base: 5, churned: 1, taxa: 20 } } }}
         isLoading={false}
         isError={false}
         onRetry={() => {}}
@@ -20,7 +20,7 @@ describe("PlanAnalyticsCardView", () => {
     );
     expect(screen.getByText("40,0%")).toBeDefined();
     expect(screen.getByText(/4 de 10 trials convertidos/)).toBeDefined();
-    expect(screen.getByText("Individual")).toBeDefined();
+    expect(screen.getByText("Starter")).toBeDefined();
   });
 
   it("denominador 0 mostra — com apoio (nunca 0%/NaN)", () => {

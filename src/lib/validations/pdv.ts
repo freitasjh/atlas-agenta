@@ -18,6 +18,11 @@ export const walkInSchema = z
         kind: z.literal("combo"),
         comboId: z.string().uuid("Selecione o pacote."),
       }),
+      z.object({
+        kind: z.literal("product"),
+        productId: z.string().uuid("Selecione o produto."),
+        qty: z.number().int().min(1, "Quantidade mínima 1."),
+      }),
     ]),
     customerName: z
       .string()

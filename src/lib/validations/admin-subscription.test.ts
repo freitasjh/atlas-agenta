@@ -19,7 +19,7 @@ const VALID_ROW = {
   legal_name: "Alfa Serviços LTDA",
   document: "12345678000190",
   owner_email: "dono@alfa.com",
-  plan: "clinica",
+  plan: "premium",
   subscription_status: "ativo",
   trial_ends_at: null,
   timezone: "America/Sao_Paulo",
@@ -92,7 +92,7 @@ describe("adminTenantRowSchema / adminTenantsResponseSchema", () => {
 
   it("plan ou subscription_status fora do enum falha", () => {
     expect(
-      adminTenantRowSchema.safeParse({ ...VALID_ROW, plan: "enterprise" })
+      adminTenantRowSchema.safeParse({ ...VALID_ROW, plan: "diamond" })
         .success,
     ).toBe(false);
     expect(

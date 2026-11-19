@@ -37,6 +37,7 @@ de negócio pertence a um tenant e carrega `tenant_id` (uuid) indexado.
 ### appointments (agendamentos)
 - `id`, `tenant_id`, `customer_id`, `professional_id`, `service_id`,
   `starts_at` (timestamptz, UTC), `ends_at`, `price_cents`,
+  `commission_base_cents` (snapshot imutável do preço no ato do agendamento — G1),
   `status` (`pendente|confirmado|em_atendimento|concluido|cancelado|nao_compareceu`),
   `confirmed_at`, `created_at`.
 - **Prevenção de conflito (RF06):** não permitir sobreposição `[starts_at, ends_at)` para o
@@ -92,4 +93,4 @@ confirmado/pendente ──(não veio)──> nao_compareceu
   caixa); “a receber” = snapshot de `charges.status = 'pendente'` com `asaas_payment_id` e não
   expirada. Cobrança paga nunca é somada como receita; nunca somar receita + a receber.
 - `tip_cents` (gorjeta) fica fora da receita de serviço e da base de comissão.
-- **Comissão inalterada**: continua no trigger de `concluido` sobre `appointments.price_cents`.
+- **Comissão no trigger de `concluido`** sobre `appointments.commission_base_cents` (snapshot imutável do preço no ato do agendamento, gravado no INSERT e travado por trigger — G1). Estorno de pagamento **não** altera a comissão (RF-24).

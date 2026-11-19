@@ -1,0 +1,94 @@
+{
+  "adrs": [
+    {
+      "depends_on": null,
+      "file": "adr-01-entitlements-t14-t15.md",
+      "id": "ADR-01",
+      "scope": "entitlements T1.4/T1.5: interface congelada usePlanEntitlements + 8 chaves + gating nulo + hub skeleton",
+      "status": "approved",
+      "title": "Entitlements T1.4/T1.5 (interface congelada + gating nulo)"
+    },
+    {
+      "depends_on": "ADR-01",
+      "file": "adr-02-nfce-schema.md",
+      "id": "ADR-02",
+      "scope": "A-dados: fiscal_documents + fiscal_events + RLS + idempotencia origem",
+      "status": "approved",
+      "title": "NFCe schema fiscal (tabelas + RLS + idempotencia origem)"
+    },
+    {
+      "depends_on": "ADR-02",
+      "file": "adr-03-nfce-emissao-ui.md",
+      "id": "ADR-03",
+      "scope": "A-telas: Edges issue/cancel + UI lista/sheet/DANFE + gating nfce",
+      "status": "approved",
+      "title": "NFCe emissao + UI (Sheet, contingencia, DANFE/XML, carta)"
+    },
+    {
+      "depends_on": "ADR-03",
+      "file": "adr-04-membership-schema.md",
+      "id": "ADR-04",
+      "scope": "B-dados: membership_plans/subscriptions/charges + RPCs cobranca/webhook/inadimplencia",
+      "status": "approved",
+      "title": "Membership schema + RPCs (planos, adesao, cobranca, inadimplencia)"
+    },
+    {
+      "depends_on": "ADR-04",
+      "file": "adr-05-assinaturas-ui.md",
+      "id": "ADR-05",
+      "scope": "B-telas: tabs/drawer/banner WhatsApp + gating recorrencia",
+      "status": "approved",
+      "title": "Assinaturas UI (tabs, drawer, regularizar, banner inadimplencia)"
+    },
+    {
+      "depends_on": "ADR-05",
+      "file": "adr-06-contas-a-pagar.md",
+      "id": "ADR-06",
+      "scope": "C: suppliers/payables/settlements + baixa parcial + anexos + UI + gating contasPagar",
+      "status": "approved",
+      "title": "Contas a pagar (fornecedores + lancamentos + baixa + UI)"
+    },
+    {
+      "depends_on": "ADR-06",
+      "file": "adr-07-contas-a-receber.md",
+      "id": "ADR-07",
+      "scope": "D: receivables/settlements + cobranca PIX + UI 2 tabs (ledger readonly) sem gating novo",
+      "status": "approved",
+      "title": "Contas a receber avulsas (cobranca PIX + recebimento + UI)"
+    },
+    {
+      "depends_on": "ADR-06,ADR-07",
+      "file": "adr-08-conciliacao.md",
+      "id": "ADR-08",
+      "scope": "E: bank_accounts/statements/lines/links + import OFX/CSV + match RPC + UI + gating conciliacao",
+      "status": "approved",
+      "title": "Conciliacao bancaria (import + match + acoes + undo)"
+    },
+    {
+      "depends_on": "ADR-06,ADR-07,ADR-08",
+      "file": "adr-09-dre-fluxo.md",
+      "id": "ADR-09",
+      "scope": "F: RPCs dre_report/cashflow_30d + export_logs + UI + CSV + gating dreFluxo",
+      "status": "approved",
+      "title": "DRE + fluxo de caixa (RPCs + UI + CSV)"
+    },
+    {
+      "depends_on": "ADR-09",
+      "file": "adr-10-export-contabil.md",
+      "id": "ADR-10",
+      "scope": "H: Edge export-ledger CSV/OFX/SPED-resumo + UI + gating exportContabil",
+      "status": "approved",
+      "title": "Export contabil (formato + log + download)"
+    },
+    {
+      "depends_on": "ADR-01,ADR-03,ADR-04",
+      "file": "adr-11-backoffice-t14-t15.md",
+      "id": "ADR-11",
+      "scope": "G: aba Operacao + suspender/retomar + MRR/churn/NFCe RPCs + gating backofficeT14/T15",
+      "status": "approved",
+      "title": "Back-office T1.4/T1.5 (Operacao + suspender/retomar + MRR/churn/NFCe)"
+    }
+  ],
+  "nota_teto": "PRD-ADR pipeline sugere teto 5 ADRs/PRD; Fase 5 excede por decisao explicita da delegacao (A-H + entitlements + back-office). Alternativa seria split em 2 PRDs (fiscal+recorrencia / pagar+conciliacao+DRE+export+backoffice); registrado como debito de processo, nao bloqueia.",
+  "prd": "financeiro (roadmap Fase 5)"
+}

@@ -1,15 +1,16 @@
 import { z } from "npm:zod@3.23.8";
-import { PLAN_SLUGS, type PlanSlug } from "../_shared/plans.ts";
 
 /**
- * `plan` é validado contra os slugs reais de `_shared/plans.json` (fonte única)
- * — slug desconhecido é 400, nunca um preço default silencioso. `annual` não
- * existe em `PLANS` (sem regra de desconto definida), então só `monthly` é
- * aceito; `annual` é rejeitado em vez de inventar `mensal * 10`.
+ * `plan` é validado contra o catálogo SSoT `public.plans` no handler (T1.0) —
+ * slug desconhecido/inativo ou preço não positivo é 400, nunca um preço
+ * default silencioso. O schema só garante a forma do slug; a existência e o
+ * preço são lidos da tabela com a service role. `annual` não tem regra de
+ * desconto definida, então só `monthly` é aceito; `annual` é rejeitado em
+ * vez de inventar `mensal * 10`.
  */
 export const requestSchema = z.object({
   tenant_id: z.string().uuid(),
-  plan: z.enum(PLAN_SLUGS as [PlanSlug, ...PlanSlug[]]),
+  plan: z.string().trim().min(1).max(64),
   billing_period: z.literal("monthly").default("monthly"),
 });
 export type RequestInput = z.infer<typeof requestSchema>;

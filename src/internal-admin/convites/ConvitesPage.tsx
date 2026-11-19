@@ -259,7 +259,8 @@ export function ConvitesPage() {
           <DialogHeader>
             <DialogTitle>Convidar super admin</DialogTitle>
             <DialogDescription>
-              Envie um convite por e-mail para um novo super administrador.
+              Envie um convite por e-mail para um novo super administrador. O
+              e-mail pode demorar alguns minutos para chegar.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

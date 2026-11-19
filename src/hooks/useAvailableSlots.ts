@@ -113,8 +113,8 @@ export function useAvailableSlots({
     const override =
       (overridesQuery.data ?? []).find((o) => o.override_date === day) ?? null;
 
-    // Só agendamentos ATIVOS ocupam a agenda. `cancelado`/`nao_compareceu`
-    // liberam o horário (AC-13) — mesma regra da constraint
+    // Só agendamentos ATIVOS ocupam a agenda. `cancelado`/`nao_compareceu`/
+    // `concluido` liberam o horário (AC-13) — mesma regra da constraint
     // `appointments_no_overlap` no banco, centralizada em `scheduling-status`.
     const busy: BusyInterval[] = (appointmentsQuery.data ?? [])
       .filter((a) => a.id !== excludeAppointmentId)

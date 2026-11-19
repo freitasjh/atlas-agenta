@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 
-import { AppointmentBlock } from "@/app/agenda/AppointmentBlock";
+import {
+  AppointmentBlock,
+  type DayQuickActions,
+} from "@/app/agenda/AppointmentBlock";
 import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { toTenantLocal } from "@/lib/datetime";
+import { useDayDnD } from "@/app/agenda/useDayDnD";
 import type {
   AppointmentWithRelations,
   Professional,
@@ -12,6 +16,8 @@ import type {
 
 /** Altura em px de uma hora na calha (densidade da grade). */
 const HOUR_HEIGHT = 56;
+/** Passo da grade em minutos (ADR-03: slots de 30min). */
+const SLOT_MINUTES = 30;
 /** Janela padrão quando não há grade nem agendamentos (08h–18h). */
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 18;
@@ -24,6 +30,8 @@ const MIN_BLOCK_HEIGHT = 22;
  * vertical: 3 linhas (~56) + 2 gaps (4) + padding (16) ≈ 76px.
  */
 const FULL_CONTENT_MIN_HEIGHT = 76;
+/** Altura mínima (px) para rotular uma faixa fora de expediente. */
+const OFF_HOURS_LABEL_MIN_HEIGHT = 24;
 
 /** Minutos desde a meia-noite do dia (fuso do tenant) de um instante UTC. */
 function minutesOfDay(utcIso: string, timeZone: string): number {
@@ -70,14 +78,23 @@ interface AgendaCalendarDayProps {
   paymentsMessages?: PaymentsMessages;
   /** Capacidade do cliente de registrar pagamentos (ação "Pagamento"). */
   canRegisterPayments?: boolean;
+  /** Quick actions 1-clique + overflow (ADR-03). Ausente = blocos estáticos. */
+  quickActions?: DayQuickActions;
+  /** Habilita o arrasto intra-dia (ADR-03). O pai decide pelo RBAC. */
+  movable?: boolean;
 }
 
 /**
- * Visão **dia** da agenda: calha de horas vertical (tabular-nums), faixa de
- * expediente distinta da faixa sem expediente, **linha do agora** em jade
+ * Visão **dia** da agenda: calha de horas vertical (tabular-nums) em slots de
+ * 30min, faixa fora-expediente rotulada, **linha do agora** em jade
  * (`bg-primary`) quando o dia é hoje, e blocos proporcionais à duração com
  * borda da cor do status. Admin/recepção veem uma coluna por profissional;
  * `professional` vê uma coluna única (o RLS já filtra).
+ *
+ * DnD **intra-dia** (mesmo dia + mesmo profissional): o bloco é a origem
+ * (HTML5 + teclado com setas/Enter/Esc) e a coluna o destino; soltar em outra
+ * coluna é recusado no `dragover`. Conflito (409) faz recovery com toast
+ * "Ver conflito" e o bloco volta à origem.
  *
  * Mobile-first (RNF02): a janela de horas é só do primeiro ao último expediente
  * (ou dos agendamentos), nunca 00–24. Clicar numa faixa vazia abre a criação
@@ -98,7 +115,11 @@ export function AgendaCalendarDay({
   onOpenPayment,
   paymentsMessages,
   canRegisterPayments = false,
+  quickActions,
+  movable = false,
 }: AgendaCalendarDayProps) {
+  const dnd = useDayDnD({ day, timeZone });
+
   // Janela de horas a renderizar: do primeiro expediente/agendamento ao último.
   const { startHour, endHour } = useMemo(() => {
     const dayHours = workingHours.filter((wh) => wh.weekday === weekday);
@@ -148,6 +169,21 @@ export function AgendaCalendarDay({
       );
   }, [workingHours, weekday]);
 
+  // Complemento das faixas de expediente: "fora de expediente" rotulado.
+  // Sem grade conhecida, nada é rotulado (não há o que afirmar).
+  const offWindows = useMemo(() => {
+    if (workingWindows.length === 0) return [];
+    const sorted = [...workingWindows].sort((a, b) => a.start - b.start);
+    const gaps: { start: number; end: number }[] = [];
+    let cursor = startMinutes;
+    for (const window of sorted) {
+      if (window.start > cursor) gaps.push({ start: cursor, end: window.start });
+      cursor = Math.max(cursor, window.end);
+    }
+    if (cursor < endHour * 60) gaps.push({ start: cursor, end: endHour * 60 });
+    return gaps;
+  }, [workingWindows, startMinutes, endHour]);
+
   // Linha do "agora" (só quando o dia em foco é hoje no fuso do tenant).
   const nowMinutes = useMemo(() => {
     const now = new Date();
@@ -188,23 +224,37 @@ export function AgendaCalendarDay({
   }
 
   /**
-   * Converte o clique (pointer) numa faixa de uma hora em `HH:MM` arredondado a
-   * 30 min. `baseMinutes` é o início da faixa; `offsetY` é relativo a ela. Na
-   * ativação por teclado (Enter/Espaço), `offsetY` chega 0 e cai no início da
-   * faixa focada — por isso cada hora é um botão próprio, dando ao operador
+   * Converte o clique (pointer) numa faixa em `HH:MM` com snap de 30min.
+   * `baseMinutes` é o início do slot; `offsetY` é relativo a ele. Na ativação
+   * por teclado (Enter/Espaço), `offsetY` chega 0 e cai no início do slot em
+   * foco — por isso cada meia hora é um botão próprio, dando ao operador
    * só-teclado um horário específico (o do botão em foco).
    */
-  function timeFromHourOffset(baseMinutes: number, offsetY: number): string {
-    const rawMinutes = baseMinutes + (offsetY / HOUR_HEIGHT) * 60;
+  function timeFromSlotOffset(baseMinutes: number, offsetY: number): string {
+    const slotHeight = (SLOT_MINUTES / 60) * HOUR_HEIGHT;
+    const rawMinutes = baseMinutes + (offsetY / slotHeight) * SLOT_MINUTES;
     const snapped = Math.max(
       startMinutes,
-      Math.min(endHour * 60, Math.round(rawMinutes / 30) * 30),
+      Math.min(endHour * 60, Math.round(rawMinutes / SLOT_MINUTES) * SLOT_MINUTES),
     );
     return minutesToHhmm(snapped);
   }
 
+  /** Minutos do dia a partir da posição vertical dentro da coluna. */
+  function minutesFromColumnOffset(offsetY: number): number {
+    const rawMinutes = startMinutes + (offsetY / HOUR_HEIGHT) * 60;
+    return Math.max(
+      startMinutes,
+      Math.min(endHour * 60, Math.round(rawMinutes / SLOT_MINUTES) * SLOT_MINUTES),
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      {/* Anúncios de movimento do DnD/teclado (aria-live, só leitor de tela). */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {dnd.announcement}
+      </div>
       {/* Cabeçalho de colunas (só multi-profissional). */}
       {!singleColumn ? (
         <div className="flex border-b border-border">
@@ -242,8 +292,47 @@ export function AgendaCalendarDay({
         {columns.map((column, index) => (
           <div
             key={column.professional?.id ?? `outros-${index}`}
+            data-testid={
+              column.professional
+                ? `day-column-${column.professional.id}`
+                : singleColumn
+                  ? "day-column-own"
+                  : "day-column-outros"
+            }
             className="relative flex-1 border-l border-border"
             style={{ height: gridHeight, minWidth: singleColumn ? undefined : 120 }}
+            onDragOver={
+              movable
+                ? (event) => {
+                    if (
+                      dnd.canDropOn(column.professional?.id ?? null, singleColumn)
+                    ) {
+                      event.preventDefault();
+                      if (event.dataTransfer) {
+                        event.dataTransfer.dropEffect = "move";
+                      }
+                    }
+                  }
+                : undefined
+            }
+            onDrop={
+              movable
+                ? (event) => {
+                    event.preventDefault();
+                    const target = dnd.dragged;
+                    if (
+                      !target ||
+                      !dnd.canDropOn(column.professional?.id ?? null, singleColumn)
+                    ) {
+                      return;
+                    }
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const offsetY = event.clientY - rect.top;
+                    void dnd.move(target, minutesFromColumnOffset(offsetY));
+                    dnd.endDrag();
+                  }
+                : undefined
+            }
           >
             {/* Faixa de expediente (comunica "aqui atende"). */}
             {workingWindows.map((window, windowIndex) => {
@@ -260,7 +349,25 @@ export function AgendaCalendarDay({
               );
             })}
 
-            {/* Linhas de hora (hairlines). */}
+            {/* Faixas fora de expediente, rotuladas (só com grade conhecida). */}
+            {offWindows.map((window, windowIndex) => {
+              const top = ((window.start - startMinutes) / 60) * HOUR_HEIGHT;
+              const height = ((window.end - window.start) / 60) * HOUR_HEIGHT;
+              if (height < OFF_HOURS_LABEL_MIN_HEIGHT) return null;
+              return (
+                <div
+                  key={`off-${windowIndex}`}
+                  className="absolute inset-x-0 flex items-start justify-center bg-muted/40 pt-1"
+                  style={{ top, height }}
+                >
+                  <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Fora de expediente
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Hairlines: hora cheia (major) + meia hora (minor). */}
             {hours.slice(0, -1).map((hour) => (
               <div
                 key={hour}
@@ -269,36 +376,47 @@ export function AgendaCalendarDay({
                 style={{ top: (hour - startHour) * HOUR_HEIGHT }}
               />
             ))}
+            {hours.slice(0, -1).map((hour) => (
+              <div
+                key={`half-${hour}`}
+                aria-hidden="true"
+                className="absolute inset-x-0 border-t border-dashed border-border/40"
+                style={{ top: (hour - startHour) * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+              />
+            ))}
 
-            {/* Faixas vazias clicáveis (criar agendamento): uma por hora, cada
-                uma alcançável por teclado e rotulada pelo horário. O pointer
-                afina o horário pelo offset do clique; o teclado usa o início da
-                hora focada. */}
+            {/* Faixas vazias clicáveis (criar agendamento): uma por SLOT de
+                30min, cada uma alcançável por teclado e rotulada pelo horário.
+                O pointer afina pelo offset do clique; o teclado usa o início
+                do slot em foco. */}
             {onCreateAt
-              ? hours.slice(0, -1).map((hour) => {
-                  const baseMinutes = hour * 60;
-                  return (
-                    <button
-                      key={`create-${hour}`}
-                      type="button"
-                      aria-label={`Criar agendamento às ${minutesToHhmm(baseMinutes)}`}
-                      className="absolute inset-x-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      style={{
-                        top: (hour - startHour) * HOUR_HEIGHT,
-                        height: HOUR_HEIGHT,
-                      }}
-                      onClick={(event) => {
-                        const rect =
-                          event.currentTarget.getBoundingClientRect();
-                        const offsetY = event.clientY - rect.top;
-                        onCreateAt(
-                          column.professional?.id ?? null,
-                          timeFromHourOffset(baseMinutes, offsetY),
-                        );
-                      }}
-                    />
-                  );
-                })
+              ? hours.slice(0, -1).flatMap((hour) =>
+                  [0, SLOT_MINUTES].map((slotOffset) => {
+                    const baseMinutes = hour * 60 + slotOffset;
+                    const slotHeight = (SLOT_MINUTES / 60) * HOUR_HEIGHT;
+                    return (
+                      <button
+                        key={`create-${hour}-${slotOffset}`}
+                        type="button"
+                        aria-label={`Criar agendamento às ${minutesToHhmm(baseMinutes)}`}
+                        className="absolute inset-x-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        style={{
+                          top: (hour - startHour) * HOUR_HEIGHT + (slotOffset / 60) * HOUR_HEIGHT,
+                          height: slotHeight,
+                        }}
+                        onClick={(event) => {
+                          const rect =
+                            event.currentTarget.getBoundingClientRect();
+                          const offsetY = event.clientY - rect.top;
+                          onCreateAt(
+                            column.professional?.id ?? null,
+                            timeFromSlotOffset(baseMinutes, offsetY),
+                          );
+                        }}
+                      />
+                    );
+                  }),
+                )
               : null}
 
             {/* Blocos de agendamento. */}
@@ -324,24 +442,45 @@ export function AgendaCalendarDay({
                     onOpenPayment={onOpenPayment}
                     messages={paymentsMessages}
                     canRegisterPayments={canRegisterPayments}
+                    quickActions={quickActions}
+                    dnd={
+                      movable
+                        ? {
+                            draggable: true,
+                            onDragStart: (target) => dnd.startDrag(target),
+                            onDragEnd: () => dnd.endDrag(),
+                            onCommitMove: (target, minutes) => {
+                              void dnd.move(target, minutes);
+                            },
+                            onAnnounce: dnd.announce,
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               );
             })}
 
-            {/* Linha do "agora" em jade (decoração; horário nunca só por cor). */}
+            {/* Linha do "agora" em jade (decoração; horário nunca só por cor —
+                o instante vai no texto sr-only). */}
             {nowMinutes != null &&
             nowMinutes >= startMinutes &&
             nowMinutes <= endHour * 60 ? (
-              <div
-                aria-hidden="true"
-                className="absolute inset-x-0 z-20 h-0.5 bg-primary"
-                style={{
-                  top: ((nowMinutes - startMinutes) / 60) * HOUR_HEIGHT,
-                }}
-              >
-                <span className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-primary" />
-              </div>
+              <>
+                <div
+                  data-testid="now-line"
+                  aria-hidden="true"
+                  className="absolute inset-x-0 z-20 h-0.5 bg-primary"
+                  style={{
+                    top: ((nowMinutes - startMinutes) / 60) * HOUR_HEIGHT,
+                  }}
+                >
+                  <span className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-primary" />
+                </div>
+                <span className="sr-only">
+                  Agora: {minutesToHhmm(nowMinutes)}
+                </span>
+              </>
             ) : null}
           </div>
         ))}
