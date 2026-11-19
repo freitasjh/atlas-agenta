@@ -540,6 +540,109 @@ describe("RF-05/RF-06 lote vazio e total zero", () => {
   });
 });
 
+describe("RF-2x pacote válido recusa lote com pagamento (anti-dupla-cobrança)", () => {
+  async function seedValidCredit(params: {
+    customerId: string;
+    serviceId: string;
+  }): Promise<string> {
+    const { data, error } = await serviceClient()
+      .from("package_credits")
+      .insert({
+        tenant_id: tenantA.tenantId,
+        customer_id: params.customerId,
+        service_id: params.serviceId,
+        total_sessions: 5,
+        used_sessions: 0,
+        price_cents: 60_000,
+        validity_days: 30,
+        expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+        status: "active",
+      })
+      .select("id")
+      .single();
+    expect(error).toBeNull();
+    return (data as { id: string }).id;
+  }
+
+  it("lote não-vazio com crédito válido => PT409 PACKAGE_CREDIT_AVAILABLE e nada escrito", async () => {
+    const fixture = await seedAppointment(tenantA.tenantId, {
+      status: "em_atendimento",
+      priceCents: 10_000,
+    });
+    const creditId = await seedValidCredit({
+      customerId: fixture.customerId,
+      serviceId: fixture.serviceId,
+    });
+    try {
+      const { error } = await register(
+        tenantA.tenantId,
+        tenantA.admin.id,
+        fixture.appointmentId,
+        [{ method: "dinheiro", amount_cents: 10_000 }],
+        randomUUID(),
+        true,
+      );
+      expect(error?.code).toBe("PT409");
+      expect(error?.message).toBe("PACKAGE_CREDIT_AVAILABLE");
+      expect(await getAppointmentStatus(fixture.appointmentId)).toBe("em_atendimento");
+      expect(await ledgerCount(tenantA.tenantId, fixture.appointmentId)).toBe(0);
+    } finally {
+      await serviceClient().from("package_credits").delete().eq("id", creditId);
+    }
+  });
+
+  it("lote vazio + close com crédito válido segue o caminho do pacote (conclui e consome)", async () => {
+    const fixture = await seedAppointment(tenantA.tenantId, {
+      status: "em_atendimento",
+      priceCents: 10_000,
+    });
+    const creditId = await seedValidCredit({
+      customerId: fixture.customerId,
+      serviceId: fixture.serviceId,
+    });
+    try {
+      const { data, error } = await register(
+        tenantA.tenantId,
+        tenantA.admin.id,
+        fixture.appointmentId,
+        [],
+        randomUUID(),
+        true,
+      );
+      expect(error).toBeNull();
+      expect(data).toMatchObject({ appointment_status: "concluido" });
+      expect(await getAppointmentStatus(fixture.appointmentId)).toBe("concluido");
+      expect(
+        Number(
+          sql(
+            `select used_sessions from public.package_credits where id = :'credit'::uuid;`,
+            { credit: creditId },
+          ),
+        ),
+      ).toBe(1);
+    } finally {
+      await serviceClient().from("package_credits").delete().eq("id", creditId);
+    }
+  });
+
+  it("sem crédito válido o lote avulso segue permitido", async () => {
+    const fixture = await seedAppointment(tenantA.tenantId, {
+      status: "em_atendimento",
+      priceCents: 10_000,
+    });
+    const { error } = await register(
+      tenantA.tenantId,
+      tenantA.admin.id,
+      fixture.appointmentId,
+      [{ method: "dinheiro", amount_cents: 10_000 }],
+      randomUUID(),
+      true,
+    );
+    expect(error).toBeNull();
+    expect(await getAppointmentStatus(fixture.appointmentId)).toBe("concluido");
+  });
+});
+
 describe("RF-07/I3 profissional só o próprio atendimento", () => {
   it("profissional dono registra; profissional alheio recebe PROFESSIONAL_NOT_OWNER", async () => {
     const own = await seedAppointment(tenantA.tenantId, {

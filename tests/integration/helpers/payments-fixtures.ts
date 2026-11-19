@@ -42,10 +42,10 @@ export async function createPaymentsTenant(prefix: string): Promise<PaymentsTena
 /**
  * Garante que o plano do tenant não bloqueie as fixtures que abrem mais de um profissional.
  *
- * O cadastro (`create_tenant_with_admin`) nasce no plano `individual`, cujo
+ * O cadastro (`create_tenant_with_admin`) nasce no plano `starter`, cujo
  * `professionals_plan_limit_trg` permite 1 profissional ativo (e `appointments_plan_limit_trg`
  * limita 150 agendamentos/mês). As fixtures abrem vários profissionais no mesmo tenant, então
- * fazem o upgrade legítimo para `pro` (sem limite) pela RPC auditada `admin_set_tenant_plan`
+ * fazem o upgrade legítimo para `enterprise` (sem limite) pela RPC auditada `admin_set_tenant_plan`
  * (service role), nunca desabilitando o trigger nem afrouxando a regra de negócio.
  */
 export async function ensureUnlimitedPlan(tenantId: string): Promise<void> {
@@ -58,12 +58,12 @@ export async function ensureUnlimitedPlan(tenantId: string): Promise<void> {
   if (error || !data) {
     throw new Error(`Leitura do plano do tenant falhou (código ${error?.code ?? "vazio"}).`);
   }
-  if (data.plan === "pro") return;
+  if (data.plan === "enterprise") return;
   const { error: rpcError } = await admin.rpc("admin_set_tenant_plan", {
     p_tenant_id: tenantId,
-    p_new_plan: "pro",
+    p_new_plan: "enterprise",
     p_changed_by: null,
-    p_reason: "fixture de integração: plano pro sem limite de profissionais/agendamentos",
+    p_reason: "fixture de integração: plano enterprise sem limite de profissionais/agendamentos",
     p_override: false,
   });
   if (rpcError) {

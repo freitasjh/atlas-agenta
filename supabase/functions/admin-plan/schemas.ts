@@ -4,7 +4,7 @@
 // Contrato de fio alinhado ao frontend (src/lib/validations/admin-plan.ts).
 import { z } from "npm:zod@3.23.8";
 
-export const planSchema = z.enum(["individual", "clinica", "pro"]);
+export const planSchema = z.enum(["free", "starter", "premium", "enterprise"]);
 export type Plan = z.infer<typeof planSchema>;
 
 export const setPlanInputSchema = z.object({

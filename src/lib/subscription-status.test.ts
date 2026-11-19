@@ -79,8 +79,8 @@ describe("subscription-status — rótulos pt-BR (fonte única)", () => {
   });
 
   it("getPlanLabel reusa os rótulos de plans.ts", () => {
-    expect(getPlanLabel("individual")).toBe("Individual");
-    expect(getPlanLabel("clinica")).toBe("Clínica");
-    expect(getPlanLabel("pro")).toBe("Pro");
+    expect(getPlanLabel("starter")).toBe("Starter");
+    expect(getPlanLabel("premium")).toBe("Premium");
+    expect(getPlanLabel("enterprise")).toBe("Enterprise");
   });
 });

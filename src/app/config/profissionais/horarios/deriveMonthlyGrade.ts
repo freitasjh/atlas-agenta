@@ -207,8 +207,9 @@ const CONFLICT_MESSAGE =
  * Conflito batch × appointment (SPEC §5.6): para cada appointment ativo
  * futuro, resolve a janela do weekday dele na grade NOVA; se o bloco
  * `[startsAt, endsAt)` cai fora de toda janela (ou cruza break), gera um
- * conflito. Appointment passado e inativo (`cancelado`/`nao_compareceu`)
- * nunca conflitam. `timeZone` = fuso do tenant para mapear o weekday.
+ * conflito. Appointment passado e inativo (`cancelado`/`nao_compareceu`/
+ * `concluido`) nunca conflitam. `timeZone` = fuso do tenant para mapear o
+ * weekday.
  *
  * Cascata por dia (A1): uma exceção (override) no dia do appointment
  * sobrepõe a grade — dia fechado = sem janela (conflita sempre); dia atípico
@@ -370,8 +371,8 @@ const OVERRIDE_CONFLICT_MESSAGE =
  * Conflito exceção × appointment (SPEC §5.6 / FE-04): folga (`isClosed`)
  * bloqueia se houver QUALQUER appointment ativo no dia (passado ou futuro —
  * nunca apaga/move agendamento); janela atípica bloqueia se algum appointment
- * ativo cair fora da janela (ou cruzar o break). `cancelado`/`nao_compareceu`
- * liberam o horário.
+ * ativo cair fora da janela (ou cruzar o break). `cancelado`/`nao_compareceu`/
+ * `concluido` liberam o horário.
  */
 export function findOverrideConflict(input: {
   overrideDate: string;

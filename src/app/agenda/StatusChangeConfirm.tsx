@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PixQrPanel } from "@/app/agenda/pagamentos/PixQrPanel";
 import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+import { supabase } from "@/lib/supabase";
 
 import {
   mapSchedulingError,
@@ -91,6 +92,43 @@ export function StatusChangeConfirm({
         from: change.appointment.status,
         to: change.to,
       });
+      // O auto-vínculo do trigger (RF-12) grava `package_credit_id` no concluir:
+      // o valor pré-concluir de `change` é sempre null na sessão do pacote.
+      // Re-lê p/ decidir: com vínculo, a sessão já foi paga (sem PIX, sem dupla
+      // cobrança); sem vínculo, segue a cobrança. Falha de leitura fail-open
+      // para o valor anterior (comportamento anterior).
+      let creditId: string | null = change.appointment.package_credit_id;
+      try {
+        const { data: fresh } = await supabase
+          .from("appointments")
+          .select("package_credit_id")
+          .eq("id", change.appointment.id)
+          .maybeSingle();
+        if (fresh) creditId = (fresh.package_credit_id as string | null) ?? null;
+      } catch {
+        // fail-open: mantém o valor pré-concluir
+      }
+      if (change.to === "concluido" && creditId) {
+        // Baixa de 1 sessão já aconteceu no MESMO commit (trigger ADR-02) — a
+        // UI só anuncia, com janela de 5s para desfazer. Não há un-consume no
+        // banco (append-only): desfazer = correção lógica guiada, nunca
+        // DELETE/UPDATE de valor. A UI nunca chama `redeem_session` aqui.
+        // A sessão já foi paga na venda do pacote: gerar PIX aqui seria dupla
+        // cobrança, então o PIX é pulado (decisão explícita do produto).
+        toast.success("1 sessão baixada do pacote.", {
+          duration: 5000,
+          action: {
+            label: "Desfazer",
+            onClick: () => {
+              toast.info(
+                "Para corrigir o saldo, faça uma nova venda de pacote ou fale com o administrador.",
+              );
+            },
+          },
+        });
+        onClose();
+        return;
+      }
       toast.success("Status atualizado.");
       if (change.to === "concluido") {
         try {

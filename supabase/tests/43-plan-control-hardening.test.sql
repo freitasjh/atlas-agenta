@@ -18,7 +18,7 @@ begin;
 
 select plan(17);
 
--- Fixture (domínio .invalido): tenant A (admin A, plano individual),
+-- Fixture (domínio .invalido): tenant A (admin A, plano starter),
 -- tenant C (super_admin S).
 select tests.create_user(
   '51515151-5151-4515-8515-515151515151',
@@ -37,7 +37,7 @@ select tests.create_user(
 update public.tenants set timezone = 'America/Sao_Paulo'
  where id = 'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1';
 
--- Profissionais: P1 ativo, P2 inativo (teto individual = 1).
+-- Profissionais: P1 ativo, P2 inativo (teto starter = 1).
 insert into public.professionals (id, tenant_id, name, active) values
   ('11111111-1111-4111-8111-111111111111',
    'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'Paulo Ativo', true),
@@ -53,7 +53,7 @@ insert into public.customers (id, tenant_id, name, phone) values
    'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'Carlos Cliente', '5511999999999');
 
 -- 150 confirmados no mês corrente (fuso SP, slots adjacentes de 30min, sem
--- sobreposição para a exclusion de no-overlap). Teto individual = 150.
+-- sobreposição para a exclusion de no-overlap). Teto starter = 150.
 insert into public.appointments
   (tenant_id, customer_id, professional_id, service_id, starts_at, ends_at, price_cents, status)
 select
@@ -84,12 +84,12 @@ values (
   0, 'cancelado'
 );
 
--- Charge paga Pro num tenant Individual = divergência de reconciliação.
+-- Charge paga Enterprise num tenant Starter = divergência de reconciliação.
 insert into public.subscription_charges
   (tenant_id, status, amount_cents, plan, paid_at)
 values (
   'a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1',
-  'pago', 25900, 'pro', now()
+  'pago', 25900, 'enterprise', now()
 );
 
 -- C1 (catálogo): view é security_invoker.
@@ -161,8 +161,8 @@ select is(
 );
 select is(
   (select charge_plan from public.admin_get_plan_divergences()),
-  'pro',
-  'C1: divergência mostra charge Pro contra tenant Individual'
+  'enterprise',
+  'C1: divergência mostra charge Enterprise contra tenant Starter'
 );
 
 -- C2 (regressão): wrapper de uso continua vivo para super_admin.
@@ -178,8 +178,8 @@ select tests.clear_authentication();
 select throws_ok(
   $$update public.professionals set active = true
      where id = '22222222-2222-4222-8222-222222222222'$$,
-  '23514', 'PLAN_LIMIT: Limite do plano individual: máximo 1 profissional(is) ativo(s).',
-  'C3: reativar 2º profissional no Individual nega PLAN_LIMIT'
+  '23514', 'PLAN_LIMIT: Limite do plano starter: máximo 1 profissional(is) ativo(s).',
+  'C3: reativar 2º profissional no Starter nega PLAN_LIMIT'
 );
 
 -- C3 (profissionais): update fora da coluna active não dispara e preserva.
@@ -208,15 +208,15 @@ select throws_ok(
       (date_trunc('month', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo')
         + interval '20 days 30 minutes',
       0, 'confirmado')$$,
-  '23514', 'PLAN_LIMIT: Limite do plano individual: máximo 150 agendamentos por mês.',
-  'C3: 151º appointment confirmado no Individual nega PLAN_LIMIT (INSERT intacto)'
+  '23514', 'PLAN_LIMIT: Limite do plano starter: máximo 150 agendamentos por mês.',
+  'C3: 151º appointment confirmado no Starter nega PLAN_LIMIT (INSERT intacto)'
 );
 
 -- C3 (appointments): tirar de cancelado com bucket cheio nega.
 select throws_ok(
   $$update public.appointments set status = 'confirmado'
      where id = '55555555-5555-4555-8555-555555555555'$$,
-  '23514', 'PLAN_LIMIT: Limite do plano individual: máximo 150 agendamentos por mês.',
+  '23514', 'PLAN_LIMIT: Limite do plano starter: máximo 150 agendamentos por mês.',
   'C3: sair de cancelado com mês cheio nega PLAN_LIMIT'
 );
 

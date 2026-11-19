@@ -13,6 +13,29 @@ import { requestSchema } from "./schemas.ts";
 
 export type HandlerOptions = { createService: () => SupabaseClient };
 
+function normalizeBody(raw: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...raw };
+  const sel = body.selection;
+  if (sel && typeof sel === "object" && !Array.isArray(sel)) {
+    const s = sel as Record<string, unknown>;
+    if (s.kind === "service") {
+      if (body.service_id == null) body.service_id = s.serviceId ?? s.service_id;
+    } else if (s.kind === "combo") {
+      if (body.combo_id == null) body.combo_id = s.comboId ?? s.combo_id;
+    } else if (s.kind === "product") {
+      if (body.product_id == null) body.product_id = s.productId ?? s.product_id ?? s.id;
+      if (body.product_qty == null) body.product_qty = s.qty ?? s.quantity ?? s.product_qty;
+    }
+  }
+  if (body.productId != null && body.product_id == null) body.product_id = body.productId;
+  if (body.productQty != null && body.product_qty == null) body.product_qty = body.productQty;
+  if (body.qty != null && body.product_qty == null && body.product_id != null) body.product_qty = body.qty;
+  delete body.selection;
+  delete body.productId;
+  delete body.productQty;
+  return body;
+}
+
 /** Ramos que vendem no PDV (salão/barbearia, `payments === true`). */
 const PDV_SEGMENTS = ["salao", "barbearia"] as const;
 
@@ -49,7 +72,9 @@ export function createHandler(options: HandlerOptions) {
       if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
         throw new ApiError(400, "INVALID_BODY");
       }
-      const parsed = requestSchema.safeParse(raw);
+      // Normaliza entrada aninhada (selection.kind) e camelCase para o schema plano.
+      const normalized = normalizeBody(raw as Record<string, unknown>);
+      const parsed = requestSchema.safeParse(normalized);
       if (!parsed.success) throw new ApiError(400, "INVALID_BODY");
       const body = parsed.data;
 
@@ -66,7 +91,7 @@ export function createHandler(options: HandlerOptions) {
       }
 
       // Vínculo N:N vigente (única regra nova): serviço de venda avulsa precisa
-      // ser oferecido pelo profissional. Combo segue o RPC (`active`).
+      // ser oferecido pelo profissional. Combo/produto seguem o RPC (`active`).
       if (body.service_id != null) {
         const { data: link, error: linkError } = await service
           .from("service_professionals")
@@ -87,6 +112,8 @@ export function createHandler(options: HandlerOptions) {
           p_professional_id: body.professional_id,
           p_service_id: body.service_id ?? null,
           p_combo_id: body.combo_id ?? null,
+          p_product_id: body.product_id ?? null,
+          p_product_qty: body.product_qty ?? 0,
           p_customer_id: body.customer_id ?? null,
           p_creation_idempotency_key: body.creation_idempotency_key,
         },

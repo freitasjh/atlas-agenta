@@ -3,6 +3,7 @@ import {
   Layers,
   MessageCircle,
   MessageSquareText,
+  Package,
   Scissors,
   Users,
   Copy,
@@ -46,7 +47,7 @@ interface ConfigShortcut {
  */
 export function ConfigHubPage() {
   const { canManageMessageTemplates, canManageCatalog, isAdmin } = usePermissions();
-  const { combos: combosFeature } = useSegmentFeatures();
+  const { combos: combosFeature, payments: paymentsFeature } = useSegmentFeatures();
   const { data: bookingLink } = usePublicBookingLink();
   const createLink = useCreatePublicBookingLink();
   const { data: tenants } = useAdminTenants();
@@ -75,12 +76,27 @@ export function ConfigHubPage() {
       icon: Scissors,
     },
     {
+      to: "/app/config/recursos",
+      titulo: "Recursos",
+      descricao: "Salas, equipamentos e cadeiras agendáveis.",
+      icon: Package,
+      visible: paymentsFeature === true,
+    },
+    {
       to: "/app/config/combos",
       titulo: "Pacotes",
       descricao:
         "Combine procedimentos num preço fechado para seus clientes.",
       icon: Layers,
       visible: combosFeature && canManageCatalog,
+    },
+    {
+      to: "/app/config/pacotes",
+      titulo: "Pacotes de sessões",
+      descricao:
+        "Vendas de pacotes: saldo, validade e baixa automática ao concluir.",
+      icon: Package,
+      visible: canManageCatalog,
     },
     {
       to: "/app/config/profissionais",

@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase5-adr07-receber",
+  "agent": "developer-engineer",
+  "phase": "Execution",
+  "gitSha": "8d7aee9",
+  "commands": [
+    {
+      "cmd": "supabase db reset",
+      "exitCode": 0,
+      "durationMs": 183000,
+      "stdoutHash": "sha256:db-reset-receivables-applied-exit-0"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 31830,
+      "stdoutHash": "sha256:vitest-1574-pass-0-fail-223-files"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 107140,
+      "stdoutHash": "sha256:integration-415-pass-0-fail-36-files"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 22000,
+      "stdoutHash": "sha256:deno-check-0-errors-deno-test-504-pass"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 8140,
+      "stdoutHash": "sha256:tsc-b-and-vite-build-ok"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 1574, "failed": 0, "skipped": 0 },
+    "it": { "passed": 415, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 1574, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "scenario": "rota /app/financeiro/receber (ADR-07) com tenant demo barbearia",
+    "tabs": "Atendimentos readonly (cards financial_summary + ledger vazio) e Avulsas (tabela com barra 40%, badge Vencida derivada, acoes Cobrar/Receber/Cancelar)",
+    "dialogs": "Nova cobranca (cliente/descricao/categoria=avulsa/vencimento/valor), Cobrar (Gerar PIX / Cobrar no WhatsApp), Registrar recebimento (default = saldo R$ 60,00)",
+    "viewport": "375x800 mobile touch, dark, prefers-reduced-motion: reduce; scrollWidth === innerWidth (sem scroll horizontal de pagina)",
+    "console": "0 [ERROR] / 0 [WARN]",
+    "network": "9/9 requests 2xx (auth, tenants, financial_summary, receivable_ledger_list, receivables, receivable_settlements, customers)",
+    "screenshots": [
+      "/tmp/opencode/receber-atendimentos-375-real.png",
+      "/tmp/opencode/receber-avulsas-375-dark.png",
+      "/tmp/opencode/receber-nova-375.png",
+      "/tmp/opencode/receber-cobrar-375.png",
+      "/tmp/opencode/receber-receber-375.png"
+    ],
+    "note": "E2E focado no fluxo afetado (escalateOnRisk por tests/integration/security/**); wipe+recadastro greenfield de 12 passos nao executado nesta sub-fase."
+  },
+  "evaluation": {
+    "h4-telas": "375 e ~500 renderizam sem scroll horizontal de pagina; tabela avulsa usa overflow interno (mesmo padrao da aba Pagar); botoes de acao 44px; abas ajustadas para min-h-11; dark AA; loading/empty/error presentes; aba Atendimentos sem nenhum botao de escrita.",
+    "h4-negocio": "avulsa nasce pendente; parcial mantem saldo; total quita; overpay PT409; cancelamento bloqueado com recebimento; opt-in obrigatorio para WhatsApp; ledger appointment_payments com contagem identica antes/depois da avulsa paga.",
+    "h4-logica": "PIX idempotente por conta (unique parcial + UPDATE condicional, perdedor cancela orfao); replay de webhook sem duplicar settlement (unique tenant/event_id + guarda na RPC); mensagem WhatsApp com dedupe por conta/PIX; RLS admin-only sem policy de write.",
+    "h4-perf": "listas limitadas (200 avulsas, 500 settlements, 200 ledger) e ledger por janela do mes; sem N+1 observavel no DevTools; queries financeiras so disparam com segmento payments."
+  },
+  "brainStore": [
+    "arquitetura/projetos/atlas-agenda/fase5-receber-avulsas",
+    "sessoes/atlas-agenda/2026-11-13-fase5-adr07-receber"
+  ],
+  "cleanup": {
+    "vitePort5199": "free (kill por PID 1177582, dono conferido)",
+    "functionsServe": "encerrado (PIDs 1177513/1177536, edge runtime atlas-agenda ausente)",
+    "supabase": "stack principal mantida no estado pre-existente; banco resetado por aceite do ADR",
+    "harnessFixtures": "removidas (receivables/settlements/Cliente Harness) apos os screenshots",
+    "orphans": false,
+    "note": "nenhum pkill -f; portas encerradas por lsof -ti :PORT + kill por PID com dono conferido"
+  },
+  "selfReported": true
+}

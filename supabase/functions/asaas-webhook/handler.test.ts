@@ -17,6 +17,8 @@ interface Charge {
 interface FakeOptions {
   charge?: Charge | null;
   chargeError?: { code?: string; message?: string } | null;
+  receivable?: { id: string; tenant_id: string; status: string } | null;
+  receivableError?: { code?: string; message?: string } | null;
   tenantToken?: string | null;
   tenantError?: { code?: string; message?: string } | null;
   existing?: { processed_at: string | null } | null;
@@ -103,6 +105,28 @@ function build(options: FakeOptions = {}, throws = false): Harness {
             }),
             then(resolve: any, reject: any) {
               return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+            },
+          };
+          return builder;
+        },
+      };
+    }
+
+    if (table === "receivables") {
+      return {
+        select: () => {
+          const builder: any = {
+            eq() {
+              return builder;
+            },
+            limit: async () => {
+              calls.sequence.push("receivable_lookup");
+              const row =
+                "receivable" in state.options ? state.options.receivable : null;
+              return {
+                data: row ? [row] : [],
+                error: state.options.receivableError ?? null,
+              };
             },
           };
           return builder;
@@ -650,4 +674,37 @@ Deno.test("log do webhook não vaza payload, QR ou token", async () => {
   } finally {
     captured.restore();
   }
+});
+
+Deno.test("conta avulsa: settle chama receivable_settle_webhook e finaliza o evento", async () => {
+  const { handler, calls } = build({
+    charge: null,
+    receivable: { id: "r1", tenant_id: "t1", status: "pendente" },
+    rpcData: { status: "pago", replayed: false },
+  });
+  const response = await request(handler);
+  strictEqual(response.status, 200);
+
+  const settle = calls.rpc.find((call) => call.name === "receivable_settle_webhook");
+  strictEqual(settle?.args.p_receivable_id, "r1");
+  strictEqual(settle?.args.p_tenant_id, "t1");
+  strictEqual(settle?.args.p_event_id, "evt1");
+  // Valor REALMENTE pago é repassado (R$ 100,00 → 10000 centavos).
+  strictEqual(settle?.args.p_paid_value_cents, 10_000);
+  strictEqual(calls.inserts.length, 1);
+  strictEqual(calls.finishUpdates.length, 1);
+});
+
+Deno.test("conta avulsa: evento que não liquida é auditado como ignorado, sem RPC", async () => {
+  const { handler, calls } = build({
+    charge: null,
+    receivable: { id: "r1", tenant_id: "t1", status: "pendente" },
+  });
+  const response = await request(handler, {
+    body: { id: "evt2", event: "PAYMENT_OVERDUE", payment: { id: "pay1" } },
+  });
+  strictEqual(response.status, 200);
+  strictEqual(calls.rpc.length, 0);
+  strictEqual(calls.audits[0]?.action, "receivable_gateway_event_ignored");
+  strictEqual(calls.finishUpdates.length, 1);
 });

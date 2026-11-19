@@ -156,3 +156,192 @@ Deno.test("colisão de agenda (23P01) responde 409 SLOT_CONFLICT, não 500", asy
     "Profissional ocupado neste horário. Escolha outro profissional ou outro horário.",
   );
 });
+
+const PRODUCT = "77777777-7777-7777-7777-777777777777";
+
+Deno.test("cria walk-in de produto e repassa RPC args + audit log", async () => {
+  let rpcArgs: any = null;
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (message: unknown) => {
+    lines.push(String(message));
+  };
+  let result: { status: number; json: Row };
+  try {
+    result = await post(
+      {
+        professional_id: PROFESSIONAL,
+        product_id: PRODUCT,
+        product_qty: 3,
+        creation_idempotency_key: KEY,
+      },
+      {
+        segment: "barbearia",
+        linked: false,
+        rpc: (_name, args) => {
+          rpcArgs = args;
+          return { data: { id: "appt-prod", reused: false }, error: null };
+        },
+      },
+    );
+  } finally {
+    console.log = original;
+  }
+
+  strictEqual(result.status, 201);
+  strictEqual(result.json.appointment_id, "appt-prod");
+  strictEqual(rpcArgs?.p_product_id, PRODUCT);
+  strictEqual(rpcArgs?.p_product_qty, 3);
+  strictEqual(rpcArgs?.p_service_id, null);
+  strictEqual(rpcArgs?.p_combo_id, null);
+
+  const audit = lines
+    .map((line) => {
+      try {
+        return JSON.parse(line) as Row;
+      } catch {
+        return null;
+      }
+    })
+    .find((entry) => entry?.event === "walk_in_created");
+  strictEqual(audit?.appointment_id, "appt-prod");
+});
+
+Deno.test("normaliza selection.kind=product para product_id/product_qty", async () => {
+  let rpcArgs: any = null;
+  const { status, json } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      selection: { kind: "product", productId: PRODUCT, qty: 2 },
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "salao",
+      linked: false,
+      rpc: (_name, args) => {
+        rpcArgs = args;
+        return { data: { id: "appt-sel", reused: false }, error: null };
+      },
+    },
+  );
+
+  strictEqual(status, 201);
+  strictEqual(json.appointment_id, "appt-sel");
+  strictEqual(rpcArgs?.p_product_id, PRODUCT);
+  strictEqual(rpcArgs?.p_product_qty, 2);
+});
+
+Deno.test("XOR: service_id + product_id retorna 400", async () => {
+  let rpcCalled = false;
+  const { status } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      service_id: SERVICE,
+      product_id: PRODUCT,
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "barbearia",
+      linked: true,
+      rpc: () => {
+        rpcCalled = true;
+        return { data: {}, error: null };
+      },
+    },
+  );
+
+  strictEqual(status, 400);
+  strictEqual(rpcCalled, false);
+});
+
+Deno.test("qty inválida (0) retorna 400", async () => {
+  let rpcCalled = false;
+  const { status } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      product_id: PRODUCT,
+      product_qty: 0,
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "barbearia",
+      linked: false,
+      rpc: () => {
+        rpcCalled = true;
+        return { data: {}, error: null };
+      },
+    },
+  );
+
+  strictEqual(status, 400);
+  strictEqual(rpcCalled, false);
+});
+
+Deno.test("qty inválida (negativa) retorna 400", async () => {
+  let rpcCalled = false;
+  const { status } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      product_id: PRODUCT,
+      product_qty: -1,
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "barbearia",
+      linked: false,
+      rpc: () => {
+        rpcCalled = true;
+        return { data: {}, error: null };
+      },
+    },
+  );
+
+  strictEqual(status, 400);
+  strictEqual(rpcCalled, false);
+});
+
+Deno.test("segment gate de produto: fora de salão/barbearia retorna 409 SEGMENT_NOT_ENABLED", async () => {
+  let rpcCalled = false;
+  const { status, json } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      product_id: PRODUCT,
+      product_qty: 1,
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "clinica",
+      linked: false,
+      rpc: () => {
+        rpcCalled = true;
+        return { data: {}, error: null };
+      },
+    },
+  );
+
+  strictEqual(status, 409);
+  strictEqual(json.code, "SEGMENT_NOT_ENABLED");
+  strictEqual(rpcCalled, false);
+});
+
+Deno.test("estoque insuficiente retorna 409 STOCK_INSUFFICIENT", async () => {
+  const { status, json } = await post(
+    {
+      professional_id: PROFESSIONAL,
+      product_id: PRODUCT,
+      product_qty: 3,
+      creation_idempotency_key: KEY,
+    },
+    {
+      segment: "barbearia",
+      linked: false,
+      rpc: () => ({
+        data: null,
+        error: { code: "PT409", message: "STOCK_INSUFFICIENT" },
+      }),
+    },
+  );
+
+  strictEqual(status, 409);
+  strictEqual(json.code, "STOCK_INSUFFICIENT");
+});

@@ -103,7 +103,15 @@ Deno.serve(async (req) => {
       customerId = newCustomer.id;
     }
 
-    // Cria agendamento
+    // Cria agendamento (Fase 4, ADR-03: serviço com depósito abre
+    // `aguardando_deposito` com prazo; legado segue `pendente`).
+    const depositEnabled = service.deposit_enabled === true;
+    const deadlineHours =
+      typeof service.deposit_deadline_hours === "number" &&
+      service.deposit_deadline_hours > 0
+        ? service.deposit_deadline_hours
+        : 24;
+    const appointmentStatus = depositEnabled ? "aguardando_deposito" : "pendente";
     const { data: appointment, error: appErr } = await supabase
       .from("appointments")
       .insert({
@@ -114,7 +122,14 @@ Deno.serve(async (req) => {
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
         price_cents: service.price_cents,
-        status: "pendente",
+        status: appointmentStatus,
+        ...(depositEnabled
+          ? {
+              deposit_deadline_at: new Date(
+                Date.now() + deadlineHours * 3600 * 1000,
+              ).toISOString(),
+            }
+          : {}),
       })
       .select("id, status")
       .single();
@@ -134,7 +149,71 @@ Deno.serve(async (req) => {
       metadata: { service_id, professional_id },
     });
 
-    return jsonResponse({ success: true, appointment_id: appointment.id, status: appointment.status }, 201);
+    // Serviço sem depósito: fluxo legado (sem charge).
+    if (!depositEnabled) {
+      return jsonResponse({ success: true, appointment_id: appointment.id, status: appointment.status }, 201);
+    }
+
+    // Serviço com depósito: calcula o sinal e abre a cobrança `deposito`
+    // pendente (idempotente por índice parcial). Sem gateway nesta fase: o QR
+    // é preenchido pela rotina de emissão; o front exibe o passo PIX com
+    // loading/erro até lá (DepositStep).
+    let depositAmount = 0;
+    if (service.deposit_type === "percent") {
+      depositAmount = Math.round(
+        (service.price_cents * service.deposit_value) / 100,
+      );
+    } else {
+      depositAmount =
+        service.deposit_value > 0 ? service.deposit_value : service.price_cents;
+    }
+    if (depositAmount <= 0) depositAmount = service.price_cents;
+    const deadline = new Date(Date.now() + deadlineHours * 3600 * 1000);
+
+    let chargeId: string | null = null;
+    const { data: existingCharge } = await supabase
+      .from("charges")
+      .select("id")
+      .eq("tenant_id", link.tenant_id)
+      .eq("appointment_id", appointment.id)
+      .eq("status", "pendente")
+      .eq("charge_type", "deposito")
+      .maybeSingle();
+    if (existingCharge) {
+      chargeId = existingCharge.id;
+    } else {
+      const { data: charge, error: chargeErr } = await supabase
+        .from("charges")
+        .insert({
+          tenant_id: link.tenant_id,
+          appointment_id: appointment.id,
+          status: "pendente",
+          amount_cents: depositAmount,
+          charge_type: "deposito",
+          expires_at: deadline.toISOString(),
+        })
+        .select("id")
+        .single();
+      if (chargeErr || !charge) {
+        console.error("public-book deposit charge error", chargeErr);
+        return jsonResponse({ error: "internal_error" }, 500);
+      }
+      chargeId = charge.id;
+    }
+
+    return jsonResponse({
+      success: true,
+      appointment_id: appointment.id,
+      status: appointment.status,
+      charge: {
+        id: chargeId,
+        status: "pendente",
+        amount_cents: depositAmount,
+        expires_at: deadline.toISOString(),
+        pix_qr_code: null,
+        pix_copia_e_cola: null,
+      },
+    }, 201);
   } catch (e) {
     console.error("public-book exception", e);
     return jsonResponse({ error: "internal_error" }, 500);

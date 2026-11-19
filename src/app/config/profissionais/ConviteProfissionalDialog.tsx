@@ -78,7 +78,7 @@ export function ConviteProfissionalDialog({
           <DialogTitle>Convidar para acesso</DialogTitle>
           <DialogDescription>
             Envie um convite por e-mail para {professionalName} acessar o sistema
-            como profissional.
+            como profissional. O e-mail pode demorar alguns minutos para chegar.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

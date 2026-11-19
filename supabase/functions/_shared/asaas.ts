@@ -122,6 +122,7 @@ export async function findPaymentByExternalReference(
   baseUrl: string,
   apiKey: string,
   externalReference: string,
+  options: { preferredPaymentId?: string | null; excludePaymentId?: string | null } = {},
 ): Promise<{ paymentId: string; pixQrCode: string | null; pixCopyPaste: string | null } | null> {
   const res = await asaasFetch(
     baseUrl,
@@ -129,7 +130,22 @@ export async function findPaymentByExternalReference(
     `/payments?externalReference=${encodeURIComponent(externalReference)}`,
   );
   if (!res.ok || !Array.isArray(res.data?.data) || res.data.data.length === 0) return null;
-  const paymentId = res.data.data[0]?.id;
+
+  // Nunca retomar uma cobrança morta: reemissão deixa a anterior cancelada com a
+  // mesma `externalReference`. Sem esse filtro, o primeiro item poderia ser o
+  // pagamento cancelado (bug da revisão: perdedor derrubava o PIX do vencedor).
+  const alive = (res.data.data as Array<Record<string, unknown>>).filter((row) => {
+    const status = String(row?.status ?? "").toUpperCase();
+    if (status === "CANCELLED" || status === "DELETED" || status === "REMOVED") return false;
+    if (options.excludePaymentId && String(row?.id ?? "") === options.excludePaymentId) return false;
+    return true;
+  });
+  if (alive.length === 0) return null;
+
+  const preferred = options.preferredPaymentId
+    ? alive.find((row) => String(row?.id ?? "") === options.preferredPaymentId)
+    : undefined;
+  const paymentId = (preferred ?? alive[0])?.id;
   if (!paymentId) return null;
   const pixRes = await asaasFetch(baseUrl, apiKey, `/payments/${paymentId}/pixQrCode`);
   return {

@@ -33,8 +33,9 @@ import { useSegmentFeatures } from "@/hooks/useSegmentFeatures";
 const commissionReportRowSchema = z.object({
   professional_id: z.string(),
   professional_name: z.string(),
-  // `bigint` no SQL → o PostgREST serializa como number no JSON.
+  origin: z.enum(["service", "product", "combo"]).default("service"),
   total_commission_cents: z.number().int(),
+  total_backbar_cost_cents: z.number().int().default(0),
   appointment_count: z.number().int(),
 });
 
@@ -51,10 +52,13 @@ export function useCommissionReport({
   endDate,
   /** `undefined`/`null` = todos; id = restringe a um profissional (conveniência de UI). */
   professionalId,
+  /** `null`/undefined/"todos" = todas as origens; senão filtra por origem. */
+  origin,
 }: {
   startDate: string;
   endDate: string;
   professionalId?: string | null;
+  origin?: string | null;
 }) {
   const { data: tenant } = useTenant();
   const timeZone = tenant?.timezone;
@@ -64,11 +68,18 @@ export function useCommissionReport({
 
   // Normaliza para a `queryKey` e o parâmetro da RPC: string vazia / null → null.
   const normalizedProfessionalId = professionalId ? professionalId : null;
+  const normalizedOrigin =
+    origin && origin !== "todos" ? origin : null;
 
   return useQuery<CommissionReportRow[]>({
     queryKey: [
       ...COMMISSION_REPORT_KEY,
-      { startDate, endDate, professionalId: normalizedProfessionalId },
+      {
+        startDate,
+        endDate,
+        professionalId: normalizedProfessionalId,
+        origin: normalizedOrigin,
+      },
     ],
     // Só dispara para quem pode ver comissão (gating de segmento + RBAC) e com
     // fuso resolvido. Fora disso, nenhum request de comissão (CA-VIS-06).
@@ -82,6 +93,7 @@ export function useCommissionReport({
         p_start: range.startUtc.toISOString(),
         p_end: range.endUtc.toISOString(),
         p_professional_id: normalizedProfessionalId,
+        p_origin: normalizedOrigin,
       });
       if (error) throw error;
 

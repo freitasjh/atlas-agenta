@@ -1,0 +1,215 @@
+{
+  "adrs": [
+    {
+      "id": "ADR-01",
+      "file": "adr-01-entitlements-fase4.md",
+      "title": "Entitlements Fase 4: 5 chaves",
+      "scope": "T1.2 estendido: deposito/waitlist/campanhas/fidelidade/checkoutSelfService, degradação",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/01-entitlements-fase4",
+      "depends_on": []
+    },
+    {
+      "id": "ADR-02",
+      "file": "adr-02-deposito-schema-backend.md",
+      "title": "Depósito/sinal (A): schema backend",
+      "scope": "services deposit config + status aguardando_deposito + charges link + trigger",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/02-deposito-schema-backend",
+      "depends_on": [
+        "ADR-01"
+      ]
+    },
+    {
+      "id": "ADR-03",
+      "file": "adr-03-deposito-fluxo-publico-expiracao.md",
+      "title": "Depósito/sinal (A): fluxo público, expiração, reembolso",
+      "scope": "Edge create PIX, webhook confirm, expiração, cancelamento/reembolso, idempotência",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/03-deposito-fluxo-publico-expiracao",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02"
+      ]
+    },
+    {
+      "id": "ADR-04",
+      "file": "adr-04-waitlist-backend.md",
+      "title": "Waitlist (B): backend",
+      "scope": "waitlist_entries + RPCs fila/oferta/confirm/decline + idempotência",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/04-waitlist-backend",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02"
+      ]
+    },
+    {
+      "id": "ADR-05",
+      "file": "adr-05-campanhas-backend.md",
+      "title": "Campanhas (C): backend",
+      "scope": "campaigns/campaign_sends/templates + segmentação + dispatch + consentimento",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/05-campanhas-backend",
+      "depends_on": [
+        "ADR-01"
+      ]
+    },
+    {
+      "id": "ADR-06",
+      "file": "adr-06-fidelidade-backend.md",
+      "title": "Fidelidade (D): backend",
+      "scope": "loyalty_programs/accounts/transactions + accrual/expiry/void",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/06-fidelidade-backend",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02"
+      ]
+    },
+    {
+      "id": "ADR-07",
+      "file": "adr-07-cupons-gift-cards-backend.md",
+      "title": "Cupons e gift cards (D): backend + PDV",
+      "scope": "coupons/gift_cards/redemptions + validação/aplicação + ledger",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/07-cupons-gift-cards-backend",
+      "depends_on": [
+        "ADR-01",
+        "ADR-06"
+      ]
+    },
+    {
+      "id": "ADR-08",
+      "file": "adr-08-crm-profundo-backend.md",
+      "title": "CRM profundo (E): backend",
+      "scope": "customer prefs/notes/filtros/opt-in/consentimento + RBAC",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/08-crm-profundo-backend",
+      "depends_on": [
+        "ADR-01"
+      ]
+    },
+    {
+      "id": "ADR-09",
+      "file": "adr-09-relatorios-retencao-backend.md",
+      "title": "Relatórios retenção (F): backend",
+      "scope": "RPCs no-show/rebooking/utilização/ticket/coorte + admin only",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/09-relatorios-retencao-backend",
+      "depends_on": [
+        "ADR-08"
+      ]
+    },
+    {
+      "id": "ADR-10",
+      "file": "adr-10-checkout-self-service-backend.md",
+      "title": "Meu plano + checkout (G): backend",
+      "scope": "Asaas checkout + webhook + estados assinatura",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/10-checkout-self-service-backend",
+      "depends_on": [
+        "ADR-01"
+      ]
+    },
+    {
+      "id": "ADR-11",
+      "file": "adr-11-whatsapp-metricas-backend.md",
+      "title": "Métricas WhatsApp (H): backend",
+      "scope": "KPIs/log/ban risk + RLS admin only",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/11-whatsapp-metricas-backend",
+      "depends_on": [
+        "ADR-05",
+        "ADR-08"
+      ]
+    },
+    {
+      "id": "ADR-12",
+      "file": "adr-12-deposito-ui.md",
+      "title": "Depósito/sinal (A): UI",
+      "scope": "ServiceForm + AgendarPage + badge/drawer + gating",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/12-deposito-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02",
+        "ADR-03"
+      ]
+    },
+    {
+      "id": "ADR-13",
+      "file": "adr-13-waitlist-ui.md",
+      "title": "Waitlist (B): UI",
+      "scope": "ListaEsperaPage + CTA + oferta countdown",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/13-waitlist-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-04"
+      ]
+    },
+    {
+      "id": "ADR-14",
+      "file": "adr-14-campanhas-ui.md",
+      "title": "Campanhas (C): UI",
+      "scope": "CampanhasPage + templates + preview + métricas",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/14-campanhas-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-05",
+        "ADR-08"
+      ]
+    },
+    {
+      "id": "ADR-15",
+      "file": "adr-15-fidelidade-ui.md",
+      "title": "Fidelidade (D): UI",
+      "scope": "FidelidadePage + aba CRM + PDV aplicação",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/15-fidelidade-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-06",
+        "ADR-07",
+        "ADR-16"
+      ]
+    },
+    {
+      "id": "ADR-16",
+      "file": "adr-16-crm-ui.md",
+      "title": "CRM profundo (E): UI",
+      "scope": "Drawer 6 abas + filtros + notas + consentimento",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/16-crm-ui",
+      "depends_on": [
+        "ADR-08"
+      ]
+    },
+    {
+      "id": "ADR-17",
+      "file": "adr-17-relatorios-retencao-ui.md",
+      "title": "Relatórios retenção (F): UI",
+      "scope": "Hub + 3 páginas + Recharts + CSV + a11y",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/17-relatorios-retencao-ui",
+      "depends_on": [
+        "ADR-09"
+      ]
+    },
+    {
+      "id": "ADR-18",
+      "file": "adr-18-plano-whatsapp-ui.md",
+      "title": "Meu plano + métricas WhatsApp (G/H): UI",
+      "scope": "PlanoPage estados + checkout + WhatsApp tabs/métricas",
+      "status": "approved",
+      "branch": "adr/retencao-no-show/18-plano-whatsapp-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-10",
+        "ADR-11"
+      ]
+    }
+  ]
+}

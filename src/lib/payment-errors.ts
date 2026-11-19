@@ -27,6 +27,11 @@ export const PAYMENT_ERROR_MAP: Readonly<Record<string, PaymentErrorInfo>> = {
     retryable: false,
     action: "review",
   },
+  PACKAGE_CREDIT_AVAILABLE: {
+    messageKey: "payments.error.packageCreditAvailable",
+    retryable: false,
+    action: "none",
+  },
   GATEWAY_ERROR: {
     messageKey: "payments.error.gateway",
     retryable: true,

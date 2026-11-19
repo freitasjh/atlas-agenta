@@ -35,6 +35,17 @@ describe("period-presets", () => {
     });
   });
 
+  it("preset 6m devolve seis meses fechados (virada de ano inclusa)", () => {
+    expect(resolvePresetRange("6m", "2026-09-15")).toEqual({
+      start: "2026-04-01",
+      end: "2026-09-30",
+    });
+    expect(resolvePresetRange("6m", "2026-01-10")).toEqual({
+      start: "2025-08-01",
+      end: "2026-01-31",
+    });
+  });
+
   it("shiftIsoDate atravessa fronteira de mês", () => {
     expect(shiftIsoDate("2026-09-01", -1)).toBe("2026-08-31");
     expect(shiftIsoDate("2026-09-01", 30)).toBe("2026-10-01");

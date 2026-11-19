@@ -86,6 +86,9 @@ function extractAdmin(service: SupabaseClient): AuthAdminLike | undefined {
  * paginando a Admin API. `getUserByEmail` não existe no supabase-js
  * via JSR no edge runtime — por isso o lookup usa `listUsers`.
  * Retorna `null` quando não existe ou quando o lookup falha.
+ *
+ * Observabilidade sem PII (débito ADR-005): os logs carregam só código/motivo
+ * técnico (`code`, `message` do provedor, `page`) — NUNCA o e-mail consultado.
  */
 async function findUserIdByEmail(
   admin: AuthAdminLike | undefined,
@@ -99,6 +102,7 @@ async function findUserIdByEmail(
       console.error("accept-invitation: listUsers failed", {
         code: (error as { code?: string }).code ?? "no-code",
         message: (error as { message?: string }).message ?? "no-message",
+        page,
       });
       return null;
     }

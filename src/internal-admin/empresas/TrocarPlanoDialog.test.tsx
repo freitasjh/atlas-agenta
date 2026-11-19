@@ -12,7 +12,7 @@ vi.mock("@/hooks/useSetPlan", async (importOriginal) => {
   return {
     ...actual,
     useTenantPlanUsage: () => ({
-      data: { plan: "clinica", active_professionals: 4, month_appointments: 200, month_key: "2026-11" },
+      data: { plan: "premium", active_professionals: 4, month_appointments: 200, month_key: "2026-11" },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -27,7 +27,7 @@ const TENANT: TenantListItem = {
   legal_name: "Alfa LTDA",
   document: null,
   owner_email: "a@a.com",
-  plan: "clinica",
+  plan: "premium",
   subscription_status: "ativo",
   trial_ends_at: null,
   timezone: "America/Sao_Paulo",

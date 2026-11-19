@@ -348,6 +348,89 @@ Deno.test("corpo inválido: 400 antes do gate, sem leitura de tenant", async () 
   deepStrictEqual(calls.rpc, []);
 });
 
+Deno.test("suspender sem motivo: 400 antes de ler tenant nem gravar (ADR-11)", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: SUPER_ADMIN,
+    tenant: { subscription_status: "ativo" },
+  });
+
+  const response = await call(handler, {
+    body: { action: "set_status", tenantId: TENANT_ID, status: "bloqueado" },
+  });
+
+  strictEqual(response.status, 400);
+  const body = (await response.json()) as { issues?: string[] };
+  strictEqual(body.issues?.includes("Informe o motivo da suspensão."), true);
+  deepStrictEqual(calls.tenantSelect, []);
+  deepStrictEqual(calls.rpc, []);
+});
+
+Deno.test("suspender com motivo em branco: 400 e nenhuma escrita", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: SUPER_ADMIN,
+    tenant: { subscription_status: "ativo" },
+  });
+
+  const response = await call(handler, {
+    body: {
+      action: "set_status",
+      tenantId: TENANT_ID,
+      status: "bloqueado",
+      reason: "   ",
+    },
+  });
+
+  strictEqual(response.status, 400);
+  deepStrictEqual(calls.tenantSelect, []);
+  deepStrictEqual(calls.rpc, []);
+});
+
+Deno.test("retomar (bloqueado -> ativo) sem motivo: 400 sem gravar", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: SUPER_ADMIN,
+    tenant: { subscription_status: "bloqueado" },
+  });
+
+  const response = await call(handler, {
+    body: { action: "set_status", tenantId: TENANT_ID, status: "ativo" },
+  });
+
+  strictEqual(response.status, 400);
+  deepStrictEqual(await response.json(), { error: "Informe o motivo da retomada." });
+  strictEqual(calls.tenantSelect.length, 1);
+  deepStrictEqual(calls.rpc, []);
+});
+
+Deno.test("retomar com motivo: 200 e grava o motivo na RPC", async () => {
+  const { handler, calls } = build({
+    user: { id: USER_ID, app_metadata: {} },
+    profile: SUPER_ADMIN,
+    tenant: { subscription_status: "bloqueado" },
+    rpc: { data: [{ old_status: "bloqueado", new_status: "ativo" }], error: null },
+  });
+
+  const response = await call(handler, {
+    body: {
+      action: "set_status",
+      tenantId: TENANT_ID,
+      status: "ativo",
+      reason: "pagamento confirmado",
+    },
+  });
+
+  strictEqual(response.status, 200);
+  deepStrictEqual(calls.rpc[0], {
+    name: "admin_set_subscription_status",
+    p_tenant_id: TENANT_ID,
+    p_new_status: "ativo",
+    p_changed_by: USER_ID,
+    p_reason: "pagamento confirmado",
+  });
+});
+
 Deno.test("método diferente de POST: 405 sem criar client", async () => {
   let created = 0;
   const { service } = fakeService({});

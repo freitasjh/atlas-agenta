@@ -11,7 +11,7 @@ import {
 describe("changePlanFormSchema", () => {
   it("motivo com 9 chars falha com mensagem pt-BR de mínimo", () => {
     const result = changePlanFormSchema.safeParse({
-      plan: "clinica",
+      plan: "premium",
       reason: "a".repeat(9),
     });
     expect(result.success).toBe(false);
@@ -24,7 +24,7 @@ describe("changePlanFormSchema", () => {
 
   it("motivo com 281 chars falha com mensagem pt-BR de máximo", () => {
     const result = changePlanFormSchema.safeParse({
-      plan: "clinica",
+      plan: "premium",
       reason: "a".repeat(281),
     });
     expect(result.success).toBe(false);
@@ -37,14 +37,14 @@ describe("changePlanFormSchema", () => {
 
   it("motivo exatamente 10 passa (após trim)", () => {
     const result = changePlanFormSchema.safeParse({
-      plan: "pro",
+      plan: "enterprise",
       reason: `  ${"a".repeat(10)}  `,
     });
     expect(result.success).toBe(true);
   });
 
   it("motivo ausente falha", () => {
-    const result = changePlanFormSchema.safeParse({ plan: "clinica" });
+    const result = changePlanFormSchema.safeParse({ plan: "premium" });
     expect(result.success).toBe(false);
   });
 
@@ -61,7 +61,7 @@ describe("changePlanFormSchema", () => {
 
   it("override default false quando ausente", () => {
     const result = changePlanFormSchema.safeParse({
-      plan: "individual",
+      plan: "starter",
       reason: "a".repeat(15),
     });
     expect(result.success).toBe(true);
@@ -75,8 +75,8 @@ describe("changePlanResponseSchema", () => {
       changePlanResponseSchema.safeParse({
         ok: true,
         tenant_id: "11111111-1111-1111-1111-111111111111",
-        old_plan: "individual",
-        new_plan: "clinica",
+        old_plan: "starter",
+        new_plan: "premium",
       }).success,
     ).toBe(true);
   });
@@ -86,8 +86,8 @@ describe("changePlanResponseSchema", () => {
       changePlanResponseSchema.safeParse({
         ok: true,
         tenant_id: "11111111-1111-1111-1111-111111111111",
-        old_plan: "enterprise",
-        new_plan: "clinica",
+        old_plan: "diamond",
+        new_plan: "premium",
       }).success,
     ).toBe(false);
   });
@@ -97,7 +97,7 @@ describe("tenantPlanUsageSchema", () => {
   it("uso válido passa", () => {
     expect(
       tenantPlanUsageSchema.safeParse({
-        plan: "clinica",
+        plan: "premium",
         active_professionals: 4,
         month_appointments: 200,
         month_key: "2026-11",
@@ -108,7 +108,7 @@ describe("tenantPlanUsageSchema", () => {
   it("contagem negativa falha", () => {
     expect(
       tenantPlanUsageSchema.safeParse({
-        plan: "individual",
+        plan: "starter",
         active_professionals: -1,
         month_appointments: 0,
         month_key: "2026-11",

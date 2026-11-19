@@ -13,7 +13,36 @@ export type SlotEmptyReason =
   | "folga"
   | "fora-vigencia"
   | "sem-grade"
-  | "sem-slots";
+  | "sem-slots"
+  | "recurso-ocupado";
+
+/** Turno do dia para agrupar slots (Manhã 05–12, Tarde 12–18, Noite 18–05). */
+export type SlotTurno = "manha" | "tarde" | "noite";
+
+export const SLOT_TURNO_LABEL: Record<SlotTurno, string> = {
+  manha: "Manhã",
+  tarde: "Tarde",
+  noite: "Noite",
+};
+
+/** Classifica um rótulo `HH:MM` no turno correspondente. */
+export function turnoOfLabel(label: string): SlotTurno {
+  const hour = Number(label.slice(0, 2));
+  if (hour >= 5 && hour < 12) return "manha";
+  if (hour >= 12 && hour < 18) return "tarde";
+  return "noite";
+}
+
+/** Agrupa slots por turno, na ordem Manhã → Tarde → Noite (só turnos com slots). */
+export function groupSlotsByTurno(
+  slots: AvailableSlot[],
+): { turno: SlotTurno; slots: AvailableSlot[] }[] {
+  const order: SlotTurno[] = ["manha", "tarde", "noite"];
+  return order.flatMap((turno) => {
+    const group = slots.filter((slot) => turnoOfLabel(slot.label) === turno);
+    return group.length > 0 ? [{ turno, slots: group }] : [];
+  });
+}
 
 interface SlotPickerProps {
   /** Slots já calculados por `useAvailableSlots` (ADR-05). */
@@ -38,6 +67,7 @@ const EMPTY_MESSAGE: Record<SlotEmptyReason, string> = {
   "fora-vigencia": "Fora do período de atendimento do profissional.",
   "sem-grade": "Este profissional ainda não tem grade de horários.",
   "sem-slots": "Nenhum horário livre para este serviço neste dia.",
+  "recurso-ocupado": "Recurso ocupado.",
 };
 
 /**
@@ -101,32 +131,39 @@ export function SlotPicker({
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Horários livres"
-      className="flex flex-wrap gap-2"
-    >
-      {slots.map((slot) => {
-        const selected = slot.label === value;
-        return (
-          <button
-            key={slot.startUtc}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onSelect(slot.label)}
-            className={cn(
-              "inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-medium tabular-nums transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              selected
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-input bg-background hover:bg-accent hover:text-accent-foreground",
-            )}
-          >
-            {slot.label}
-          </button>
-        );
-      })}
+    <div role="radiogroup" aria-label="Horários livres" className="space-y-4">
+      {groupSlotsByTurno(slots).map(({ turno, slots: turnoSlots }) => (
+        <div key={turno} role="group" aria-label={`Turno da ${SLOT_TURNO_LABEL[turno].toLowerCase()}`}>
+          <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground">
+            {SLOT_TURNO_LABEL[turno]}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {turnoSlots.map((slot) => {
+              const selected = slot.label === value;
+              return (
+                <button
+                  key={slot.startUtc}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={`${slot.label}, turno da ${SLOT_TURNO_LABEL[turno].toLowerCase()}`}
+                  onClick={() => onSelect(slot.label)}
+                  className={cn(
+                    "inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-md border px-3 text-sm font-medium tabular-nums transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    "motion-reduce:transition-none",
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-input bg-background hover:bg-accent hover:text-accent-foreground",
+                  )}
+                >
+                  {slot.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

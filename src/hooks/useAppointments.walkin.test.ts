@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appointmentRowSchema } from "@/hooks/useAppointments";
+import { appointmentRowSchema, APPOINTMENT_SELECT } from "@/hooks/useAppointments";
 
 /**
  * ADR-21 (PDV balcão 1R): `origin` + `customer_id` nullable.
@@ -52,5 +52,11 @@ describe("appointmentRowSchema — walk-in (ADR-21)", () => {
     void _origin;
     const parsed = appointmentRowSchema.parse(legado);
     expect(parsed.origin).toBe("agendado");
+  });
+});
+
+describe("APPOINTMENT_SELECT — vínculo de pacote (ADR-06 Fase 2)", () => {
+  it("inclui package_credit_id para a baixa não vir nula em prod", () => {
+    expect(APPOINTMENT_SELECT).toContain("package_credit_id");
   });
 });

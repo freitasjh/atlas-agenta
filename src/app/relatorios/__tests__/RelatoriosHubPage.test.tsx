@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +10,7 @@ import { RelatoriosHubPage } from "@/app/relatorios/RelatoriosHubPage";
 const mocks = vi.hoisted(() => ({
   canViewFinancials: true,
   canViewCommission: true,
+  isAdmin: false,
   payments: true as boolean | null,
   commission: true as boolean | null,
 }));
@@ -17,6 +19,7 @@ vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
     canViewFinancials: mocks.canViewFinancials,
     canViewCommission: mocks.canViewCommission,
+    isAdmin: mocks.isAdmin,
   }),
 }));
 
@@ -27,15 +30,35 @@ vi.mock("@/hooks/useSegmentFeatures", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({ tenant: { timezone: "America/Sao_Paulo" } }),
+}));
+
+vi.mock("@/hooks/useRetentionReports", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useRetentionReports")>();
+  return {
+    ...actual,
+    useRetentionSummary: () => ({ isLoading: false, isError: false, data: undefined }),
+    useCohortHighlight: () => ({ isLoading: false, isError: false, data: undefined }),
+    useWhatsappResponseRate: () => ({ isLoading: false, isError: false, data: undefined }),
+  };
+});
+
 function renderHub() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
   return render(
-    createElement(MemoryRouter, null, createElement(RelatoriosHubPage)),
+    createElement(MemoryRouter, null, createElement(wrapper, null, createElement(RelatoriosHubPage))),
   );
 }
 
 beforeEach(() => {
   mocks.canViewFinancials = true;
   mocks.canViewCommission = true;
+  mocks.isAdmin = false;
   mocks.payments = true;
   mocks.commission = true;
 });

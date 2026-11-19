@@ -15,7 +15,7 @@ import {
 function row(partial: Partial<QuotaHotRow> & { tenant_id: string }): QuotaHotRow {
   return {
     trade_name: null,
-    plan: "individual",
+    plan: "starter",
     profs: 0,
     prof_limit: 1,
     appts: 0,
@@ -45,7 +45,7 @@ describe("currentTelemetryMonth", () => {
 
 describe("isPlanFilter", () => {
   it("aceita slugs e todos; rejeita livre", () => {
-    expect(isPlanFilter("individual")).toBe(true);
+    expect(isPlanFilter("starter")).toBe(true);
     expect(isPlanFilter("todos")).toBe(true);
     expect(isPlanFilter("diamond")).toBe(false);
   });

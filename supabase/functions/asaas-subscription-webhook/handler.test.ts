@@ -10,6 +10,14 @@ function baseService(overrides: any = {}) {
   overrides.finished ??= [];
   const svc: any = {
     auth: { getUser: async () => ({ data: { user: null }, error: null }) },
+    rpc: async (fn: string, _params: unknown) => {
+      overrides.rpcCalls ??= [];
+      overrides.rpcCalls.push(fn);
+      if (fn === "apply_subscription_payment") {
+        return { data: { applied: true }, error: overrides.rpcErr ?? null };
+      }
+      return { data: 0, error: null };
+    },
     from: (table: string) => {
       if (table === "subscription_charges") return {
         select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: overrides.charge ?? { id: "sc1", tenant_id: "t1", status: "pendente" }, error: null }) }) }),
@@ -101,4 +109,28 @@ Deno.test("evento pendente de entrega anterior é retomado (takeover)", async ()
   const r = await call(h);
   strictEqual(r.status, 200);
   strictEqual(state.finished.length, 1);
+});
+
+Deno.test("liquidacao via RPC aplica plano (upgrade imediato)", async () => {
+  const state: any = {};
+  const h = build(state);
+  const r = await call(h);
+  strictEqual(r.status, 200);
+  strictEqual(state.rpcCalls.includes("apply_subscription_payment"), true);
+});
+
+Deno.test("falha na liquidacao 500 (processed_at fica nulo p/ retry)", async () => {
+  const state: any = { rpcErr: { message: "boom" } };
+  const h = build(state);
+  const r = await call(h);
+  strictEqual(r.status, 500);
+  strictEqual(state.finished.length, 0);
+});
+
+Deno.test("cobranca ja paga nao reliquida (no-op idempotente)", async () => {
+  const state: any = { charge: { id: "sc1", tenant_id: "t1", status: "pago" }, rpcCalls: [] };
+  const h = build(state);
+  const r = await call(h);
+  strictEqual(r.status, 200);
+  strictEqual(state.rpcCalls.includes("apply_subscription_payment"), false);
 });

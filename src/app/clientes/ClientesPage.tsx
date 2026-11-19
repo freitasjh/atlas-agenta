@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, MessageCircle, Pencil, Plus } from "lucide-react";
+import { Loader2, MessageCircle, Package, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -27,6 +27,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { CustomerFormDialog } from "@/app/clientes/CustomerFormDialog";
+import { CustomerCrmFilters } from "@/app/clientes/CustomerCrmFilters";
+import { CustomerDrawer } from "@/app/clientes/CustomerDrawer";
+import { crmMessages } from "@/app/clientes/crm-messages";
+import { filterCrmCustomers, type CrmCustomerRow } from "@/app/clientes/crm-model";
+import { SellPackageDialog } from "@/app/config/pacotes/SellPackageDialog";
 import { useCustomers, useDeactivateCustomer } from "@/hooks/useCustomers";
 import { usePermissions } from "@/hooks/usePermissions";
 import { formatPhoneForDisplay } from "@/lib/phone";
@@ -138,9 +143,12 @@ export function ClientesPage() {
   const [customerToDeactivate, setCustomerToDeactivate] =
     useState<Customer | null>(null);
   const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
+  const [packageTarget, setPackageTarget] = useState<Customer | null>(null);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 150);
+  const [fichaCustomer, setFichaCustomer] = useState<Customer | null>(null);
+  const [crmFilter, setCrmFilter] = useState({ tag: "", segment: "", minNoShow: 0 });
 
   function openCreate() {
     setEditingCustomer(null);
@@ -168,18 +176,49 @@ export function ClientesPage() {
 
   const customers = customersQuery.data ?? [];
 
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const customer of customers) {
+      const tags = (customer as unknown as { tags?: unknown }).tags;
+      if (Array.isArray(tags)) {
+        for (const tag of tags) {
+          if (typeof tag === "string" && tag.trim() !== "") set.add(tag);
+        }
+      }
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [customers]);
+
   const filteredCustomers = useMemo(() => {
+    // Filtros CRM (RF-29) centralizados em `filterCrmCustomers`: tag/segmento/no-show.
+    // Sem contagem de no-show no payload da lista, `noShowCount` cai para 0 —
+    // o caminho servidor é o RPC `customer_filter` (ADR-08).
+    const crmRows: CrmCustomerRow[] = customers.map((customer) => {
+      const raw = customer as unknown as { tags?: unknown; segment?: unknown };
+      const tags = Array.isArray(raw.tags)
+        ? raw.tags.filter((tag): tag is string => typeof tag === "string")
+        : [];
+      return {
+        id: customer.id,
+        name: customer.name,
+        tags,
+        segment: typeof raw.segment === "string" ? raw.segment : null,
+        noShowCount: 0,
+      };
+    });
+    const allowedIds = new Set(filterCrmCustomers(crmRows, crmFilter).map((row) => row.id));
     const term = normalizeForSearch(debouncedSearch.trim());
-    if (term === "") return customers;
-    const termDigits = term.replace(/\D/g, "");
     return customers.filter((customer) => {
-      const nameMatch = normalizeForSearch(customer.name).includes(term);
+      if (!allowedIds.has(customer.id)) return false;
+      const nameMatch = term === "" || normalizeForSearch(customer.name).includes(term);
+      const termDigits = term.replace(/\D/g, "");
       const phoneMatch =
-        termDigits !== "" &&
-        customer.phone.replace(/\D/g, "").includes(termDigits);
+        term === "" ||
+        nameMatch ||
+        (termDigits !== "" && customer.phone.replace(/\D/g, "").includes(termDigits));
       return nameMatch || phoneMatch;
     });
-  }, [customers, debouncedSearch]);
+  }, [customers, debouncedSearch, crmFilter]);
 
   const hasCustomers = customers.length > 0;
 
@@ -247,6 +286,7 @@ export function ClientesPage() {
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
+          <CustomerCrmFilters value={crmFilter} onChange={setCrmFilter} tags={availableTags} />
 
           {filteredCustomers.length === 0 ? (
             <StatePanel
@@ -255,8 +295,8 @@ export function ClientesPage() {
             />
           ) : (
             <>
-              {/* Desktop: tabela */}
-              <div className="hidden rounded-lg border border-border md:block">
+              {/* Desktop: tabela com rolagem horizontal em telas estreitas */}
+              <div className="hidden overflow-x-auto rounded-lg border border-border md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -285,6 +325,13 @@ export function ClientesPage() {
                         {canManageCustomers || canSendWhatsAppMessage ? (
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setFichaCustomer(customer)}
+                              >
+                                {crmMessages.fichaAcao}
+                              </Button>
                               {canSendWhatsAppMessage ? (
                                 <SendMessageButton
                                   customer={customer}
@@ -293,6 +340,14 @@ export function ClientesPage() {
                               ) : null}
                               {canManageCustomers ? (
                                 <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setPackageTarget(customer)}
+                                  >
+                                    <Package aria-hidden="true" />
+                                    Pacote
+                                  </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -346,6 +401,13 @@ export function ClientesPage() {
                     </div>
                     {canManageCustomers || canSendWhatsAppMessage ? (
                       <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setFichaCustomer(customer)}
+                        >
+                          {crmMessages.fichaAcao}
+                        </Button>
                         {canSendWhatsAppMessage ? (
                           <SendMessageButton
                             customer={customer}
@@ -354,6 +416,14 @@ export function ClientesPage() {
                         ) : null}
                         {canManageCustomers ? (
                           <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setPackageTarget(customer)}
+                            >
+                              <Package aria-hidden="true" />
+                              Pacote
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -380,6 +450,14 @@ export function ClientesPage() {
           )}
         </>
       )}
+
+      <CustomerDrawer
+        open={fichaCustomer !== null}
+        onOpenChange={(open) => {
+          if (!open) setFichaCustomer(null);
+        }}
+        customer={fichaCustomer}
+      />
 
       {canManageCustomers ? (
         <CustomerFormDialog
@@ -440,6 +518,16 @@ export function ClientesPage() {
           customerId={messageTarget.id}
           customerName={messageTarget.name}
           whatsappOptIn={messageTarget.whatsapp_opt_in}
+        />
+      ) : null}
+
+      {canManageCustomers && packageTarget ? (
+        <SellPackageDialog
+          open={!!packageTarget}
+          onOpenChange={(open) => {
+            if (!open) setPackageTarget(null);
+          }}
+          defaultCustomerId={packageTarget.id}
         />
       ) : null}
     </div>

@@ -1,37 +1,35 @@
 /**
- * Planos do Atlas Agenda — **fonte única de verdade** apresentacional (ADR-13).
+ * Planos do Atlas Agenda — ladder neutro (T1.0b).
  *
- * Usado por `/precos` (gerar o CTA com o slug do plano) e por `/cadastro`
- * (validar o `?plano` e exibir o rótulo da intenção escolhida). O plano é
- * **conceito de marketing nesta fase**: não é persistido, não alimenta query
- * nem escrita, e o tenant continua nascendo em `trial`. Billing/checkout e o
- * uso efetivo da coluna `tenants.plan` são Fase 3.
+ * Slugs: `free` / `starter` / `premium` / `enterprise` (rename de
+ * `individual`→`starter`, `clinica`→`premium`, `pro`→`enterprise`; `free`
+ * atribuível com 1 prof / 30 agend/mês).
+ *
+ * Fonte canônica: tabela `public.plans`, lida pelo frontend via RPC
+ * `get_plans()` (hook `usePlansCatalog`). Este módulo guarda a camada
+ * **apresentacional** (rótulo pt-BR, público, destaques) + um fallback
+ * estático com os mesmos preços/quotas da tabela — se a RPC falhar ou voltar
+ * vazia, a UI continua operando com o fallback, e o teste de paridade
+ * (`plans.parity.test.ts`) impede drift silencioso entre os dois.
  *
  * `?plano` é a **única superfície de entrada não confiável** da tarefa:
  * `parsePlanSlug` é o ponto único de validação contra o enum conhecido. O valor
  * cru nunca deve ser interpolado no DOM — só o rótulo pt-BR obtido por lookup.
  *
  * Decisão de fronteira: `PlanSlug` não vive em `src/types/domain.ts` (reservado
- * a enums de domínio persistidos); plano não é persistido nesta fase.
- *
- * **Preço**: `price_cents` é lido de `supabase/functions/_shared/plans.json`,
- * a fonte única consumida também pela Edge Function `create-subscription-charge`
- * (via `supabase/functions/_shared/plans.ts`). O JSON vive dentro do bundle das
- * functions de propósito (ADR-20): fora de `supabase/functions`, um caminho
- * relativo quebra o `deno check`/deploy da função.
- * O JSON guarda só slug → centavos; rótulo, público e destaques continuam
- * apresentacionais e vivem aqui.
+ * a enums de domínio persistidos); plano exibido aqui é apresentação + fallback.
  */
-import planPrices from "../../supabase/functions/_shared/plans.json";
 
-/** Slugs em ASCII usados na URL (`?plano=...`). `clinica` sem acento. */
-export const PLAN_SLUGS = ["individual", "clinica", "pro"] as const;
+import { z } from "zod";
+
+/** Slugs em ASCII usados na URL (`?plano=...`) e no banco (`tenants.plan`). */
+export const PLAN_SLUGS = ["free", "starter", "premium", "enterprise"] as const;
 
 export type PlanSlug = (typeof PLAN_SLUGS)[number];
 
 export interface Plan {
   slug: PlanSlug;
-  /** Rótulo exibido em pt-BR (pode ter acento: `Clínica`). */
+  /** Rótulo exibido em pt-BR. */
   nome: string;
   /** Público-alvo do plano, em pt-BR. */
   publico: string;
@@ -40,52 +38,63 @@ export interface Plan {
   /** `true` apenas no plano recomendado (ancoragem de pricing). */
   recomendado?: boolean;
   /**
-   * Preço mensal em **centavos inteiros** (constante de marketing, não coluna
-   * de Postgres). Segue a convenção `*_cents` por consistência conceitual;
-   * não é persistido nem acopla a billing/checkout (Fase 3).
+   * Preço mensal em **centavos inteiros** (fallback apresentacional; o valor
+   * cobrado vem da tabela via Edge). Segue a convenção `*_cents` por
+   * consistência conceitual; não é persistido nem acopla billing/checkout.
    */
   price_cents: number;
 }
 
 /**
- * Catálogo na ordem Individual → Clínica → Pro. Conteúdo reaproveitado do
- * `const PLANOS` que vivia em `src/marketing/pages.tsx`. Só `clinica` é
- * recomendado.
+ * Catálogo apresentacional (fallback da RPC). Preços/quotas espelham o seed da
+ * migration de rename (`20261115000000_plan_rename_ladder.sql`) — paridade
+ * travada por teste.
  */
 export const PLANS: readonly Plan[] = [
   {
-    slug: "individual",
-    nome: "Individual",
+    slug: "free",
+    nome: "Free",
+    publico: "Experimentação",
+    destaques: [
+      "1 profissional",
+      "Até 30 agendamentos por mês",
+      "Régua de mensagens padrão",
+    ],
+    price_cents: 0,
+  },
+  {
+    slug: "starter",
+    nome: "Starter",
     publico: "Autônomo",
     destaques: [
       "1 profissional",
       "Até 150 agendamentos por mês",
       "Régua de mensagens padrão",
     ],
-    price_cents: planPrices.individual,
+    price_cents: 5900,
   },
   {
-    slug: "clinica",
-    nome: "Clínica",
-    publico: "Equipe",
+    slug: "premium",
+    nome: "Premium",
+    publico: "Barbearia, salão e estética",
     destaques: [
       "Até 5 profissionais",
       "Agendamentos ilimitados",
       "Mensagens personalizadas e taxa de reserva configurável",
     ],
     recomendado: true,
-    price_cents: planPrices.clinica,
+    price_cents: 14900,
   },
   {
-    slug: "pro",
-    nome: "Pro",
+    slug: "enterprise",
+    nome: "Enterprise",
     publico: "Multi-profissionais",
     destaques: [
       "Mais de 5 profissionais (adicional por extra)",
       "Relatórios",
       "Suporte prioritário",
     ],
-    price_cents: planPrices.pro,
+    price_cents: 25900,
   },
 ] as const;
 
@@ -111,7 +120,7 @@ export function getPlan(slug: PlanSlug): Plan {
 }
 
 /**
- * Formatador BRL **curto** (sem centavos) dedicado ao preço de marketing.
+ * Formador BRL **curto** (sem centavos) dedicado ao preço de marketing.
  * Separado do `formatCentsToBRL` de `money.ts` de propósito: aquele é a borda
  * de dinheiro operacional do domínio (sempre 2 casas, para serviço/cobrança),
  * enquanto o preço de plano é "redondo" por decisão de produto.
@@ -125,4 +134,38 @@ const BRL_WHOLE = new Intl.NumberFormat("pt-BR", {
 /** Formata o preço mensal do plano em BRL sem centavos (ex.: `R$ 59`). */
 export function formatPlanPrice(plan: Plan): string {
   return BRL_WHOLE.format(plan.price_cents / 100);
+}
+
+// ============================================================================
+// Consumo via RPC `get_plans()` (SSoT `public.plans`).
+// ============================================================================
+
+/** Linha do catálogo devolvida pela RPC `get_plans()` (dado não confiável). */
+export const planCatalogRowSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  price_cents: z.number().int().nonnegative(),
+  prof_limit: z.number().int().nullable(),
+  appt_limit: z.number().int().nullable(),
+  features: z.unknown(),
+  active: z.boolean(),
+  sort_order: z.number().int(),
+});
+
+export type PlanCatalogRow = z.infer<typeof planCatalogRowSchema>;
+
+/**
+ * Mescla as linhas da RPC sobre a camada apresentacional: preço pode vir da
+ * tabela (fonte canônica); rótulo/público/destaques continuam estáticos.
+ * Slugs desconhecidos são ignorados; slugs sem linha na RPC usam o fallback.
+ * `null` (RPC falhou/vazia) devolve o fallback integral.
+ */
+export function mergeCatalogWithFallback(rows: PlanCatalogRow[] | null): Plan[] {
+  if (!rows || rows.length === 0) return [...PLANS];
+  const bySlug = new Map(rows.map((row) => [row.slug, row]));
+  return PLANS.map((plan) => {
+    const row = bySlug.get(plan.slug);
+    if (!row) return plan;
+    return { ...plan, price_cents: row.price_cents };
+  });
 }

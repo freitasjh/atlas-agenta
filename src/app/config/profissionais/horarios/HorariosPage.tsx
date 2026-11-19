@@ -22,7 +22,7 @@ import { useScheduleOverrides } from "@/hooks/useScheduleOverrides";
 import { useAppointmentActivityRange } from "@/hooks/useAppointments";
 import { useTenant } from "@/hooks/useTenant";
 import { tenantDayOfUtc, todayInTimeZone } from "@/lib/datetime";
-import { isActiveAppointmentStatus } from "@/lib/scheduling-status";
+import { isCountedAppointmentStatus } from "@/lib/scheduling-status";
 
 import { WeekScheduleForm } from "@/app/config/profissionais/horarios/WeekScheduleForm";
 import { ScheduleValidityForm } from "@/app/config/profissionais/horarios/ScheduleValidityForm";
@@ -99,8 +99,8 @@ export function HorariosPage() {
   const [exceptionDate, setExceptionDate] = React.useState<string | null>(null);
   const [exceptionOpen, setExceptionOpen] = React.useState(false);
 
-  // Contagem de appointments ativos do mês (escopada por profissional+mês,
-  // nunca todo o tenant) para o calendário mensal — colunas leves (A6).
+  // Contagem de agendamentos do mês (escopada por profissional+mês, nunca todo
+  // o tenant) para o calendário mensal — colunas leves (A6).
   const monthStart = `${month}-01`;
   const monthEnd = (() => {
     const [y, m] = month.split("-").map(Number);
@@ -285,7 +285,11 @@ export function HorariosPage() {
             appointmentCounts={(() => {
               const counts = new Map<string, number>();
               for (const appointment of monthAppointmentsQuery.data ?? []) {
-                if (!isActiveAppointmentStatus(appointment.status)) continue;
+                // Badge conta todo agendamento do dia (inclusive `concluido`,
+                // que é histórico mas não pode sumir do calendário). Já
+                // `isActiveAppointmentStatus` responde "ocupa o horário" e
+                // excluiria o concluído — errado para a contagem.
+                if (!isCountedAppointmentStatus(appointment.status)) continue;
                 // Dia de parede no fuso do tenant (A6) — o slice UTC erra de
                 // dia nas horas de madrugada (02:30 UTC = 23:30 BRT prévio).
                 const day = tenantDayOfUtc(appointment.starts_at, timeZone);

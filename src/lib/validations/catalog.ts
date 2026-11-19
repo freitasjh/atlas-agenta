@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { depositConfigSchema, EMPTY_DEPOSIT_CONFIG } from "@/lib/validations/deposit";
+
 /**
  * Schemas de validação do cadastro operacional (react-hook-form + resolver zod).
  *
@@ -20,14 +22,43 @@ export const serviceSchema = z.object({
     .number({ invalid_type_error: "Informe a duração em minutos." })
     .int("A duração deve ser um número inteiro de minutos.")
     .positive("A duração deve ser maior que zero."),
+  processingMinutes: z
+    .number({ invalid_type_error: "Informe o tempo de processamento." })
+    .int("O tempo de processamento deve ser um número inteiro de minutos.")
+    .min(0, "O tempo de processamento não pode ser negativo.")
+    .default(0),
   priceCents: z
     .number({ invalid_type_error: "Informe o preço." })
     .int("O preço deve ser um valor inteiro em centavos.")
     .min(0, "O preço não pode ser negativo."),
+  backbarCostCents: z
+    .number({ invalid_type_error: "Informe o custo de backbar." })
+    .int("O custo de backbar deve ser um valor inteiro em centavos.")
+    .min(0, "O custo de backbar não pode ser negativo.")
+    .default(0),
   active: z.boolean(),
+  /**
+   * Depósito/sinal (Fase 4, ADR-12). Opcional para não quebrar o cadastro
+   * existente; `useServices` persiste nas colunas `deposit_*` (trava real no
+   * banco, ADR-02). Sem entitlement o form faz o strip antes de enviar.
+   */
+  deposit: depositConfigSchema.optional(),
 });
 
 export type ServiceInput = z.infer<typeof serviceSchema>;
+
+/**
+ * Strip de entitlement (ADR-12 §4): sem `deposito` liberado no plano, o submit
+ * nunca carrega config editável — força o bloco desabilitado (zero request
+ * sensível). Com entitlement, o input passa intacto.
+ */
+export function applyDepositEntitlement(
+  input: ServiceInput,
+  entitled: boolean,
+): ServiceInput {
+  if (entitled) return input;
+  return { ...input, deposit: { ...EMPTY_DEPOSIT_CONFIG } };
+}
 
 /**
  * `combos` (pacotes do salão — ADR-04 Fase 1b). Espelha o CHECK do banco

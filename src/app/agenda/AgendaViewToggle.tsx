@@ -1,11 +1,11 @@
 import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, CalendarRange, List } from "lucide-react";
+import { CalendarDays, CalendarRange, Grid3X3, List } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 /** Visões disponíveis da agenda. */
-export type AgendaView = "lista" | "dia" | "semana";
+export type AgendaView = "lista" | "dia" | "semana" | "recurso";
 
 /** Chave de preferência por usuário (localStorage, nunca config de tenant). */
 const STORAGE_KEY = "atlas:agenda-view";
@@ -14,10 +14,11 @@ const OPTIONS: { value: AgendaView; label: string; icon: typeof List }[] = [
   { value: "lista", label: "Lista", icon: List },
   { value: "dia", label: "Dia", icon: CalendarDays },
   { value: "semana", label: "Semana", icon: CalendarRange },
+  { value: "recurso", label: "Por recurso", icon: Grid3X3 },
 ];
 
 function isAgendaView(value: unknown): value is AgendaView {
-  return value === "lista" || value === "dia" || value === "semana";
+  return value === "lista" || value === "dia" || value === "semana" || value === "recurso";
 }
 
 /**

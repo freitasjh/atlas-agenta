@@ -17,8 +17,8 @@ import {
 const VALID_ROW = {
   charge_id: "11111111-1111-4111-8111-111111111111",
   tenant_id: "22222222-2222-4222-8222-222222222222",
-  charge_plan: "pro",
-  current_plan: "individual",
+  charge_plan: "enterprise",
+  current_plan: "starter",
   amount_cents: 25900,
   paid_at: "2026-11-01T12:00:00+00",
 };
@@ -45,7 +45,7 @@ describe("planDivergenceListSchema", () => {
 
   it("recusa linha com plano fora do enum (dado não confiável)", () => {
     expect(() =>
-      planDivergenceListSchema.parse([{ ...VALID_ROW, current_plan: "enterprise" }]),
+      planDivergenceListSchema.parse([{ ...VALID_ROW, current_plan: "diamond" }]),
     ).toThrow();
   });
 

@@ -1,0 +1,70 @@
+{
+  "adrs": [
+    {
+      "depends_on": null,
+      "file": "adr-01-nucleo-dados.md",
+      "id": "ADR-01",
+      "scope": "E1 lógica; base E4",
+      "status": "approved",
+      "title": "Núcleo de dados da agenda (selectors + máscara RBAC)"
+    },
+    {
+      "depends_on": "ADR-01",
+      "file": "adr-02-resumo-filtros.md",
+      "id": "ADR-02",
+      "scope": "E1 UI + E2",
+      "status": "approved",
+      "title": "ResumoDoDia + filtros (chips + popover)"
+    },
+    {
+      "depends_on": "ADR-02",
+      "file": "adr-03-dia-dnd-quick.md",
+      "id": "ADR-03",
+      "scope": "E3 core (Dia + DnD + quick + duplicar)",
+      "status": "approved",
+      "title": "Dia 30min + DnD intra-dia + quick actions + duplicar"
+    },
+    {
+      "depends_on": "ADR-03",
+      "file": "adr-04-lote.md",
+      "id": "ADR-04",
+      "scope": "E3 lote (F4)",
+      "status": "approved",
+      "title": "Lote sem endpoint batch (N chamadas + undo 5s)"
+    },
+    {
+      "depends_on": "ADR-01",
+      "file": "adr-05-semana-ocupacao.md",
+      "id": "ADR-05",
+      "scope": "E4",
+      "status": "approved",
+      "title": "Semana com ocupação"
+    },
+    {
+      "depends_on": "ADR-03",
+      "file": "adr-06-drawer-wizard.md",
+      "id": "ADR-06",
+      "scope": "E5",
+      "status": "approved",
+      "title": "Drawer + abas + wizard + SlotPicker por turnos"
+    },
+    {
+      "depends_on": "ADR-02",
+      "file": "adr-07-gating-consumo.md",
+      "id": "ADR-07",
+      "scope": "E6 + E7",
+      "status": "approved",
+      "title": "Gating T1.1 leitura + consumo T2"
+    },
+    {
+      "depends_on": "ADR-07",
+      "file": "adr-08-mobile-a11y.md",
+      "id": "ADR-08",
+      "scope": "E8 (portão final)",
+      "status": "approved",
+      "title": "Mobile + a11y AA (auditoria final)"
+    }
+  ],
+  "prd": "roadmap-fase1/agenda-redesign",
+  "ux_spec": "UX-SPEC.md no mesmo dir"
+}

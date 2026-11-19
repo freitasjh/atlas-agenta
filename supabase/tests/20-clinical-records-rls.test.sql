@@ -9,8 +9,10 @@
 --   tenant B não lê, não registra e não corrige no tenant A (sentido inverso);
 --   profissional lê e registra só no próprio atendimento; não lê nem registra no de outro
 --   profissional do mesmo cliente; profissional sem profile_id não lê nem registra; recepção e
---   super_admin não leem nem registram; anon não lê; status bloqueados recusam insert; created_by
---   e tenant_id forjados são recusados; created_at forjado é recusado; tenant bloqueado e cancelado
+--   super_admin não leem nem registram; anon não lê; status finais sem cuidado
+--   (cancelado, nao_compareceu) recusam insert; pendente/confirmado/em_atendimento/concluido
+--   aceitam (v1.4 RF-01: ficha no fluxo natural, agendamento nasce pendente);
+--   created_by e tenant_id forjados são recusados; created_at forjado é recusado; tenant bloqueado e cancelado
 --   recusam insert; tenant ativo e trial aceitam insert.
 
 create extension if not exists pgtap with schema extensions;
@@ -52,7 +54,7 @@ update profiles set role = 'super_admin', tenant_id = null
  where id = '10000000-0000-4000-8000-000000000007';
 
 -- Tenants: clínica e ativa (o padrão do harness é trial; a assinatura muda só nos testes do fim).
-update tenants set segment = 'clinica', plan = 'clinica', subscription_status = 'ativo'
+update tenants set segment = 'clinica', plan = 'premium', subscription_status = 'ativo'
  where id in ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 
 -- Profissionais: 1 e 2 vinculados (profile_id); 3 sem vínculo; PB do tenant B.
@@ -374,29 +376,25 @@ select is(
   'controle: profissional recebe a mesma resposta para id inexistente e para registro alheio'
 );
 
--- 9 a 12. Atendimentos pendente, confirmado, cancelado e nao_compareceu recusam insert (404 a 407).
-select is(
-  pg_temp.rls_state(
-    $sql$
-      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
-      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
-              'a4444444-4444-4444-8444-444444444404', 'Atendimento pendente', '10000000-0000-4000-8000-000000000002')
-    $sql$
-  ),
-  '42501',
-  'atendimento pendente recusa registro'
+-- 9 a 12. v1.4 RF-01: pendente e confirmado ACEITAM registro (fluxo natural da
+-- anamnese: o agendamento nasce pendente e a ficha vem antes de iniciar o atendimento);
+-- cancelado e nao_compareceu seguem recusando (sem cuidado, sem ficha).
+select lives_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444404', 'Registro em pendente (v1.4 RF-01)', '10000000-0000-4000-8000-000000000002')
+  $sql$,
+  'atendimento pendente aceita registro'
 );
 
-select is(
-  pg_temp.rls_state(
-    $sql$
-      insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
-      values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
-              'a4444444-4444-4444-8444-444444444405', 'Atendimento confirmado', '10000000-0000-4000-8000-000000000002')
-    $sql$
-  ),
-  '42501',
-  'atendimento confirmado recusa registro'
+select lives_ok(
+  $sql$
+    insert into clinical_records (tenant_id, customer_id, appointment_id, clinical_notes, created_by)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3333333-3333-4333-8333-333333333331',
+            'a4444444-4444-4444-8444-444444444405', 'Registro em confirmado (v1.4 RF-01)', '10000000-0000-4000-8000-000000000002')
+  $sql$,
+  'atendimento confirmado aceita registro'
 );
 
 select is(
@@ -572,7 +570,10 @@ select is(
 -- Assinatura (critério 10 e 11). Fase final: muda o status do tenant A como owner.
 -- ============================================================================
 
--- 24. Tenant bloqueado: admin não registra.
+-- 24. Tenant bloqueado: admin não registra. Limpa as claims da sessão anterior:
+-- o guard de colunas privilegiadas barra `authenticated`, e `reset role` sozinho
+-- não limpa `request.jwt.claims` (v1.4: usa o helper sancionado do harness).
+select tests.clear_authentication();
 update tenants set subscription_status = 'bloqueado' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 select tests.authenticate_as('10000000-0000-4000-8000-000000000001', 'authenticated');
 select is(
@@ -589,6 +590,7 @@ select is(
 
 -- 25. Tenant cancelado: admin não registra.
 reset role;
+select tests.clear_authentication();
 update tenants set subscription_status = 'cancelado' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 select tests.authenticate_as('10000000-0000-4000-8000-000000000001', 'authenticated');
 select is(
@@ -605,6 +607,7 @@ select is(
 
 -- 26. Tenant trial aceita registro (o trial é assinatura válida para a ficha).
 reset role;
+select tests.clear_authentication();
 update tenants set subscription_status = 'trial' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 select tests.authenticate_as('10000000-0000-4000-8000-000000000001', 'authenticated');
 select lives_ok(

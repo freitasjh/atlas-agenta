@@ -20,7 +20,7 @@ function tenant(partial: Partial<TenantListItem>): TenantListItem {
     legal_name: partial.legal_name ?? "Legal",
     document: null,
     owner_email: "a@b.com",
-    plan: partial.plan ?? "individual",
+    plan: partial.plan ?? "starter",
     subscription_status: partial.subscription_status ?? "trial",
     trial_ends_at: partial.trial_ends_at ?? null,
     timezone: "America/Sao_Paulo",
@@ -63,8 +63,8 @@ describe("filterUsageTenantsByPlan", () => {
     { tenant_id: "2", trade_name: "B", appointments: 2, no_show: 1, whatsapp: 0 },
   ];
   const tenants = [
-    tenant({ id: "1", plan: "individual" }),
-    tenant({ id: "2", plan: "pro" }),
+    tenant({ id: "1", plan: "starter" }),
+    tenant({ id: "2", plan: "enterprise" }),
   ];
 
   it("todos returns all", () => {
@@ -72,7 +72,7 @@ describe("filterUsageTenantsByPlan", () => {
   });
 
   it("filters by plan", () => {
-    const out = filterUsageTenantsByPlan(rows, tenants, "pro");
+    const out = filterUsageTenantsByPlan(rows, tenants, "enterprise");
     expect(out).toHaveLength(1);
     expect(out[0].tenant_id).toBe("2");
   });
@@ -89,10 +89,10 @@ describe("filterUsageTenantsByPlan", () => {
 
   it("filters by status and plan", () => {
     const tenantsMixed = [
-      tenant({ id: "1", plan: "individual", subscription_status: "ativo" }),
-      tenant({ id: "2", plan: "pro", subscription_status: "cancelado" }),
+      tenant({ id: "1", plan: "starter", subscription_status: "ativo" }),
+      tenant({ id: "2", plan: "enterprise", subscription_status: "cancelado" }),
     ];
-    const out = filterUsageTenantsByStatusAndPlan(rows, tenantsMixed, "cancelado", "pro");
+    const out = filterUsageTenantsByStatusAndPlan(rows, tenantsMixed, "cancelado", "enterprise");
     expect(out).toHaveLength(1);
     expect(out[0].tenant_id).toBe("2");
   });

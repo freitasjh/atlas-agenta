@@ -33,6 +33,10 @@ export function parseBRLToCents(input: string): number | null {
   }
   // Sem vírgula, o ponto (se houver) é tratado como decimal.
 
+  // Sem nenhum dígito, a entrada não representa um número (ex.: "abc" vira
+  // "" após a limpeza — `Number("")` seria 0, mascarando lixo como R$ 0,00).
+  if (!/\d/.test(normalized)) return null;
+
   const reais = Number(normalized);
   if (!Number.isFinite(reais)) return null;
 

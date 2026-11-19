@@ -5,10 +5,16 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgendaPage } from "@/app/agenda/AgendaPage";
-import { paymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
+
+// ADR-12: fiação do depósito (charge real via Edge). Sem provider nestes
+// testes, o hook é mockado (retorna nulo = drawer na dica).
+vi.mock("@/hooks/useDepositCharge", () => ({
+  useDepositCharge: () => ({ data: null, refetch: () => Promise.resolve({}) }),
+}));
 
 const mocks = vi.hoisted(() => ({
   payments: true as boolean | null,
+  validCredit: false as boolean,
   flags: {
     statusById: new Map<string, string>([
       ["ap-1", "sem_pagamento"],
@@ -20,6 +26,10 @@ const mocks = vi.hoisted(() => ({
   },
   changeStatus: vi.fn(),
   appointments: [] as unknown[],
+}));
+
+vi.mock("@/hooks/useValidPackageCredit", () => ({
+  hasValidPackageCredit: () => Promise.resolve(mocks.validCredit),
 }));
 
 vi.mock("@/hooks/useAppointments", () => ({
@@ -40,6 +50,7 @@ vi.mock("@/hooks/useAppointments", () => ({
     mutateAsync: mocks.changeStatus,
     isPending: false,
   }),
+  useUpdateAppointment: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("@/hooks/useProfessionals", () => ({
   useProfessionals: () => ({ data: [], isLoading: false, isError: false }),
@@ -47,8 +58,12 @@ vi.mock("@/hooks/useProfessionals", () => ({
 vi.mock("@/hooks/useServices", () => ({
   useServices: () => ({ data: [], isLoading: false, isError: false }),
 }));
+vi.mock("@/hooks/useResources", () => ({
+  useResources: () => ({ data: [], isLoading: false, isError: false }),
+}));
 vi.mock("@/hooks/useWorkingHours", () => ({
   useWorkingHours: () => ({ data: [] }),
+  useWorkingHoursMany: () => ({ data: [], isLoading: false, isError: false }),
 }));
 vi.mock("@/hooks/useSegmentTerms", () => ({
   useSegmentTerms: () => ({
@@ -77,6 +92,16 @@ vi.mock("@/hooks/useCurrentUser", () => ({
 }));
 vi.mock("@/hooks/useAgendaPaymentFlags", () => ({
   useAgendaPaymentFlags: () => mocks.flags,
+}));
+// ADR-07: fiação nova da AgendaPage (badge + régua no confirmar).
+vi.mock("@/hooks/usePlanEntitlements", () => ({
+  usePlanEntitlements: () => null,
+}));
+vi.mock("@/hooks/useMessages", () => ({
+  useSendMessage: () => ({ mutateAsync: vi.fn() }),
+}));
+vi.mock("@/hooks/useMessageTemplates", () => ({
+  useMessageTemplates: () => ({ data: [] }),
 }));
 
 vi.mock("@/components/ui/dropdown-menu", () => ({
@@ -201,6 +226,7 @@ beforeEach(() => {
     value: { getItem: () => null, setItem: () => undefined },
   });
   mocks.payments = true;
+  mocks.validCredit = false;
   mocks.changeStatus.mockReset();
   mocks.appointments = [appointment(), appointment({ id: "ap-2", customers: { name: "Carla", whatsapp_opt_in: false } })];
   mocks.flags = {
@@ -228,11 +254,23 @@ describe("AgendaPage — pagamento (ADR-004 §4.2/§7)", () => {
     expect(mocks.changeStatus).not.toHaveBeenCalled();
   });
 
-  it("payments === true abre o capture e não chama changeStatus", () => {
+  it("payments === true abre o capture e não chama changeStatus", async () => {
     mocks.appointments = [appointment({ status: "em_atendimento" })];
     renderPage();
     clickConclude();
-    expect(screen.getByTestId("capture-dialog").textContent).toBe("close");
+    expect(await screen.findByTestId("capture-dialog")).toBeTruthy();
+    expect(mocks.changeStatus).not.toHaveBeenCalled();
+  });
+
+  it("crédito válido conclui pelo legado mesmo no salão (sem capture, sem 2x)", async () => {
+    mocks.appointments = [
+      appointment({ status: "em_atendimento", package_credit_id: null }),
+    ];
+    mocks.validCredit = true;
+    renderPage();
+    clickConclude();
+    expect(await screen.findByTestId("legacy-confirm")).toBeTruthy();
+    expect(screen.queryByTestId("capture-dialog")).toBeNull();
     expect(mocks.changeStatus).not.toHaveBeenCalled();
   });
 
@@ -255,38 +293,45 @@ describe("AgendaPage — pagamento (ADR-004 §4.2/§7)", () => {
     expect(screen.queryByTestId("capture-dialog")).toBeNull();
   });
 
-  it("toggle 'Pagamento pendente (N)' filtra a lista", () => {
+  it("switch 'Somente pagamento pendente (N)' nos avançados filtra a lista", () => {
     renderPage();
     expect(screen.getByText("Ana")).toBeTruthy();
     expect(screen.getByText("Carla")).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: paymentsMessages.agenda.filterPendingAria }),
-    );
+    // ADR-02: o filtro mora nos avançados ("Filtros" → Dialog no desktop).
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    const toggle = screen.getByRole("switch", {
+      name: "Somente pagamento pendente (1)",
+    });
+    fireEvent.click(toggle);
 
     expect(screen.getByText("Ana")).toBeTruthy();
     expect(screen.queryByText("Carla")).toBeNull();
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    // O estado vira chip removível na linha 2 (fecha o diálogo: Radix esconde
+    // o fundo com aria-hidden enquanto aberto).
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     expect(
-      screen.getByRole("button", { name: paymentsMessages.agenda.filterPendingAria })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
+      screen.getByRole("button", { name: "Remover filtro Pagamento pendente" }),
+    ).toBeTruthy();
   });
 
-  it("filtro 'Pagamento pendente (N)' só é oferecido na lista", () => {
+  it("filtro 'pagamento pendente' só é oferecido na lista", () => {
     renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
     expect(
-      screen.getByRole("button", { name: paymentsMessages.agenda.filterPendingAria }),
+      screen.getByRole("switch", { name: /Somente pagamento pendente/ }),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Dia" }));
-    expect(
-      screen.queryByRole("button", { name: paymentsMessages.agenda.filterPendingAria }),
-    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    expect(screen.queryByRole("switch")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Semana" }));
-    expect(
-      screen.queryByRole("button", { name: paymentsMessages.agenda.filterPendingAria }),
-    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("selo aparece no item concluído pendente e some no quitado", () => {
@@ -327,25 +372,24 @@ describe("AgendaPage — pagamento (ADR-004 §4.2/§7)", () => {
     expect(screen.getAllByText("Enviar mensagem")).toHaveLength(2);
   });
 
-  it("barra de filtros quebra linha e usa controles fluidos (anti-overflow)", () => {
+  it("barra de filtros quebra linha; avançados usam controles fluidos (anti-overflow)", () => {
     renderPage();
 
     const bar = screen.getByTestId("agenda-filter-bar");
     expect(bar.className).toContain("flex-wrap");
     expect(bar.className).toContain("min-w-0");
 
-    for (const testId of [
-      "agenda-filter-professional",
-      "agenda-filter-service",
-      "agenda-filter-status",
-    ]) {
-      const group = screen.getByTestId(testId);
-      expect(group.className).toContain("min-w-0");
-      expect(group.className).toContain("lg:w-[");
-    }
+    // ADR-02: profissional/serviço/status moram no Dialog "Filtros".
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("sm:max-w-md");
 
-    // Triggers não fixam 200/220 px: ocupam a largura do grupo.
-    for (const id of ["agenda-profissional", "agenda-servico", "agenda-status"]) {
+    // Triggers ocupam a largura do campo, sem largura fixa.
+    for (const id of [
+      "agenda-profissional-dialogo",
+      "agenda-servico-dialogo",
+      "agenda-status-dialogo",
+    ]) {
       const trigger = document.getElementById(id);
       expect(trigger?.className).toContain("w-full");
       expect(trigger?.className ?? "").not.toMatch(/w-\[(200|220)px\]/);

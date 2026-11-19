@@ -19,7 +19,7 @@ describe("mapPlanError", () => {
   it("PLAN_LIMIT repassa detalhe pt-BR do servidor", () => {
     const msg = mapPlanError({
       status: 409,
-      message: "PLAN_LIMIT: Limite do plano individual: máximo 1 profissional ativo.",
+      message: "PLAN_LIMIT: Limite do plano starter: máximo 1 profissional ativo.",
     });
     expect(msg).toContain("Limite do plano");
   });

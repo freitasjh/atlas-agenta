@@ -23,7 +23,13 @@ import { bpsToNumericPct, numericPctToBps } from "@/lib/commission";
 const commissionRowSchema = z.object({
   professional_id: z.string(),
   commission_pct: z.number(),
+  commission_type: z.enum(["price", "margin"]).default("price"),
 });
+
+export interface ProfessionalCommissionData {
+  commissionBps: number;
+  commissionType: "price" | "margin";
+}
 
 const commissionKey = (professionalId: string | null) =>
   ["professional_commissions", professionalId] as const;
@@ -38,18 +44,22 @@ export function useProfessionalCommission(
   professionalId: string | null,
   options?: { enabled?: boolean },
 ) {
-  return useQuery<number>({
+  return useQuery<ProfessionalCommissionData>({
     queryKey: commissionKey(professionalId),
     enabled: (options?.enabled ?? true) && !!professionalId,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("professional_commissions")
-        .select("professional_id, commission_pct")
+        .select("professional_id, commission_pct, commission_type")
         .eq("professional_id", professionalId as string)
         .maybeSingle();
       if (error) throw error;
-      if (!data) return 0;
-      return numericPctToBps(commissionRowSchema.parse(data).commission_pct);
+      if (!data) return { commissionBps: 0, commissionType: "price" };
+      const parsed = commissionRowSchema.parse(data);
+      return {
+        commissionBps: numericPctToBps(parsed.commission_pct),
+        commissionType: parsed.commission_type,
+      };
     },
   });
 }
@@ -66,9 +76,11 @@ export function useUpsertProfessionalCommission() {
     mutationFn: async ({
       professionalId,
       commissionBps,
+      commissionType,
     }: {
       professionalId: string;
       commissionBps: number;
+      commissionType?: "price" | "margin";
     }) => {
       const { data, error } = await supabase
         .from("professional_commissions")
@@ -76,10 +88,11 @@ export function useUpsertProfessionalCommission() {
           {
             professional_id: professionalId,
             commission_pct: bpsToNumericPct(commissionBps),
+            ...(commissionType ? { commission_type: commissionType } : {}),
           },
           { onConflict: "tenant_id,professional_id" },
         )
-        .select("professional_id, commission_pct")
+        .select("professional_id, commission_pct, commission_type")
         .single();
       if (error) throw error;
       return commissionRowSchema.parse(data);

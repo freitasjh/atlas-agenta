@@ -8,7 +8,7 @@ import {
   type ChangePlanResponse,
   type TenantPlanUsage,
 } from "@/lib/validations/admin-plan";
-import type { PlanSlug } from "@/lib/plans";
+import { PLAN_SLUGS, type PlanSlug } from "@/lib/plans";
 
 /**
  * Hooks de dados da troca de plano auditada (backoffice-plan-control).
@@ -84,9 +84,10 @@ export async function normalizePlanInvokeError(error: unknown): Promise<AdminPla
 
 /** Limites de apresentação (espelham o banco; a trava canônica é o servidor). */
 export const PLAN_PRESENTATION_LIMITS: Record<PlanSlug, { prof: number | null; appt: number | null }> = {
-  individual: { prof: 1, appt: 150 },
-  clinica: { prof: 5, appt: null },
-  pro: { prof: null, appt: null },
+  free: { prof: 1, appt: 30 },
+  starter: { prof: 1, appt: 150 },
+  premium: { prof: 5, appt: null },
+  enterprise: { prof: null, appt: null },
 };
 
 /** True quando o uso atual estoura o plano destino (bloqueia Confirmar sem override). */
@@ -109,7 +110,7 @@ export function useSetTenantPlan() {
       const parsed = z
         .object({
           tenantId: z.string().uuid(),
-          plan: z.enum(["individual", "clinica", "pro"] as const),
+          plan: z.enum(PLAN_SLUGS),
           reason: z.string().trim().min(10).max(280),
           override: z.boolean().optional(),
         })

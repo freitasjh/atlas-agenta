@@ -20,7 +20,10 @@ const createWalkInResponseSchema = z
 
 export interface CreateWalkInInput {
   professionalId: string;
-  selection: { kind: "service"; serviceId: string } | { kind: "combo"; comboId: string };
+  selection:
+    | { kind: "service"; serviceId: string }
+    | { kind: "combo"; comboId: string }
+    | { kind: "product"; productId: string; qty: number };
   customerId?: string | null;
   creationIdempotencyKey: string;
 }
@@ -42,7 +45,9 @@ export function useCreateWalkIn() {
         professional_id: input.professionalId,
         ...(input.selection.kind === "service"
           ? { service_id: input.selection.serviceId }
-          : { combo_id: input.selection.comboId }),
+          : input.selection.kind === "combo"
+            ? { combo_id: input.selection.comboId }
+            : { product_id: input.selection.productId, product_qty: input.selection.qty }),
         ...(input.customerId ? { customer_id: input.customerId } : {}),
         creation_idempotency_key: input.creationIdempotencyKey,
       };

@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { z } from "npm:zod@3.23.8";
 import { asaasBaseUrl, asaasFetch } from "../_shared/asaas.ts";
-import { planPriceCents } from "../_shared/plans.ts";
 import { requestSchema } from "./schemas.ts";
 
 const corsHeaders: Record<string, string> = {
@@ -29,6 +28,27 @@ async function resolveIdentity(
   return { ok: true, userId: data.user.id };
 }
 
+/**
+ * Preço mensal em centavos lido do catálogo SSoT `plans` (T1.0), nunca de
+ * JSON/embed. Plano inexistente, inativo ou com preço não positivo (ex.:
+ * `free`) não gera cobrança — retorna `null` e o handler responde 400.
+ */
+async function resolvePlanPriceCents(
+  service: SupabaseClient,
+  plan: string,
+): Promise<number | null> {
+  const { data, error } = await service
+    .from("plans")
+    .select("price_cents")
+    .eq("slug", plan)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) return null;
+  const price = data?.price_cents;
+  if (typeof price !== "number" || !Number.isInteger(price) || price <= 0) return null;
+  return price;
+}
+
 export type HandlerOptions = { createService: () => SupabaseClient };
 export function createHandler(options: HandlerOptions) {
   return async (req: Request): Promise<Response> => {
@@ -52,9 +72,10 @@ export function createHandler(options: HandlerOptions) {
     }
     const baseUrl = asaasBaseUrl(env);
 
-    // Preço vem da fonte única `_shared/plans.json`; `plan` já é slug validado
-    // pelo schema, então não há fallback silencioso de valor.
-    const amount = planPriceCents(input.plan);
+    // Preço vem do catálogo SSoT `plans` (tabela); slug inexistente/inativo ou
+    // preço não positivo (free) é 400, nunca um valor default silencioso.
+    const amount = await resolvePlanPriceCents(service, input.plan);
+    if (amount === null) return jsonResponse({ error: "Plano inválido para cobrança." }, 400);
 
     const { data: tenant } = await service.from("tenants").select("name").eq("id", input.tenant_id).maybeSingle();
     // Um customer por tenant no Asaas: procura pelo `externalReference` antes de

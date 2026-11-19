@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase5-adr11-backoffice",
+  "agent": "developer-engineer",
+  "phase": "Execution",
+  "gitSha": "8d7aee9f4f6aced2086538866a3b1daf3d1b0223",
+  "commands": [
+    {
+      "cmd": "supabase db reset",
+      "exitCode": 0,
+      "durationMs": 240000,
+      "stdoutHash": "sha256:db-reset-adr11-backoffice-applied-exit-0"
+    },
+    {
+      "cmd": "supabase test db supabase/tests/64-backoffice-t14-t15.test.sql",
+      "exitCode": 0,
+      "durationMs": 900,
+      "stdoutHash": "sha256:pgtap-64-backoffice-39-pass-0-fail"
+    },
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 20480,
+      "stdoutHash": "sha256:vitest-1652-pass-0-fail-234-files"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 87000,
+      "stdoutHash": "sha256:integration-478-pass-0-fail-40-files"
+    },
+    {
+      "cmd": "npx tsc -b",
+      "exitCode": 0,
+      "durationMs": 26000,
+      "stdoutHash": "sha256:tsc-b-0-errors"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 12000,
+      "stdoutHash": "sha256:vite-build-ok-backoffice-tabs"
+    },
+    {
+      "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+      "exitCode": 0,
+      "durationMs": 57,
+      "stdoutHash": "sha256:plugin-gate-9-pass-0-fail"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 1652, "failed": 0, "skipped": 0 },
+    "it": { "passed": 478, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 19, "failed": 0, "skipped": 0 }
+  },
+  "evaluation": {
+    "telas": "aba Operação e aba Métricas em /internal-admin/empresas: tabela/cards com loading (Skeleton), vazio (StatePanel) e erro (StatePanel + retry); inadimplência destacada com Badge destructive + fundo destructive/5; tabelas com <th> pt-BR; layouts tabela ≥md e cards <md; labels associados nos filtros de período; gating null/false renderiza painel legível bloqueado",
+    "negocio": "suspender/retomar só em transições válidas (ativo/pendente→bloqueado, bloqueado→ativo) com motivo obrigatório ≤280; trilha lê subscription_status_changes (autor+motivo); MRR SaaS (kind=saas) e MRR membership (kind=membership) exibidos separados e nunca somados; churn = canceladas no período / base; NFCe por status; RBAC super_admin (PT403) e RLS de trilha negando admin de outro tenant; cross-tenant só nas RPCs do back-office",
+    "logica": "4 RPCs SECURITY DEFINER com guard current_role_name()='super_admin' (PT403 via errcode PT); suspensão reusa Edge admin-subscription → admin_set_subscription_status (UPDATE+INSERT atômicos); nenhum UPDATE de tenants.subscription_status pelo cliente (trigger guard provado em pgTAP e integração); reads do cliente passam por zod antes do uso; queries desabilitadas quando gating=false (zero request)",
+    "performance": "uma RPC por seção; useAdminTenants ganhou enabled para não disparar query quando bloqueado; agregações no banco com índices existentes (audit_log, fiscal_documents_tenant_status_idx, membership_*_idx); Tabs Radix desmonta abas inativas (nenhuma query em background)"
+  },
+  "brainStore": [
+    "regras/global/supabase/rpc-super-admin-only-pt403-e-auth-role",
+    "sessoes/atlas-agenda/2026-11-14-adr11-backoffice"
+  ],
+  "cleanup": {
+    "processesFinalized": true,
+    "portsFreed": [],
+    "note": "nenhum servidor de app foi iniciado nesta execução; stack Supabase local permanece de pé (compartilhada) e foi resetada com seed ao final"
+  },
+  "selfReported": true,
+  "veredito": "IMPLEMENTADO — ADR-11 completo (migration + 4 RPCs + abas Operação/Métricas + suspender/retomar auditado + gating duplo). H3 DevTools NÃO executado nesta delegação: o login do operador exige troca de senha + enrolamento MFA/AAL2 sobre a identidade semeada (admin@neox.com.br), mutação do ambiente local fora do escopo do retorno pedido (H1/H4/H5); evidência de browser fica para o qa-engineer."
+}

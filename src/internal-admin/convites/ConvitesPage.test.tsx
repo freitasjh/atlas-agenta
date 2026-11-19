@@ -38,4 +38,13 @@ describe("ConvitesPage", () => {
     expect(screen.getAllByText("sa@plataforma.com").length).toBeGreaterThan(0);
     expect(screen.getByText("Convidar super admin")).toBeTruthy();
   });
+
+  it("avisa que o e-mail é best-effort e pode demorar", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    render(<ConvitesPage />);
+    fireEvent.click(screen.getAllByText("Convidar super admin")[0]!);
+    expect(
+      screen.getByText(/O e-mail pode demorar alguns minutos para chegar\./),
+    ).toBeTruthy();
+  });
 });

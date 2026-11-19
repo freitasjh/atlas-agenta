@@ -65,7 +65,9 @@ export function useOnboardingSeed(): void {
       createService.mutate({
         name: service.name,
         durationMinutes: service.durationMinutes,
+        processingMinutes: 0,
         priceCents: service.priceCents,
+        backbarCostCents: 0,
         active: true,
       });
     }

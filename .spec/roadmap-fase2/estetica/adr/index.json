@@ -1,0 +1,81 @@
+{
+  "adrs": [
+    {
+      "branch": "adr/estetica/01-entitlements-t12",
+      "depends_on": [],
+      "file": "adr-01-entitlements-t12.md",
+      "id": "ADR-01",
+      "scope": "T1.2 leitura: contrato usePlanEntitlements -> {prontuario,pacotes,aestheticCheckout}|null + gating só-UI",
+      "status": "approved",
+      "title": "Entitlements T1.2 + gating"
+    },
+    {
+      "branch": "adr/estetica/02-pacotes-backend",
+      "depends_on": [
+        "ADR-01"
+      ],
+      "file": "adr-02-pacotes-backend.md",
+      "id": "ADR-02",
+      "scope": "1 tabela package_credits + RPCs sell/redeem/balance, RLS/RBAC, única migration",
+      "status": "approved",
+      "title": "Pacotes backend"
+    },
+    {
+      "branch": "adr/estetica/03-prontuario-aba",
+      "depends_on": [
+        "ADR-01"
+      ],
+      "file": "adr-03-prontuario-aba.md",
+      "id": "ADR-03",
+      "scope": "G4 4ª aba Drawer + ficha/evolução, B1/B3, zero backend",
+      "status": "approved",
+      "title": "Prontuário aba"
+    },
+    {
+      "branch": "adr/estetica/04-anamnese-wizard",
+      "depends_on": [
+        "ADR-03"
+      ],
+      "file": "adr-04-anamnese-wizard.md",
+      "id": "ADR-04",
+      "scope": "T2 wizard 3 passos + validação blur + rascunho, ajustes 1/2/4",
+      "status": "approved",
+      "title": "Anamnese wizard"
+    },
+    {
+      "branch": "adr/estetica/05-fotos-mapa-termo",
+      "depends_on": [
+        "ADR-03"
+      ],
+      "file": "adr-05-fotos-mapa-termo.md",
+      "id": "ADR-05",
+      "scope": "G7 fotos/mapa/termo, B2, SVG button nativo, checkbox nunca pré-marcado",
+      "status": "approved",
+      "title": "Fotos/mapa/termo"
+    },
+    {
+      "branch": "adr/estetica/06-pacotes-ui",
+      "depends_on": [
+        "ADR-01",
+        "ADR-02"
+      ],
+      "file": "adr-06-pacotes-ui.md",
+      "id": "ADR-06",
+      "scope": "G6 config + venda + saldo/baixa, table caption/scope, progressbar",
+      "status": "approved",
+      "title": "Pacotes UI"
+    },
+    {
+      "branch": "adr/estetica/07-checkout-clinica",
+      "depends_on": [
+        "ADR-01",
+        "ADR-06"
+      ],
+      "file": "adr-07-checkout-clinica.md",
+      "id": "ADR-07",
+      "scope": "G5 checkout clínica via aestheticCheckout, reuso Settlement/Capture 100%",
+      "status": "approved",
+      "title": "Checkout clínica"
+    }
+  ]
+}

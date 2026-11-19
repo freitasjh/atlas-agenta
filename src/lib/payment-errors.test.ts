@@ -54,6 +54,11 @@ describe("PAYMENT_ERROR_MAP", () => {
       retryable: false,
       action: "review",
     });
+    expect(PAYMENT_ERROR_MAP.PACKAGE_CREDIT_AVAILABLE).toMatchObject({
+      messageKey: "payments.error.packageCreditAvailable",
+      retryable: false,
+      action: "none",
+    });
   });
 });
 

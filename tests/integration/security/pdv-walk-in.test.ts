@@ -29,11 +29,11 @@ const TO = new Date(Date.now() + 3_600_000).toISOString();
 async function newTenant(prefix: string): Promise<PaymentsTenant> {
   const tenant = await createPaymentsTenant(prefix);
   tenantsToCleanup.push(tenant.tenantId);
-  // Plano clínica (5 profissionais, sem teto mensal de agenda): as fixtures do PDV abrem
-  // vários profissionais no mesmo tenant; o plano individual trava no 2º (PLAN_LIMIT 23514).
+  // Plano premium (5 profissionais, sem teto mensal de agenda): as fixtures do PDV abrem
+  // vários profissionais no mesmo tenant; o plano starter trava no 2º (PLAN_LIMIT 23514).
   const { error } = await serviceClient()
     .from("tenants")
-    .update({ plan: "clinica" })
+    .update({ plan: "premium" })
     .eq("id", tenant.tenantId);
   if (error) throw new Error(`Ajuste de plano falhou (código ${error.code ?? "vazio"}).`);
   return tenant;

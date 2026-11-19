@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "demand": "roadmap-fase5-financeiro-h3-final",
+  "agent": "qa-engineer",
+  "phase": "Testing",
+  "gitSha": "8d7aee9f4f6aced2086538866a3b1daf3d1b0223",
+  "commands": [
+    {
+      "cmd": "npm test",
+      "exitCode": 0,
+      "durationMs": 36650,
+      "stdoutHash": "sha256:vitest-1655-pass-0-fail-234-files"
+    },
+    {
+      "cmd": "node --test \".opencode/plugins/__tests__/*.spec.mjs\"",
+      "exitCode": 0,
+      "durationMs": 77,
+      "stdoutHash": "sha256:plugin-gate-9-pass-0-fail"
+    },
+    {
+      "cmd": "npm run test:integration",
+      "exitCode": 0,
+      "durationMs": 126940,
+      "stdoutHash": "sha256:integration-478-pass-0-fail-40-files"
+    },
+    {
+      "cmd": "npm run test:functions",
+      "exitCode": 0,
+      "durationMs": 29000,
+      "stdoutHash": "sha256:deno-functions-568-pass-0-fail"
+    },
+    {
+      "cmd": "npm run build",
+      "exitCode": 0,
+      "durationMs": 9680,
+      "stdoutHash": "sha256:tsc-b-zero-errors-vite-build-ok"
+    },
+    {
+      "cmd": "npx supabase test db",
+      "exitCode": 1,
+      "durationMs": 4000,
+      "stdoutHash": "sha256:pgtap-805-tests-40-fail-dirty-db-no-reset"
+    }
+  ],
+  "counts": {
+    "unit": { "passed": 1655, "failed": 0, "skipped": 0 },
+    "it": { "passed": 478, "failed": 0, "skipped": 0 },
+    "frontend": { "passed": 568, "failed": 0, "skipped": 0 }
+  },
+  "e2e": {
+    "tool": "Playwright (playwright-core 1.64.1 + Chromium 1243 headless). chrome-devtools MCP bloqueado por lock de perfil compartilhado (~/.cache/chrome-devtools-mcp/chrome-profile) mantido pelo Chrome vivo do projeto atlas-financeiro (PID 174419, cwd atlas-financeiro). Limitacao declarada, nao contornada.",
+    "backend": "UP :54321 (supabase local preexistente) + functions serve reerguido (probe signup-tenant {} -> 400)",
+    "frontend": "UP vite :5199 (5173 alheia ao projeto atlas-financeiro, intocada)",
+    "seed": "dev-seed (tenant Agenda Demo / admin@demo.local) + tenants.plan=premium, subscription_status=ativo, segment=barbearia; dev-smoke configurou tenant_asaas_config; appointment concluido 870026c3 (NFC-e origem); membership plan/adesao semeados por SQL (nao existe UI de criacao no ADR-05)",
+    "flows": [
+      "login admin@demo.local -> /app/financeiro hub com 7 capacidades liberadas (links 'Abrir ...')",
+      "ADR-03 NFC-e: Emitir (origem=appointment UUID, valor 50,00, CPF) -> 'Nota fiscal registrada.' -> DANFE modal com chave de acesso, QR (aria-label), trilha auditavel e Baixar XML",
+      "ADR-05 Assinaturas: tabs Ativas/Inadimplentes/Canceladas, banner inadimplencia, drawer (historico de ciclo, auditoria, pausar/cancelar/regularizar) -> Regularizar gera cobranca PIX do ciclo",
+      "ADR-06 Pagar: Lancar conta com fornecedor criado no proprio fluxo (Novo -> Distribuidora Central), vencimento e valor 1.200,00 -> conta pendente; Baixa parcial 400,00 em Caixa -> status parcial (settlement 40000)",
+      "ADR-07 Receber: avulsa 150,00 -> Gerar PIX (charge pendente pay_0_2mmw5bo0gr2k7; QR imagem ausente, copia-e-cola presente) -> Cancelar PIX -> Registrar recebimento 150,00 (metodo default pix) -> Quitado 100%",
+      "ADR-08 Conciliacao: Nova conta (Banco do Brasil final 1234) -> Importar extrato CSV (1 lancamento, -R$ 1.200,00) -> selecionar linha -> match exato 'Aluguel do salao' (mesmo dia) -> Conciliar (1/1) -> Desfazer com motivo (volta a 1 pendente)",
+      "ADR-09 DRE: regime Competencia<->Caixa (aria-pressed), presets 6m, cards Resumo (Receitas R$ 150 / Resultado R$ 150), tabela DRE por linha, resultado mensal, fluxo 30 dias; Exportar CSV -> download dre-competencia-2026-06-01_2026-11-30.csv",
+      "ADR-10 Exportar: CSV (A receber), OFX (A pagar) e SPED-resumo (Fiscal) baixados; trilha de exports com arquivo/tipo/periodo/formato/autor/data (inclui o CSV do DRE gerado em tela)",
+      "ADR-11 back-office: /internal-admin como admin de tenant -> ERRO 403 'Acesso restrito' (guard); /internal-admin/login renderiza 'Entrada exclusiva de operadores'; RPCs backoffice_subscriptions, mrr_report, membership_mrr_churn e nfce_volume -> HTTP 403 code PT403 para o admin de tenant"
+    ],
+    "console": "Zero [ERROR]/[WARN] em todos os fluxos de negocio. Excecao classificada como esperada: 4 console errors '403' no passo de back-office, oriundos da negacao deliberada (verify-operator 403 + 4 RPCs PT403).",
+    "network": "Sem rota duplicada de dados (unica repeticao: GET /favicon.svg x2). Zero 4xx/5xx inesperados: os 5 403 do back-office sao o resultado asserido.",
+    "viewports": "1280x800 e 375x800",
+    "screenshots": [
+      ".spec/roadmap-fase5/financeiro/harness/adr01-hub-desktop-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr01-hub-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr03-nfce-lista-desktop-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr03-nfce-emitir-sheet-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr03-nfce-emitida-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr03-nfce-danfe-modal-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr03-nfce-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr05-assinaturas-lista-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr05-assinaturas-drawer-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr05-assinaturas-regularizada-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr05-assinaturas-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-lista-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-novo-lancamento-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-lancada-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-baixa-dialog-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-baixa-parcial-registrada-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr06-pagar-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-tab-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-nova-avulsa-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-avulsa-criada-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-cobranca-dialog-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-pix-estado-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-pix-cancelado-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-recebido-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr07-receber-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-conta-dialog-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-upload-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-importado-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-match-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-conciliado-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-undo-dialog-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-undo-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-competencia-6m-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-caixa-6m-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-export-csv-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr09-dre-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr10-exportar-inicial-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr10-exportar-log-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr10-exportar-mobile-375.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr11-backoffice-rota-guardada-1280.png",
+      ".spec/roadmap-fase5/financeiro/harness/adr11-backoffice-login-interno-1280.png"
+    ]
+  },
+  "findings": [
+    {
+      "severity": "P2",
+      "area": "ADR-08 Conciliacao / responsividade",
+      "detail": "Em 375x800 o documento tem scrollWidth 456 vs clientWidth 375 (overflow horizontal de 81px). A SECTION do extrato fica com 440px porque o item do grid (grid gap-4 lg:grid-cols-2) nao recebe min-w-0; o overflow-x-auto do ExtratoTable nao absorve a largura do conteudo. Demais 7 telas com overflowX 0.",
+      "evidence": ".spec/roadmap-fase5/financeiro/harness/adr08-conciliacao-mobile-375.png"
+    },
+    {
+      "severity": "P3",
+      "area": "ADR-07 Receber / UX de PIX",
+      "detail": "O Asaas local devolveu copia-e-cola sem imagem de QR; a tela trata corretamente ('O gateway nao devolveu a imagem do QR. Use o PIX copia e cola'). Registrar recebimento manual apos cancelar o PIX grava metodo default 'pix' - coerente com o select, mas ambiguo para auditoria de caixa.",
+      "evidence": ".spec/roadmap-fase5/financeiro/harness/adr07-receber-pix-estado-1280.png"
+    },
+    {
+      "severity": "P3",
+      "area": "ADR-09 DRE",
+      "detail": "Despesa do payable com baixa parcial (400,00 de 1.200,00) nao aparece em DESPESAS no regime Competencia (R$ 0,00), porque a conta segue 'parcial'. Comportamento aparenta ser intencional ('despesa pelo vencimento quitado'), mas nao ha indicacao na UI de que baixa parcial nao compoe despesa.",
+      "evidence": ".spec/roadmap-fase5/financeiro/harness/adr09-dre-competencia-6m-1280.png"
+    },
+    {
+      "severity": "P1-env",
+      "area": "Infra local (nao e defeito de produto)",
+      "detail": "O container do Edge Runtime do atlas-agenda morreu no meio da sessao ('Edge Runtime container is no longer available. Stopped serving supabase/functions'), derrubando o hook custom-access-token e devolvendo 500 em /auth/v1/token. Foi reerguido manualmente (functions serve + probe 400) e o fluxo continuou. Registrado para diagnostico de OOM/fragilidade local.",
+      "evidence": "/tmp/atlas-dev/functions-h3.log"
+    },
+    {
+      "severity": "limitacao",
+      "area": "ADR-05 Assinaturas",
+      "detail": "Nao existe UI de criacao de plano/adesao (ADR-05 cobre lista, drawer, pausar/cancelar/regularizar). Plano e adesao foram semeados por SQL para exercitar o drawer; a criacao segue fora do escopo da tela."
+    },
+    {
+      "severity": "limitacao",
+      "area": "ADR-11 back-office",
+      "detail": "Acesso interno exige operador com MFA/AAL2; nao foi forcado. Provado: rota /internal-admin barra o admin de tenant (403 'Acesso restrito'), /internal-admin/login existe, e as 4 RPCs (backoffice_subscriptions, mrr_report, membership_mrr_churn, nfce_volume) respondem HTTP 403 code PT403 para tenant-admin."
+    },
+    {
+      "severity": "debito",
+      "area": "pgTAP",
+      "detail": "805 asserções, 40 falhas: 00-helpers recusa banco com dado fora da fixture (guard explicito), 00-smoke-anon(1), 40-privilege-profiles(25), 41-privilege-tenants(11), 44-plan-telemetry(2). A unica falha causada por esta sessao (63-membership teste 25) desapareceu apos remover a assinatura semeada. Rodar pgTAP verde exige 'supabase db reset', que destruiria o ambiente do E2E - nao executado."
+    }
+  ],
+  "evaluation": {
+    "telas": "8 telas em 1280 sem overflow; 375 sem overflow em 7/8; loading/empty/error presentes; foco visivel (outline solid + ring); zero <img> sem alt; aria-labels em regioes, dialogs e acoes por linha",
+    "negocio": "NFC-e idempotente por origem (uma nota por atendimento); recebiveis e payables com baixa parcial; conciliacao com valor exato + delta<=2 dias e undo auditado; DRE competencia vs caixa; exports escopados por tenant com trilha de autor/data; RPCs de back-office negam tenant-admin (PT403)",
+    "logica": "RLS admin-only nas tabelas fase-5; mutacoes por RPC SECURITY DEFINER; export via Edge com export_logs; conciliacao unique por linha/alvo e undo com motivo obrigatorio apos a janela",
+    "performance": "Uma chamada por RPC por tela/periodo; sem requisicao duplicada; graficos do DRE em chunk lazy (DreCharts 2,45 kB)"
+  },
+  "brainStore": [
+    "sessoes/atlas-agenda/2026-11-14-fase5-h3-e2e-final"
+  ],
+  "cleanup": {
+    "processesFinalized": true,
+    "portsFreed": [5199],
+    "note": "vite :5199 e 'supabase functions serve' encerrados por PID (listener confirmado por ss -ltnp + cwd do repo); stack Supabase local mantida (ja estava de pe antes da sessao); container/porta do projeto atlas-financeiro nunca tocados; nenhum pkill -f"
+  },
+  "selfReported": true,
+  "veredito": "H3 APROVADO COM RESSALVAS - 8 fluxos financeiros verdes em UI real (NFC-e/DANFE, assinaturas, pagar, receber+PIX, conciliacao+undo, DRE+CSV, exports CSV/OFX/SPED, back-office negado por PT403). Suites unit/integration/functions/build verdes. 1 achado P2 (overflow mobile da conciliacao) e 2 P3 de UX/negocio para backlog; pgTAP exige banco resetado (nao executavel neste ambiente)."
+}

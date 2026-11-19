@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement, type ChangeEvent, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -29,18 +29,28 @@ const mocks = vi.hoisted(() => ({
       active: true,
     },
   ],
+  products: [] as Array<Record<string, unknown>>,
+  entitlements: null as unknown,
+  permissions: { canRegisterPayments: true, canScheduleForAnyProfessional: true, canViewCommission: true, isAdmin: true, isReceptionist: false } as Record<string, unknown>,
   pending: [] as Array<Record<string, unknown>>,
+  createWalkIn: { mutateAsync: vi.fn(), isPending: false },
+  createCustomer: { mutateAsync: vi.fn(), isPending: false },
+  validateCoupon: { mutateAsync: vi.fn(), isPending: false },
+  validateGift: { mutateAsync: vi.fn(), isPending: false },
+  applyCoupon: { mutateAsync: vi.fn(), isPending: false },
+  redeemGift: { mutateAsync: vi.fn(), isPending: false },
 }));
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
-    canRegisterPayments: true,
+    canRegisterPayments: mocks.permissions.canRegisterPayments,
     canManageAppointments: true,
     canScheduleForAnyProfessional: mocks.canScheduleForAnyProfessional,
-    isAdmin: true,
+    canViewCommission: mocks.permissions.canViewCommission,
+    isAdmin: mocks.permissions.isAdmin,
     isProfessional: false,
-    isReceptionist: false,
-    canViewFinancials: true,
+    isReceptionist: mocks.permissions.isReceptionist,
+    canViewFinancials: mocks.permissions.isAdmin,
   }),
 }));
 
@@ -68,6 +78,14 @@ vi.mock("@/hooks/useCombos", () => ({
   useCombos: () => ({ data: [], isLoading: false, isError: false }),
 }));
 
+vi.mock("@/hooks/useProducts", () => ({
+  useProducts: () => ({ data: mocks.products, isLoading: false, isError: false }),
+}));
+
+vi.mock("@/hooks/usePlanEntitlements", () => ({
+  usePlanEntitlements: () => mocks.entitlements,
+}));
+
 vi.mock("@/hooks/useAppointments", () => ({
   useAppointments: () => ({
     data: mocks.pending,
@@ -79,11 +97,18 @@ vi.mock("@/hooks/useAppointments", () => ({
 
 vi.mock("@/hooks/useWalkIn", () => ({
   newCreationKey: () => "66666666-6666-6666-6666-666666666666",
-  useCreateWalkIn: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateWalkIn: () => mocks.createWalkIn,
 }));
 
 vi.mock("@/hooks/useCustomers", () => ({
-  useCreateCustomer: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateCustomer: () => mocks.createCustomer,
+}));
+
+vi.mock("@/hooks/useFidelidade", () => ({
+  useValidateCoupon: () => mocks.validateCoupon,
+  useValidateGiftCard: () => mocks.validateGift,
+  useApplyCouponToClosing: () => mocks.applyCoupon,
+  useRedeemGiftCard: () => mocks.redeemGift,
 }));
 
 /**
@@ -122,20 +147,33 @@ vi.mock("@/components/ui/select", async () => {
     SelectValue: () => null,
     SelectContent: ({ children }: SelectProps) =>
       React.createElement(React.Fragment, null, children),
-    SelectItem: ({ children, value }: SelectProps) =>
-      React.createElement("option", { value }, children),
+    SelectItem: ({ children, value, disabled }: SelectProps & { disabled?: boolean }) =>
+      React.createElement("option", { value, disabled }, children),
   };
 });
 
 vi.mock("@/app/agenda/pagamentos/PaymentCaptureDialog", async () => {
   const React = await import("react");
   return {
-    // Stub mínimo: expõe `onCompleted` para o teste dirigir a conclusão da venda.
-    PaymentCaptureDialog: (props: { onCompleted?: () => void }) =>
+    // Stub mínimo: expõe `onCompleted` para o teste dirigir a conclusão da
+    // venda e o `totalCents` capturado (prova do total final com fidelidade).
+    PaymentCaptureDialog: (props: {
+      onCompleted?: () => void;
+      appointment: { totalCents: number };
+    }) =>
       React.createElement(
-        "button",
-        { type: "button", onClick: () => props.onCompleted?.() },
-        "concluir-venda",
+        "div",
+        null,
+        React.createElement(
+          "span",
+          { "data-testid": "capture-total" },
+          String(props.appointment.totalCents),
+        ),
+        React.createElement(
+          "button",
+          { type: "button", onClick: () => props.onCompleted?.() },
+          "concluir-venda",
+        ),
       ),
   };
 });
@@ -152,8 +190,12 @@ function wrapper(children: ReactNode) {
 afterEach(() => {
   cleanup();
   mocks.pending = [];
+  mocks.products = [];
+  mocks.entitlements = null;
+  mocks.permissions = { canRegisterPayments: true, canScheduleForAnyProfessional: true, canViewCommission: true, isAdmin: true, isReceptionist: false };
   mocks.payments = true;
   mocks.canScheduleForAnyProfessional = true;
+  vi.clearAllMocks();
 });
 
 /** `select` nativo (mock do shadcn Select) que contém a opção com o texto dado. */
@@ -388,4 +430,192 @@ describe("PdvPage — PDV balcão (ADR-23)", () => {
     expect(await screen.findByText("Selecione o serviço.")).toBeTruthy();
     expect(screen.queryByText("Selecione o profissional.")).toBeNull();
   });
+
+  it("segmented control alterna para Produto e exibe select de produto", () => {
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: true };
+    mocks.products = [
+      { id: "p1", tenant_id: "t1", name: "Pomada", sku: null, category: "retail", unit: "un", cost_cents: 500, price_cents: 1000, min_qty: 1, active: true, commission_pct: 10, stock_qty: 5, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    mocks.canScheduleForAnyProfessional = true;
+    render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    const tab = screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct });
+    fireEvent.click(tab);
+    expect(screen.getByText(/Pomada/)).toBeTruthy();
+    // preço read-only visível
+    expect(screen.getByText(paymentsMessages.pdv.unitPrice)).toBeTruthy();
+  });
+
+  it("produto esgotado aparece desabilitado com alerta", () => {
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: false };
+    mocks.products = [
+      { id: "p2", tenant_id: "t1", name: "Gel", sku: null, category: "retail", unit: "un", cost_cents: 300, price_cents: 800, min_qty: 1, active: true, commission_pct: 0, stock_qty: 0, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    fireEvent.click(screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct }));
+    const select = Array.from(container.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent?.includes("Gel"))) as HTMLSelectElement;
+    const option = Array.from(select.options).find((o) => o.textContent?.includes("Gel"));
+    expect(option?.disabled).toBe(true);
+    expect(screen.getByText(paymentsMessages.pdv.outOfStockAlert)).toBeTruthy();
+  });
+
+  it("qty maior que estoque bloqueia submit", () => {
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: false };
+    mocks.products = [
+      { id: "p3", tenant_id: "t1", name: "Shampoo", sku: null, category: "retail", unit: "un", cost_cents: 300, price_cents: 1200, min_qty: 1, active: true, commission_pct: 0, stock_qty: 2, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    fireEvent.click(screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct }));
+    const select = Array.from(container.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent?.includes("Shampoo"))) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "p3" } });
+    const qtyInput = screen.getByLabelText(paymentsMessages.pdv.qty) as HTMLInputElement;
+    fireEvent.change(qtyInput, { target: { value: "5" } });
+    const btn = screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(paymentsMessages.pdv.insufficientStock)).toBeTruthy();
+  });
+
+  it("total calculado para venda de produto", () => {
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: false };
+    mocks.products = [
+      { id: "p4", tenant_id: "t1", name: "Cera", sku: null, category: "retail", unit: "un", cost_cents: 400, price_cents: 1500, min_qty: 1, active: true, commission_pct: 0, stock_qty: 10, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    fireEvent.click(screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct }));
+    const select = Array.from(container.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent?.includes("Cera"))) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "p4" } });
+    const qtyInput = screen.getByLabelText(paymentsMessages.pdv.qty) as HTMLInputElement;
+    fireEvent.change(qtyInput, { target: { value: "3" } });
+    // 3 * 1500 = 4500 cents => R$ 45,00
+    expect(screen.getByText(/R\$\s*45,00/)).toBeTruthy();
+  });
+
+  it("comissão preview visível só com entitlement e canViewCommission", () => {
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: true };
+    mocks.products = [
+      { id: "p5", tenant_id: "t1", name: "PomadaX", sku: null, category: "retail", unit: "un", cost_cents: 500, price_cents: 1000, min_qty: 1, active: true, commission_pct: 10, stock_qty: 5, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    // admin canViewCommission true (mock default)
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    fireEvent.click(screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct }));
+    const select = Array.from(container.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent?.includes("PomadaX"))) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "p5" } });
+    expect(screen.getByText(/Comissão estimada/i)).toBeTruthy();
+  });
+
+  it("receptionist não vê comissão preview", () => {
+    mocks.permissions = { canRegisterPayments: true, canScheduleForAnyProfessional: true, canViewCommission: false, isAdmin: false, isReceptionist: true };
+    mocks.entitlements = { estoque: true, prontuario: false, pacotes: false, aestheticCheckout: false, comissaoProduto: true };
+    mocks.products = [
+      { id: "p6", tenant_id: "t1", name: "PomadaR", sku: null, category: "retail", unit: "un", cost_cents: 500, price_cents: 1000, min_qty: 1, active: true, commission_pct: 10, stock_qty: 5, created_at: "2026-01-01T00:00:00Z" },
+    ];
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+    fireEvent.click(screen.getByRole("tab", { name: paymentsMessages.pdv.segmentedProduct }));
+    const select = Array.from(container.querySelectorAll("select")).find((s) => Array.from(s.options).some((o) => o.textContent?.includes("PomadaR"))) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "p6" } });
+    expect(screen.queryByText(/Comissão estimada/i)).toBeNull();
+    // restore
+    mocks.permissions = { canRegisterPayments: true, canScheduleForAnyProfessional: true, canViewCommission: true, isAdmin: true, isReceptionist: false };
+  });
+
+  it("fidelidade: submit aplica cupom+gift no fechamento (RPC args) e captura o total final", async () => {
+    mocks.entitlements = { fidelidade: true };
+    mocks.createCustomer.mutateAsync = vi.fn().mockResolvedValue({ id: "c1" });
+    mocks.createWalkIn.mutateAsync = vi
+      .fn()
+      .mockResolvedValue({ appointmentId: "aaaaaaaa-1111-1111-1111-111111111111" });
+    mocks.validateGift.mutateAsync = vi
+      .fn()
+      .mockResolvedValue({ valid: true, balance_cents: 3000, reason: null });
+    mocks.applyCoupon.mutateAsync = vi.fn().mockResolvedValue({
+      appointment_id: "aaaaaaaa-1111-1111-1111-111111111111",
+      coupon_id: "cp1",
+      discount_cents: 1000,
+      total_final_cents: 4000,
+      applied: true,
+      replayed: false,
+    });
+    mocks.redeemGift.mutateAsync = vi.fn().mockResolvedValue({
+      appointment_id: "aaaaaaaa-1111-1111-1111-111111111111",
+      gift_card_id: "g1",
+      amount_cents: 3000,
+      payment_id: "pay1",
+      redeemed: true,
+      replayed: false,
+    });
+
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    fireEvent.change(selectWithOption(container, "Beto"), {
+      target: { value: mocks.professionals[0].id },
+    });
+    fireEvent.change(selectWithOption(container, "Corte"), {
+      target: { value: mocks.services[0].id },
+    });
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText(paymentsMessages.pdv.customerName), {
+      target: { value: "Ana" },
+    });
+    fireEvent.change(screen.getByLabelText(paymentsMessages.pdv.customerPhone), {
+      target: { value: "11999998888" },
+    });
+
+    // Cupom pré-criação: sem atendimento real, fica pendente para o fechamento.
+    fireEvent.change(screen.getByLabelText("Cupom"), { target: { value: "VOLTA10" } });
+    fireEvent.click(screen.getByRole("button", { name: /aplicar cupom/i }));
+    expect(await screen.findByText(/será validado no fechamento/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Gift card"), { target: { value: "PRESENTE-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /resgatar gift card/i }));
+    await waitFor(() => expect(mocks.validateGift.mutateAsync).toHaveBeenCalledWith("PRESENTE-1"));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(paymentsMessages.pdv.createSale) }),
+    );
+
+    // Contrato dos RPCs: appointmentId real + codes + amounts idempotentes.
+    await waitFor(() => expect(mocks.applyCoupon.mutateAsync).toHaveBeenCalled());
+    expect(mocks.applyCoupon.mutateAsync).toHaveBeenCalledWith({
+      appointmentId: "aaaaaaaa-1111-1111-1111-111111111111",
+      code: "VOLTA10",
+      idempotencyKey: expect.any(String),
+    });
+    await waitFor(() => expect(mocks.redeemGift.mutateAsync).toHaveBeenCalled());
+    expect(mocks.redeemGift.mutateAsync).toHaveBeenCalledWith({
+      appointmentId: "aaaaaaaa-1111-1111-1111-111111111111",
+      code: "PRESENTE-1",
+      amountCents: 3000,
+      idempotencyKey: expect.any(String),
+    });
+
+    // Total capturado = 5000 − 1000 (cupom, servidor) − 3000 (gift).
+    expect((await screen.findByTestId("capture-total")).textContent).toBe("1000");
+  });
+
+  it("fidelidade: concluir a venda limpa loyalty (cupom/gift não vazam)", async () => {
+    mocks.entitlements = { fidelidade: true };
+    mocks.pending = [pendingAppointment()];
+    mocks.validateGift.mutateAsync = vi
+      .fn()
+      .mockResolvedValue({ valid: true, balance_cents: 3000, reason: null });
+    const { container } = render(wrapper(createElement(PdvPage)), { wrapper: undefined });
+
+    fireEvent.change(selectWithOption(container, "Corte"), {
+      target: { value: mocks.services[0].id },
+    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.change(screen.getByLabelText("Gift card"), { target: { value: "PRESENTE-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /resgatar gift card/i }));
+    // Status de fidelidade visível antes da conclusão.
+    expect(await screen.findByRole("status")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: paymentsMessages.pdv.openPayment }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "concluir-venda" }));
+
+    // Reset limpou loyalty: sem status residual para a próxima venda.
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
 });

@@ -38,6 +38,16 @@ Deno.test("23P01 não vaza detalhe de SQL na resposta HTTP", async () => {
   });
 });
 
+Deno.test("PACKAGE_CREDIT_AVAILABLE (PT409) vira 409 com mensagem pt-BR sem PII", () => {
+  const mapped = mapRpcError({ code: "PT409", message: "PACKAGE_CREDIT_AVAILABLE" });
+  strictEqual(mapped.status, 409);
+  strictEqual(mapped.code, "PACKAGE_CREDIT_AVAILABLE");
+  strictEqual(
+    messageForCode(mapped.code),
+    "Este atendimento tem sessão de pacote disponível. Conclua sem pagamento para usar o pacote.",
+  );
+});
+
 Deno.test("código desconhecido vira 500 INTERNAL", () => {
   const mapped = mapRpcError({ code: "22P02", message: "invalid input syntax" });
   strictEqual(mapped.status, 500);
