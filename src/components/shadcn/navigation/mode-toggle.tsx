@@ -22,6 +22,7 @@ export function ModeToggle() {
       aria-pressed={dark}
       aria-label={dark ? "Ativar tema claro" : "Ativar tema escuro"}
       title="Modo claro/escuro"
+      className="min-h-11 min-w-11"
     >
       {dark ? <Sun /> : <Moon />}
     </Button>

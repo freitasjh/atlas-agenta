@@ -6,8 +6,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { AuthCard } from "@/components/shadcn/auth/auth-card";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -177,7 +177,7 @@ export function TrocarSenhaPage() {
   const email = session?.user.email ?? "—";
 
   return (
-    <Card className="border-l-4 border-l-status-pendente">
+    <AuthCard className="border-l-4 border-l-status-pendente">
       <CardHeader className="space-y-2">
         <Badge variant="secondary" className="w-fit">
           {TROCAR_SENHA_COPY.firstAccessBadge}
@@ -298,6 +298,6 @@ export function TrocarSenhaPage() {
           className="h-auto p-0 text-sm text-muted-foreground"
         />
       </CardFooter>
-    </Card>
+    </AuthCard>
   );
 }

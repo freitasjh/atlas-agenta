@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
+import { MemoryRouter } from "react-router-dom"
 
 import { LoginPage } from "./LoginPage"
 
@@ -6,6 +7,7 @@ const meta = {
   title: "Templates/Login",
   component: LoginPage,
   parameters: { layout: "fullscreen" },
+  decorators: [(Story) => <MemoryRouter>{Story()}</MemoryRouter>],
 } satisfies Meta<typeof LoginPage>
 
 export default meta

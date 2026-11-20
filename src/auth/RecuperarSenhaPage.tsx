@@ -4,8 +4,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 
+import { AuthCard } from "@/components/shadcn/auth/auth-card";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -63,7 +63,7 @@ export function RecuperarSenhaPage() {
 
   if (sent) {
     return (
-      <Card>
+      <AuthCard>
         <CardHeader>
           <CardTitle className="font-display text-2xl">
             Verifique seu e-mail
@@ -87,12 +87,12 @@ export function RecuperarSenhaPage() {
             Voltar para o login
           </Link>
         </CardFooter>
-      </Card>
+      </AuthCard>
     );
   }
 
   return (
-    <Card>
+    <AuthCard>
       <CardHeader>
         <CardTitle className="font-display text-2xl">Recuperar senha</CardTitle>
         <CardDescription>
@@ -145,6 +145,6 @@ export function RecuperarSenhaPage() {
           Voltar para o login
         </Link>
       </CardFooter>
-    </Card>
+    </AuthCard>
   );
 }

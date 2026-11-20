@@ -5,14 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthCard } from "@/components/shadcn/auth/auth-card";
+import { SignupForm } from "@/components/shadcn/auth/signup-form";
 import {
   Form,
   FormControl,
@@ -262,12 +256,28 @@ export function CadastroPage() {
   const addressLoading = cepLookup.status === "loading";
 
   return (
-    <Card className="mx-auto w-full max-w-2xl">
-      <CardHeader>
-        <CardTitle className="font-display text-2xl">{msg.title}</CardTitle>
-        <CardDescription>{msg.subtitle}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <AuthCard className="mx-auto w-full max-w-2xl">
+      <div className="p-6 sm:p-8">
+        <Form {...form}>
+          <SignupForm
+            title={msg.title}
+            description={msg.subtitle}
+            error={serverError}
+            errorRef={feedbackRef}
+            isPending={signUp.isPending}
+            onSubmit={form.handleSubmit(onSubmit, handleInvalid)}
+            footer={
+              <span>
+                {msg.hasAccount}{" "}
+                <Link
+                  to="/login"
+                  className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {msg.signIn}
+                </Link>
+              </span>
+            }
+          >
         {plan ? (
           <div
             aria-labelledby="plano-escolhido-titulo"
@@ -365,17 +375,6 @@ export function CadastroPage() {
           </div>
         </nav>
 
-        {serverError ? (
-          <p
-            ref={feedbackRef}
-            role="alert"
-            tabIndex={-1}
-            className="mb-6 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {serverError}
-          </p>
-        ) : null}
-
         {summary.length >= 2 ? (
           <div
             role="alert"
@@ -399,13 +398,7 @@ export function CadastroPage() {
           </div>
         ) : null}
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit, handleInvalid)}
-            className="space-y-6"
-            noValidate
-          >
-            {/* Bloco 1: Empresa */}
+        {/* Bloco 1: Empresa */}
             <fieldset
               className={
                 currentStep === 1
@@ -722,6 +715,7 @@ export function CadastroPage() {
                           {msg.labels.addressState}
                         </FormLabel>
                         <Select
+                          name={field.name}
                           value={field.value || undefined}
                           onValueChange={(value) => {
                             userEditedAddressRef.current.add("addressState");
@@ -935,6 +929,7 @@ export function CadastroPage() {
                         {msg.labels.segment}
                       </FormLabel>
                       <Select
+                        name={field.name}
                         value={field.value || undefined}
                         onValueChange={field.onChange}
                       >
@@ -1009,20 +1004,9 @@ export function CadastroPage() {
                 )}
               </Button>
             </div>
-          </form>
+          </SignupForm>
         </Form>
-      </CardContent>
-      <CardFooter className="text-sm text-muted-foreground">
-        <span>
-          {msg.hasAccount}{" "}
-          <Link
-            to="/login"
-            className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {msg.signIn}
-          </Link>
-        </span>
-      </CardFooter>
-    </Card>
+      </div>
+    </AuthCard>
   );
 }
