@@ -5,8 +5,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AuthCard } from "@/components/shadcn/auth/auth-card";
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -72,7 +72,7 @@ export function RedefinirSenhaPage() {
   // erro enquanto o `PASSWORD_RECOVERY` ainda não chegou ao cache).
   if (sessionQuery.isLoading) {
     return (
-      <Card>
+      <AuthCard>
         <CardHeader>
           <CardTitle className="font-display text-2xl">Redefinir senha</CardTitle>
         </CardHeader>
@@ -85,13 +85,13 @@ export function RedefinirSenhaPage() {
             Verificando o link…
           </p>
         </CardContent>
-      </Card>
+      </AuthCard>
     );
   }
 
   if (!sessionQuery.data) {
     return (
-      <Card>
+      <AuthCard>
         <CardHeader>
           <CardTitle className="font-display text-2xl">
             Link inválido ou expirado
@@ -109,12 +109,12 @@ export function RedefinirSenhaPage() {
             Solicitar novo link
           </Link>
         </CardFooter>
-      </Card>
+      </AuthCard>
     );
   }
 
   return (
-    <Card>
+    <AuthCard>
       <CardHeader>
         <CardTitle className="font-display text-2xl">Redefinir senha</CardTitle>
         <CardDescription>Defina a nova senha da sua conta.</CardDescription>
@@ -183,6 +183,6 @@ export function RedefinirSenhaPage() {
           </form>
         </Form>
       </CardContent>
-    </Card>
+    </AuthCard>
   );
 }

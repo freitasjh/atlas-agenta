@@ -1,6 +1,7 @@
 "use client"
 
 import { GalleryVerticalEnd, ShieldCheck, CheckCircle2 } from "lucide-react"
+import { Link } from "react-router-dom"
 import { SignupWizardCard } from "@/components/shadcn/signup"
 import { ModeToggle } from "@/components/shadcn/navigation/mode-toggle"
 
@@ -16,15 +17,15 @@ export function SignupPage() {
       {/* Lado Esquerdo: Formulário de Cadastro em Wizard */}
       <div className="flex flex-col gap-4 p-6 md:p-10 justify-between">
         <div className="flex justify-center gap-2 md:justify-start">
-          <a
-            href="#/landing"
+          <Link
+            to="/"
             className="flex items-center gap-2 font-bold tracking-tight text-foreground transition-opacity hover:opacity-90"
           >
             <div className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs font-mono">
               <GalleryVerticalEnd className="size-4" />
             </div>
             <span className="text-base font-extrabold tracking-tight">Atlas</span>
-          </a>
+          </Link>
         </div>
 
         <div className="flex flex-1 items-center justify-center py-4">
@@ -36,13 +37,10 @@ export function SignupPage() {
                 className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
               />
 
+              {/* Template visual: rotas reais vivem em `@/auth/CadastroPage`. */}
               <SignupWizardCard
-                onNavigateLogin={() => {
-                  window.location.hash = "#/login"
-                }}
-                onSuccess={() => {
-                  window.location.hash = "#/shadcn"
-                }}
+                onNavigateLogin={() => {}}
+                onSuccess={() => {}}
               />
             </div>
           </div>

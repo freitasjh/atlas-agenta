@@ -1,65 +1,153 @@
+import type { UseFormReturn } from "react-hook-form"
+import { Link } from "react-router-dom"
+import { Loader2 } from "lucide-react"
+
 import { cn } from "@/lib/cn"
+import type { LoginInput } from "@/lib/validations/auth"
 
 import { Button } from "@/components/shadcn/ui/button"
 import {
   Field,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
 } from "@/components/shadcn/ui/field"
-import { Input } from "@/components/shadcn/ui/input"
+// `register()` precisa de ref: o Input de `@/components/ui` é forwardRef,
+// diferente do primitivo template (`@/components/shadcn/ui/input`).
+import { Input } from "@/components/ui/input"
 
+export interface LoginFormProps {
+  /** Instância RHF da página — zod/resolver continua sendo dela. */
+  form: UseFormReturn<LoginInput>
+  /** Callback com os valores já validados pelo resolver. */
+  onSubmit: (values: LoginInput) => void | Promise<void>
+  isPending?: boolean
+  disabled?: boolean
+  /** Aviso neutro de quem chega de outra tela (ADR-03): `role="status"`. */
+  notice?: string | null
+  /** Erro de credencial mapeado (anti-enumeração): `role="alert"`. */
+  error?: string | null
+  errorRef?: React.Ref<HTMLParagraphElement>
+  className?: string
+}
+
+/**
+ * Form de login do template, agora controlado pela página real.
+ *
+ * A lógica (RHF + zod, mutation, redirect, anti-enumeração) continua em
+ * `src/auth/LoginPage.tsx`; aqui só apresentação, links do React Router e
+ * acessibilidade. O botão social GitHub do template era mock e foi removido.
+ */
 export function LoginForm({
+  form,
+  onSubmit,
+  isPending = false,
+  disabled = false,
+  notice,
+  error,
+  errorRef,
   className,
-  ...props
-}: React.ComponentProps<"form">) {
+}: LoginFormProps) {
+  const { errors } = form.formState
+  const blocked = isPending || disabled
+
   return (
-    <form className={cn("flex flex-col gap-6", className)} {...props}>
-      <FieldGroup>
+    <form
+      onSubmit={form.handleSubmit(onSubmit)}
+      noValidate
+      aria-busy={isPending}
+      className={cn("flex flex-col gap-6", className)}
+    >
+      <FieldGroup className="gap-6">
         <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold">Entrar na sua conta</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Entrar na sua conta
+          </h1>
           <p className="text-sm text-balance text-muted-foreground">
-            Informe seu e-mail para acessar o painel.
+            Acesse o painel da sua empresa.
           </p>
         </div>
-        <Field>
+
+        {notice ? (
+          <p
+            role="status"
+            className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground"
+          >
+            {notice}
+          </p>
+        ) : null}
+
+        {error ? (
+          <p
+            ref={errorRef}
+            role="alert"
+            tabIndex={-1}
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <Field data-invalid={Boolean(errors.email)}>
           <FieldLabel htmlFor="email">E-mail</FieldLabel>
-          <Input id="email" type="email" placeholder="voce@empresa.com.br" autoComplete="email" required />
+          <Input
+            id="email"
+            type="email"
+            placeholder="voce@empresa.com.br"
+            autoComplete="email"
+            disabled={blocked}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            {...form.register("email")}
+          />
+          <FieldError id="email-error" errors={[errors.email]} />
         </Field>
-        <Field>
+
+        <Field data-invalid={Boolean(errors.password)}>
           <div className="flex items-center">
             <FieldLabel htmlFor="password">Senha</FieldLabel>
-            <a
-              href="#"
-              className="ml-auto text-sm underline-offset-4 hover:underline"
+            <Link
+              to="/recuperar-senha"
+              className="ml-auto rounded-sm text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               Esqueceu a senha?
-            </a>
+            </Link>
           </div>
-          <Input id="password" type="password" autoComplete="current-password" required />
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            disabled={blocked}
+            aria-invalid={Boolean(errors.password)}
+            aria-describedby={errors.password ? "password-error" : undefined}
+            {...form.register("password")}
+          />
+          <FieldError id="password-error" errors={[errors.password]} />
         </Field>
+
         <Field>
-          <Button type="submit">Entrar</Button>
-        </Field>
-        <FieldSeparator>ou continue com</FieldSeparator>
-        <Field>
-          <Button variant="outline" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-              <path
-                d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
-                fill="currentColor"
-              />
-            </svg>
-            Entrar com GitHub
+          <Button type="submit" className="w-full" disabled={blocked}>
+            {isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                Entrando…
+              </>
+            ) : (
+              "Entrar"
+            )}
           </Button>
-          <FieldDescription className="text-center">
-            Não tem conta?{" "}
-            <a href="#/signup" className="underline underline-offset-4 hover:text-primary">
-              Criar conta
-            </a>
-          </FieldDescription>
         </Field>
+
+        <FieldDescription className="text-center">
+          Ainda não tem conta?{" "}
+          <Link
+            to="/cadastro"
+            className="rounded-sm font-medium text-foreground underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Criar conta
+          </Link>
+        </FieldDescription>
       </FieldGroup>
     </form>
   )
