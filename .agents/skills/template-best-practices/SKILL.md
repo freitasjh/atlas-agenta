@@ -6,22 +6,22 @@ license: MIT
 
 # Template Best Practices — Boas Práticas de Templates
 
-Skill com boas práticas para templates de componentes reutilizáveis. Aplicável a qualquer framework (Vue 3, React 18).
+Skill com boas práticas para templates de componentes reutilizáveis. Aplicável a qualquer framework (Vue 3, React 18). **Exemplo ilustrativo, nunca prescrição de paleta: cor, fonte e raio vêm de `DESIGN.md`/tokens do destino.**
 
 ## 1. Acessibilidade (WCAG 2.1 AA)
 
 - Contraste: texto 4.5:1, UI não-textual 3:1.
-- Foco visível em todos os interativos (Pulse: ring âmbar).
+- Foco visível em todos os interativos, via token `--ring` do destino.
 - Navegação por teclado completa; sem armadilhas de foco.
 - Semântica correta (`button` para ação, `a` para navegação, landmarks).
 - ARIA apenas quando semântica nativa não basta; preferir HTML nativo.
 - Suporte a leitores de tela: labels, live regions para atualizações dinâmicas.
 - `prefers-reduced-motion`: desabilitar animações não essenciais.
-- `prefers-color-scheme`: dark mode (Pulse inverte neutros, mantém acento).
+- `prefers-color-scheme`: dark mode conforme os overrides de tema do destino.
 
 ## 2. Performance
 
-- Evitar re-renders desnecessários (Vue: `computed`/`shallowRef`; React: `memo`/`useMemo`).
+- Evitar re-renders desnecessários em Vue (`computed`/`shallowRef`). Se React: usar `memo`/`useMemo`.
 - Lazy load de componentes pesados (modais, tabelas grandes).
 - Virtualização para listas > 100 itens.
 - Debounce em inputs de busca (≥300ms).
@@ -55,7 +55,7 @@ Skill com boas práticas para templates de componentes reutilizáveis. Aplicáve
 ## 6. Anti-Padrões
 
 - Componente monolítico com 20+ props → quebrar em composição.
-- Estilo inline para tokens → usar classes/CSS vars do Pulse.
+- Estilo inline para tokens → usar classes/CSS vars semânticas do destino.
 - Lógica de negócio dentro de componente de UI → extrair para composable/hook.
 - Props booleanas combinatórias (`isPrimary`, `isLarge`, `isDisabled`) → variantes nomeadas.
 - Mutação de props (Vue/React) → emitir evento.
@@ -68,4 +68,4 @@ Skill com boas práticas para templates de componentes reutilizáveis. Aplicáve
 - [ ] Versionamento: versão atualizada se contrato mudou
 - [ ] Deprecação: marcada quando aplicável
 - [ ] i18n: sem literais
-- [ ] Tokens Pulse: sem valores ad-hoc
+- [ ] Tokens do destino: sem valores ad-hoc, `DESIGN.md`/tokens lidos antes

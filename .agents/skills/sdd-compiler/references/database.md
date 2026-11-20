@@ -53,11 +53,11 @@ CREATE TABLE outbox_events (
 
 - **Soft Deletes**: Critical domain entities (e.g., Invoices, Accounts) MUST NOT be hard-deleted. Use a `deleted_at` timestamp.
 - **Audit Trails (Append-Only)**: Highly sensitive tables MUST implement history tracking. 
-  - *Pattern*: Use tools like Hibernate Envers, or database triggers that write the old state to a `[table_name]_audit` table on every `UPDATE` or `DELETE`.
+  - **Java**: *Pattern* — use tools like Hibernate Envers, or database triggers that write the old state to a `[table_name]_audit` table on every `UPDATE` or `DELETE`.
 - **PII Protection**: Personally Identifiable Information (PII) MUST be encrypted at rest. Do not rely solely on disk encryption; use application-level cryptography (AES-256) for fields like `cpf`, `ssn`, or `medical_notes` before persisting.
 
 ## 5. Schema Evolution & Migrations
-- **Tooling**: Schema changes MUST be versioned using Flyway or Liquibase.
+- **Java**: tooling — schema changes MUST be versioned using Flyway or Liquibase.
 - **Zero-Downtime Rule (Expand and Contract)**:
   - You are FORBIDDEN from performing destructive operations (e.g., `DROP COLUMN`, `RENAME COLUMN`) in a single deployment.
   - *Phase 1 (Expand)*: Add the new column. App writes to both, reads from old.

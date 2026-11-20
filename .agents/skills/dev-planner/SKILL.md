@@ -108,7 +108,7 @@ websearch("[padrão] testing strategy best practices")
 
 ### NÃO use para:
 - Bugfix simples (use workflow bugfix existente)
-- Refactor pontual (use `code-reviewer` + `developer-engineer`)
+- Refactor pontual (use `code-reviewer` + `frontend-engineer`/`backend-engineer`)
 - Revisão de código (use `code-reviewer`)
 - Validação de testes (use `qa-engineer`)
 - Auditoria de segurança (use `security-engineer`)
@@ -136,17 +136,17 @@ Esta skill se encaixa no ciclo SDD existente:
 │  SDD Fase 2 (Planejamento)                                  │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │  dev-planner: Estimativa + Validação                │    │
-│  │  → PLAN.md (handoff para sdd-compiler)              │    │
+│  │  → parecer: estimativa + riscos (não é arquivo)     │    │
 │  └─────────────────────────────────────────────────────┘    │
 ├─────────────────────────────────────────────────────────────┤
 │  SDD Fase 2+ (Geração)                                      │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │  sdd-compiler: SPEC → PLAN → TASKS                  │    │
+│  │  sdd-compiler: SPEC → planejamento → TASKS          │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Handoff:** Ao finalizar, a skill gera artefatos que alimentam o `sdd-compiler` para gerar SPEC/PLAN/TASKS.
+**Handoff:** Ao finalizar, a skill gera artefatos que alimentam o `sdd-compiler`, que produz **SPEC**, o **plano de implementação** e **TASKS**.
 
 ---
 
@@ -156,9 +156,10 @@ Esta skill se encaixa no ciclo SDD existente:
 |----------|---------|----------|
 | EXPLORATION.md | `.spec/[feature]/EXPLORATION.md` | Problema, contexto, alternativas consideradas |
 | CONSTRAINTS.md | `.spec/[feature]/CONSTRAINTS.md` | Restrições técnicas, dependências, limitações |
-| DESIGN-DECISIONS.md | `.spec/[feature]/DESIGN-DECISIONS.md` | Decisões de design com justificativa (ADRs) |
+| DESIGN-DECISIONS.md | `.spec/[feature]/DESIGN-DECISIONS.md` | Alternativas + trade-off + recomendação, com justificativa técnica (insumo; ADR é do `architect`) |
 | ARCHITECTURE.md | `.spec/[feature]/ARCHITECTURE.md` | Modelo de dados, API, fluxos, integrações |
-| PLAN.md | `.spec/[feature]/PLAN.md` | Tarefas, estimativas, dependências, riscos |
+
+**Autor do plano:** o arquivo de plano do ciclo é gerado pelo `sdd-compiler` (esteira SDD). O `dev-planner` entrega estimativa e riscos como **parecer** no retorno, não como arquivo.
 
 ---
 
@@ -200,13 +201,14 @@ Exemplos rápidos:
 
 | Documento | Propósito |
 |-----------|-----------|
-| `.agents/rules/backend-coding-standards.md` | Padrões backend (Java EE 7 / EJB) |
-| `.agents/rules/frontend-coding-standards.md` | Padrões frontend (JSF + Vue) |
-| `.agents/rules/unit-testing-standards.md` | Regras de testes unitários |
-| `.agents/rules/db-migration-liquibase.md` | Regras de migração |
-| `.agents/rules/workflow-rules.md` | Workflow SDD completo |
-| `.doc/ARCHITECTURE.md` | Arquitetura detalhada do projeto |
-| `.doc/STACK.md` | Stack tecnológica e versões |
+| `.agents/rules/backend-coding-standards.md` | Padrões backend (ex.: Java EE 7 / EJB) |
+| `.agents/rules/frontend-coding-standards.md` | Padrões frontend (ex.: JSF + Vue) |
+| _Regras de testes unitários backend — dívida PRD-4_ | — |
+| _Regras de migração — dívida PRD-4_ | — |
+| `.agents/rules/workflow.md` | Fonte única do **fluxo** (esteira PRD → ADR → SDD por ADR, layout, bugfix, code review, estado) |
+| `.agents/rules/workflow-rules.md` | Prompt Gate (§0) e **harness** contínuo H0–H7 (§5 + anexos) |
+| Documentação de arquitetura do destino (dono PRD-4) | Arquitetura detalhada do projeto |
+| Documentação de stack do destino (dono PRD-4) | Stack tecnológica e versões |
 | `AGENTS.md` | Visão geral do projeto |
 
 ---

@@ -2,6 +2,11 @@
 
 Verificação pós-implementação obrigatória antes do `archive`. Três dimensões devem ser ✅ para avançar.
 
+> **Layout v2 (por ADR):** `verify` roda no diretório do ADR e gera
+> `ADRs/ADR-00N-{slug}/VERIFY.md`. `TASKS.md`/`SPEC.md` citados abaixo são os do
+> ADR; `ADR.md` equivale à seção de ADRs. Um ADR `merged` com `unit: adr` não
+> fecha sem este arquivo (`ADR-01`).
+
 ## Dimensão 1: Completeness (Completude)
 
 - [ ] **Tasks 100%**: Todos os checkboxes em `TASKS.md` marcados como concluídos.
@@ -12,7 +17,7 @@ Verificação pós-implementação obrigatória antes do `archive`. Três dimens
 ## Dimensão 2: Correctness (Correção)
 
 - [ ] **Build limpo**: `mvn clean install` (backend) OU `npm run build` (frontend) sem erros.
-- [ ] **Testes passando**: `mvn test` OU `npm test` — zero falhas.
+- [ ] **Testes passando**: `mvn test` OU `npm run test:run` — zero falhas.
 - [ ] **Cobertura mínima**: Services ≥ 80%, Domain ≥ 90% (backend). Confirmar com relatório.
 - [ ] **Requisitos funcionais**: Cada item de `SPEC.md § Functional Requirements` tem correspondência verificável no código.
 - [ ] **RBAC correto**: Permissões implementadas e testadas (se feature tem RBAC).
@@ -22,7 +27,7 @@ Verificação pós-implementação obrigatória antes do `archive`. Três dimens
 
 - [ ] **ADRs refletidos**: Decisões arquiteturais do `SPEC.md § ADRs` visíveis no código (naming, estrutura, padrões).
 - [ ] **Sem vazamento de camada**: Controllers expõem DTOs (não entities). `impl` não depende de outro `impl`.
-- [ ] **Naming conventions**: Classes, métodos e variáveis seguem padrões em `.agents/rules/backend-coding-standards.md`.
+- [ ] **Naming conventions**: Classes, métodos e variáveis seguem os padrões declarados na SPEC.
 - [ ] **Frontend DevTools** (se mudança frontend):
   - [ ] Zero `[ERROR]` no console.
   - [ ] Zero `[WARN]` relevantes no console.

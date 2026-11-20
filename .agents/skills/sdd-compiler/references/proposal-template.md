@@ -57,7 +57,6 @@
 
 | Documento Alvo | Tipo de Mudança | Seção Afetada |
 |----------------|-----------------|---------------|
-| `.agents/rules/backend-coding-standards.md` | ADDED / MODIFIED / REMOVED | [seção] |
 | `AGENTS.md` | ADDED / MODIFIED / REMOVED | [seção] |
 
 ---

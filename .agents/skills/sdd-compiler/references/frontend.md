@@ -12,7 +12,7 @@ The frontend framework MUST be explicitly defined in the PLAN. Once selected, th
   - State Management: Use **Pinia**.
 - **If Angular (15+)**:
   - Standalone Components are RECOMMENDED over NgModules for new architectures.
-  - State Management: Use **RxJS Services** (default) or **NgRx** (for Redux-pattern).
+  - State Management: use **RxJS Services** (default) or **NgRx** (for Redux-pattern) — ex.: Angular.
   - Strict TypeScript mode MUST be enabled.
 - **If Vanilla JS / HTMX**:
   - For SSR-heavy backends (e.g., Go/Templ, Python/Django, Java/Thymeleaf).
@@ -33,7 +33,7 @@ src/
 ```
 
 ## 3. API Integration & Resiliency
-- **HTTP Client**: Axios or native `fetch` wrapper.
+- **HTTP Client**: the configured `http` instance from `@/lib/axios` (axios underneath). Do not instantiate axios or use raw `fetch` in components — services own the calls.
 - **Interceptors Required**:
   - **Request**: MUST inject `Authorization: Bearer <token>`.
   - **Request**: MUST inject `X-Correlation-ID` (UUID) to trace the request to the backend.
@@ -45,11 +45,9 @@ src/
 - **Routing**: Global Router Guards/Middleware MUST verify token validity and RBAC permissions before rendering internal routes.
 
 ## 5. UI/UX Libraries & Styling
-- **Component Libraries**: 
-  - React: Radix UI, Shadcn/ui, or MUI.
-  - Vue: PrimeVue or Vuetify.
-  - Angular: Angular Material or PrimeNG.
-- **Styling**: **Tailwind CSS** is universally recommended for utility-first styling. Avoid custom CSS/SCSS unless strictly necessary.
+- **Component Libraries** — canonical harness pattern (ADR F6, D-F6-A): shadcn (UI layer over Radix) for both React and Vue. Unique source of truth: skills `frontend-react-specialist` / `frontend-vue-specialist`. Other component suites are out of contract.
+- **Icons**: `lucide-react` (React) / `lucide-vue-next` (Vue).
+- **Styling**: **Tailwind CSS** utility-first. Component colors/types/spacing come from `DESIGN.md` + semantic tokens of the destination — never hardcoded hex/fonts. Avoid custom CSS/SCSS unless strictly necessary.
 
 ## 6. Error Handling & Observability
 - **Global Error Boundary/Handler**: Unhandled component exceptions MUST be caught globally (e.g., React Error Boundaries, Vue `app.config.errorHandler`) and sent to an APM (e.g., Sentry, Datadog).

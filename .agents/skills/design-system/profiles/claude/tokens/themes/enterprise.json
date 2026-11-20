@@ -1,0 +1,20 @@
+{
+  "meta": { "theme": "enterprise", "extends": "semantic" },
+  "bg": {
+    "page": { "$value": "#F8FAFC", "$type": "color" },
+    "soft": { "$value": "#F1F5F9", "$type": "color" },
+    "card": { "$value": "#FFFFFF", "$type": "color" },
+    "dark": { "$value": "#0F172A", "$type": "color" },
+    "dark-elevated": { "$value": "#1E293B", "$type": "color" }
+  },
+  "action": {
+    "primary": { "$value": "{color.blue-600}", "$type": "color" },
+    "primary-active": { "$value": "#1E40AF", "$type": "color" }
+  },
+  "border": {
+    "hairline": { "$value": "#E2E8F0", "$type": "color" }
+  },
+  "font": {
+    "display": { "$value": "\"Plus Jakarta Sans\", system-ui, sans-serif", "$type": "fontFamily" }
+  }
+}

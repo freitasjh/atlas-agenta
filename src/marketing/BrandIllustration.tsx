@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
  * Representa a tese do produto em miniatura: o ciclo
  * `lembrete no WhatsApp → pendente → confirmado → PIX pago`, ecoando o "anel de
  * confirmação" jade da marca (mesmo arco de `src/components/Logo.tsx`, via
- * `stroke="hsl(var(--primary))"`). Reusa `StatusBadge` para os estados
+ * `stroke="var(--primary)"`). Reusa `StatusBadge` para os estados
  * `pendente`/`confirmado` — tokens `--status-*`, nunca cor nova.
  *
  * Fonte única de markup reusada por **duas** telas (hero da landing e `aside`
@@ -72,7 +72,7 @@ export function BrandIllustration({
             viewBox="0 0 24 24"
             className="h-4 w-4"
             fill="none"
-            stroke="hsl(var(--primary))"
+            stroke="var(--primary)"
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -99,7 +99,7 @@ export function BrandIllustration({
           viewBox="0 0 24 24"
           className="h-4 w-4 shrink-0"
           fill="none"
-          stroke="hsl(var(--muted-foreground))"
+          stroke="var(--muted-foreground)"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -125,14 +125,14 @@ export function BrandIllustration({
             {/* Anel de confirmação: arco aberto em jade (linguagem da marca). */}
             <path
               d="M26 16a10 10 0 1 0-4.2 8.14"
-              stroke="hsl(var(--primary))"
+              stroke="var(--primary)"
               strokeWidth="2.5"
               strokeLinecap="round"
             />
             {/* Marca de confirmação no centro. */}
             <path
               d="M11.5 16.5l3 3 6-6.5"
-              stroke="hsl(var(--primary))"
+              stroke="var(--primary)"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"

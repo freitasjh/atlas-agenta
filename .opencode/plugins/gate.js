@@ -55,28 +55,17 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { verifySeal, sha256 } from "./lib/seal.mjs";
 import { loadHarnessConfig, REPO_ROOT } from "./lib/config.mjs";
+import * as core from "./lib/gate-core.mjs";
 
-export const DEFAULT_MODE = "enforce";
-
-export const KILL_SWITCH_ENV = "HARNESS_GATES";
-export const KILL_SWITCH_OFF = "off";
-
-export const DENY_SEAL_MISMATCH = "sealed-command-mismatch";
-
-// ADR-006: the typed deny signal. The dispatcher propagates DenyError and
-// fail-opens on anything else. Gates MUST throw this, never a raw Error.
-export class DenyError extends Error {
-  constructor(reason, details = {}) {
-    super(typeof reason === "string" && reason.length > 0 ? reason : "deny");
-    this.name = "DenyError";
-    this.reason = typeof reason === "string" && reason.length > 0 ? reason : "deny";
-    this.details = details;
-  }
-}
-
-export function isKillSwitchOff(env = process.env) {
-  return env?.[KILL_SWITCH_ENV] === KILL_SWITCH_OFF;
-}
+export const DEFAULT_MODE = core.DEFAULT_MODE;
+export const KILL_SWITCH_ENV = core.KILL_SWITCH_ENV;
+export const KILL_SWITCH_OFF = core.KILL_SWITCH_OFF;
+export const DENY_SEAL_MISMATCH = core.DENY_SEAL_MISMATCH;
+export const DenyError = core.DenyError;
+export const isKillSwitchOff = core.isKillSwitchOff;
+export const resolveGateMode = core.resolveGateMode;
+export const modeForGate = core.modeForGate;
+export const normalizePath = core.normalizePath;
 
 // ADR-001 item 4 (MODO-06): the legacy config→mode resolver is gone. The
 // config never decides a mode (RF-01); the effective mode comes from the
@@ -95,39 +84,7 @@ export function isKillSwitchOff(env = process.env) {
 const GATE_MODE_ENV_PREFIX = "HARNESS_GATE_";
 const GATE_MODE_REASON_SUFFIX = "_REASON";
 
-export function resolveGateMode(gateName, env) {
-  const envVar = `${GATE_MODE_ENV_PREFIX}${String(gateName).toUpperCase()}`;
-  const raw = env?.[envVar];
-  if (raw === undefined) {
-    return { mode: "enforce", source: "default", envVar: null, reason: null };
-  }
-  if (raw === "enforce") return { mode: "enforce", source: "env", envVar, reason: null };
-  if (raw === "warn") {
-    const reason = env?.[`${envVar}${GATE_MODE_REASON_SUFFIX}`];
-    if (typeof reason === "string" && reason.trim().length > 0) {
-      return { mode: "warn", source: "env", envVar, reason };
-    }
-    // Downgrade refused (RF-05/INV-3). This resolver is pure (SPEC 3.1) and
-    // emits nothing; the caller announces the refusal (announceGateMode).
-    return { mode: "enforce", source: "default", envVar, reason: null };
-  }
-  // Out of domain — null, "ENFORCE", "off", 42, ...: fail-closed. A present but
-  // invalid value keeps envVar (it names the key that was refused).
-  return { mode: "enforce", source: "default", envVar, reason: null };
-}
-
-// ---------------------------------------------------------------------------
-// FU-06/ADR-001: per-gate modes. Each core gate carries a gateName; modeForGate
-// resolves it from the host-process env through resolveGateMode (MODO-02). A
-// gate without its own gateName (hygiene) falls back to DEFAULT_MODE — there is
-// no env lookup for it. The config never participates (RF-01).
-// ---------------------------------------------------------------------------
-
-export function modeForGate(gateFn, env) {
-  const gateName = gateFn?.gateName;
-  if (typeof gateName !== "string" || gateName.length === 0) return DEFAULT_MODE;
-  return resolveGateMode(gateName, env).mode;
-}
+// resolveGateMode/modeForGate now provided by shared core (CORE-01).
 
 // ---------------------------------------------------------------------------
 // FU-07: the contraprove cache is only valid when treeHash names real
@@ -350,23 +307,22 @@ export function listCoreGates() {
 }
 
 // ---------------------------------------------------------------------------
-// Shared deny reasons (one per fixture row, SPEC §7.3).
-// ---------------------------------------------------------------------------
-
-export const DENY_PICCO_ABSENT = "picco-tag-absent";
-export const DENY_PICCO_NONEMPTY = "picco-tag-nonempty";
-export const DENY_COMPLETED_NO_EVIDENCE = "completed-no-evidence";
-export const DENY_CONTRAPROVE_DIVERGENT = "contraprove-divergent";
-export const DENY_CONTRAPROVE_TIMEOUT = "contraprove-timeout";
-export const DENY_PREV_CYCLE = "prev-cycle-not-completed";
-export const DENY_HITL = "hitl-pause-required";
-export const DENY_PKILL = "pkill-f";
-export const DENY_PROTECTED = "protected-path-write";
-export const DENY_ALLOWLIST = "orch-write-outside-allowlist";
-export const DENY_QA_SCOPE = "qa-scope-violation";
-export const DENY_ROLE_WRITE = "write-denied-for-role";
-export const DENY_CONFIG_UNAVAILABLE = "config-unavailable";
-export const DENY_STATE_CORRUPT = "state-corrupt";
+// Shared deny reasons now provided by shared core (CORE-01). Re-export below.
+export const DENY_PICCO_ABSENT = core.DENY_PICCO_ABSENT;
+export const DENY_PICCO_NONEMPTY = core.DENY_PICCO_NONEMPTY;
+export const DENY_COMPLETED_NO_EVIDENCE = core.DENY_COMPLETED_NO_EVIDENCE;
+export const DENY_FRONTEND_EVIDENCE = "frontend-evidence-missing";
+export const DENY_CONTRAPROVE_DIVERGENT = core.DENY_CONTRAPROVE_DIVERGENT;
+export const DENY_CONTRAPROVE_TIMEOUT = core.DENY_CONTRAPROVE_TIMEOUT;
+export const DENY_PREV_CYCLE = core.DENY_PREV_CYCLE;
+export const DENY_HITL = core.DENY_HITL;
+export const DENY_PKILL = core.DENY_PKILL;
+export const DENY_PROTECTED = core.DENY_PROTECTED;
+export const DENY_ALLOWLIST = core.DENY_ALLOWLIST;
+export const DENY_QA_SCOPE = core.DENY_QA_SCOPE;
+export const DENY_ROLE_WRITE = core.DENY_ROLE_WRITE;
+export const DENY_CONFIG_UNAVAILABLE = core.DENY_CONFIG_UNAVAILABLE;
+export const DENY_STATE_CORRUPT = core.DENY_STATE_CORRUPT;
 
 // ---------------------------------------------------------------------------
 // FU-05: config→gate border. The loader throws a plain Error; decide() would
@@ -524,10 +480,7 @@ export async function gatePiccoTask(ctx = {}) {
 // Path helpers shared by anchors A (GATE-03) and hygiene (GATE-05).
 // ---------------------------------------------------------------------------
 
-export function normalizePath(path) {
-  if (typeof path !== "string") return "";
-  return path.trim().replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "").replace(/^["']|["']$/g, "");
-}
+// normalizePath now provided by shared core (CORE-01); re-exported above.
 
 function escapeRegExp(text) {
   return text.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
@@ -552,7 +505,8 @@ export function matchGlob(path, pattern) {
 
 // Orchestrator allowlist, anchor A (SPEC N12): ONLY .spec/** plus the state
 // file. Everything else (notably rules/schemas/plugins/config) is denied here
-// and writable solely via developer-engineer under delegation (CI backstop).
+// and writable solely via the live implementation roles (frontend-engineer |
+// backend-engineer) under delegation (CI backstop).
 export function isOrchAllowlisted(path) {
   const normalized = normalizePath(path);
   return (
@@ -632,15 +586,7 @@ export function basenameOf(path) {
   return segments.length > 0 ? segments[segments.length - 1] : "";
 }
 
-const KNOWN_AGENTS = new Set([
-  "orchestrator",
-  "developer-engineer",
-  "qa-engineer",
-  "code-reviewer",
-  "ux-designer",
-  "design-system-specialist",
-  "unknown",
-]);
+export const KNOWN_AGENTS = core.KNOWN_AGENTS; // synced with shared core (NF-10)
 
 export function sanitizeAgent(agent) {
   return KNOWN_AGENTS.has(agent) ? agent : "unknown";
@@ -655,9 +601,11 @@ export function checkWriteAccess({ agent, tool, targets = [], protectedPaths = [
     const normalized = normalizePath(target.path);
     if (!normalized || normalized === "dev/null") continue;
     if (isProtectedPath(normalized, protectedPaths)) {
-      // Sole exception: developer-engineer under delegation; the trailer
+      // Sole exception: implementation roles under delegation; the trailer
       // requirement itself is enforced out-of-band by CI (ADR-007).
-      if (agent === "developer-engineer") continue;
+      // F4: the former single implementation role was removed from the roster;
+      // the two current implementation roles inherit the exemption.
+      if (agent === "frontend-engineer" || agent === "backend-engineer") continue;
       throw new DenyError(DENY_PROTECTED, {
         tool,
         path: sanitizePathForDetails(normalized),
@@ -944,6 +892,7 @@ export async function gateCompletionAnchorA(ctx = {}) {
   if (!isCompletionWrite({ tool, targets, args: ctx.args })) return true;
   const report = ctx.report ?? null;
   if (!report) throw new DenyError(DENY_COMPLETED_NO_EVIDENCE, { demand: ctx.demand ?? null });
+  requireFrontendEvidence(report, config?.targets?.frontend);
   await runContraprova({
     demand: ctx.demand ?? report?.demand ?? "workflow-state",
     report,
@@ -1051,10 +1000,10 @@ export function readEvidenceReport(ctx = {}) {
 // GATE-04 — HITL pause between batches (I6).
 //
 // Rule: the 3rd consecutive `task` without an intervening human turn denies.
-// The mandatory correction loop (developer-engineer -> code-reviewer (renamed RENAME, Batch 7)
-// as the first two calls) therefore always passes — the exemption is
-// structural (2 < 3), not a special case. Human turns arrive via the
-// event stream (v2 turn-boundary events), which resets the per-session counter.
+// The mandatory correction loop (implementation role -> code-reviewer as the
+// first two calls) therefore always passes — the exemption is structural
+// (2 < 3), not a special case. Human turns arrive via the event stream (v2
+// turn-boundary events), which resets the per-session counter.
 // ---------------------------------------------------------------------------
 
 export function createHitlTracker() {
@@ -1481,3 +1430,37 @@ export async function setup(ctx = {}) {
 // [\"default\"]"). No `Plugin.define` (absent from the runtime) and no `server`
 // key — this repo is v2-only.
 export default { id: "harness-gate", setup };
+
+// Q3=A — evidência frontend é condicional ao ALVO, não ao relatório:
+// `targets.frontend` string não vazia exige `report.frontend_evidence`. O campo
+// permanece OPCIONAL no schema (o destino sem frontend não deve ser obrigado a
+// declará-lo). I10: detalhes trazem só enums de causa e NOMES de campo — nunca
+// paths absolutos ou conteúdo de story/screenshot.
+// Declarado no fim do arquivo (function declaration é hoisted) para não
+// deslocar as citações de linha de gate-contract.md §1.
+export function requireFrontendEvidence(report, frontend) {
+  if (typeof frontend !== "string" || frontend.length === 0) return true;
+  const evidence = report?.frontend_evidence;
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
+    throw new DenyError(DENY_FRONTEND_EVIDENCE, { cause: "missing" });
+  }
+  const fields = [];
+  for (const key of ["stories", "screenshots"]) {
+    const list = evidence[key];
+    if (!Array.isArray(list) || list.length === 0 || list.some((v) => typeof v !== "string" || v.length === 0)) {
+      fields.push(key);
+    }
+  }
+  const a11y = evidence.a11y;
+  if (
+    !a11y ||
+    typeof a11y !== "object" ||
+    Array.isArray(a11y) ||
+    typeof a11y.violations !== "number" ||
+    a11y.violations !== 0
+  ) {
+    fields.push("a11y");
+  }
+  if (fields.length > 0) throw new DenyError(DENY_FRONTEND_EVIDENCE, { cause: "invalid", fields });
+  return true;
+}

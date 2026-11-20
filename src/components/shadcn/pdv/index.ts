@@ -1,0 +1,12 @@
+export * from "./pdv-types"
+export * from "./pdv-header"
+export * from "./pdv-product-catalog"
+export * from "./pdv-cart"
+export * from "./pdv-payment-modal"
+export * from "./pdv-cash-movement-modal"
+export * from "./pdv-customer-modal"
+export * from "./pdv-close-register-modal"
+export * from "./pdv-receipt-modal"
+export * from "./pdv-hotkeys-footer"
+export * from "./pdv-view"
+

@@ -286,11 +286,15 @@ export function AppointmentBlock({
         onClick={onOpen ? () => onOpen(appointment) : undefined}
         onKeyDown={handleMainKeyDown}
         className={cn(
-          "flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-md border border-border border-l-2 bg-card p-2 text-left",
-          "transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 motion-reduce:transition-none",
+          "relative flex h-full w-full flex-col gap-0.5 overflow-hidden rounded-lg border border-border/70 border-l-2 bg-card/95 px-2.5 py-2 text-left shadow-xs backdrop-blur-sm",
+          "transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 motion-reduce:transition-none",
           STATUS_BORDER[appointment.status],
         )}
       >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent"
+        />
         <span
           aria-hidden="true"
           data-testid="split-timing"

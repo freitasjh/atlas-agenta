@@ -42,7 +42,7 @@ divergência ⇒ `DenyError` (SPEC ADR-002; RUNTIME-CONTRACT §6).
 {
   "version": 1,
   "demand": "harness-v7-batch6",
-  "agent": "developer-engineer",
+  "agent": "backend-engineer",
   "phase": "Execution",
   "gitSha": "unknown-no-git",
   "commands": [
@@ -76,7 +76,7 @@ divergência ⇒ `DenyError` (SPEC ADR-002; RUNTIME-CONTRACT §6).
 {
   "version": 1,
   "demand": "harness-v7-batch6",
-  "agent": "developer-engineer",
+  "agent": "backend-engineer",
   "phase": "Execution",
   "gitSha": "unknown-no-git",
   "commands": [

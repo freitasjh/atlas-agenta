@@ -78,7 +78,7 @@ Você pensa em termos de:
 
 # 🧪 6. TESTING STRATEGY
 
-- Unitários com Jest
+- **NestJS**: Unitários com Jest
 - E2E com Supertest
 - Mock de dependências externas
 - Cobertura mínima por módulo

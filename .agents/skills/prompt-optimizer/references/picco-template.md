@@ -1,6 +1,6 @@
-# Template PICCO — Contrato de Saída + Exemplos
+# Template PICCO — Contrato de Saída + Exemplos (v3)
 
-Referência de `SKILL.md`. O bloco é efêmero: vai no chat e no prompt de delegação, nunca em arquivo (D1).
+Referência de `SKILL.md`. O bloco é efêmero: vai no chat e no prompt de delegação, nunca em arquivo (D1). Premissa não confirmada que sobrou do estoque vai para o ledger em `workflow-state.json.prompt_assumptions[]` — nunca para dentro do bloco.
 
 ## O Template
 
@@ -10,7 +10,7 @@ Referência de `SKILL.md`. O bloco é efêmero: vai no chat e no prompt de deleg
 <task>[E1] em [E3].</task>
 
 <context>
-  Projeto: [projeto ativo]
+  Projeto: [projeto ativo — citar arquivo:linha ou brain path]
   Escopo: [o que entra e o que NÃO entra]
   Tipo de rota: [E6]
   Fornecido pelo usuário: [lista do que foi afirmado, sem dedução]
@@ -124,7 +124,7 @@ Não vou assumir o que ficou em branco. Escolher por você é palpite caro.
 
 ---
 
-## RUIM 2 — 14 constraints + CoT explícito
+## RUIM 2 — CoT explícito + negação pura (10 constraints, no limite do V5)
 
 ```xml
 <role>Você é um especialista em segurança. Pense passo a passo antes de responder.</role>
@@ -142,18 +142,14 @@ Não vou assumir o que ficou em branco. Escolher por você é palpite caro.
   8. Não crie endpoint novo
   9. Não toque em outros módulos
   10. Não use System.out
-  11. Não faça commit
-  12. Não pule code review
-  13. Não use subagente
-  14. Não rode pkill
 </constraints>
 ```
 
-**Contagem: 14 constraints.** V5 reprova (>10). 13 são negações, 0 positivas.
+**Contagem: 10 constraints** — exatamente no limite do V5, sem violar o teto. 9 são negações, 0 positivas, 1 é CoT. O prompt original deste padrão tinha 14 linhas; a versão reproduzida para o exemplo para em 10 para que o próprio exemplo não seja dívida.
 
 **Por que falha:** dois defeitos independentes.
 
-**Volume:** 14 regras simultâneas. Acima de ~10 a adesão cai — as últimas entram como ruído e o modelo cumpre as primeiras. O bloco está mal, não a instrução.
+**Volume:** acima de ~10 a adesão cai — as últimas entram como ruído e o modelo cumpre as primeiras. O limite estrutural (V5) segura o teto; ele não torna as 10 regras boas.
 
 **Negação pura:** "não use X" pede para a ausência de X. Quem tem dúvida sobre o default cai no X. "Sempre construtor e getters manuais" é mais forte que "não use Lombok".
 

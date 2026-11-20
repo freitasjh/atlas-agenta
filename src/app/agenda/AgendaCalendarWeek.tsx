@@ -10,6 +10,7 @@ import {
 import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages";
 import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { Button } from "@/components/ui/button";
+import { SchedulePanel } from "@/app/agenda/schedule/ScheduleSurface";
 import { toTenantLocal, weekRangeOf } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import type {
@@ -369,7 +370,7 @@ export function AgendaCalendarWeek({
       </div>
 
       {/* sm+: navegação por semana (±7 + Hoje) + grade de 7 colunas. */}
-      <div className="hidden overflow-hidden rounded-lg border border-border bg-card sm:block">
+      <SchedulePanel className="hidden sm:block">
       {/* Cabeçalho de navegação, em paridade com a barra da Lista/Dia. */}
       <div className="flex items-center justify-between gap-2 border-b border-border p-2">
         <Button
@@ -425,17 +426,29 @@ export function AgendaCalendarWeek({
                 aria-pressed={isFocus}
                 aria-label={`${WEEKDAY_SHORT[weekday]} ${dayNumber(columnDay)}`}
                 className={cn(
-                  "border-b border-border px-2 py-2 text-center text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  isToday
-                    ? "font-semibold text-primary"
-                    : "text-muted-foreground",
+                  "border-b border-border/80 px-2 py-2.5 text-center text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                  isFocus ? "bg-primary/5" : undefined,
+                  isToday ? "text-primary" : "text-muted-foreground",
                 )}
               >
-                <span className="block capitalize">
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {WEEKDAY_SHORT[weekday]}
                 </span>
-                <span className="block font-mono text-sm tabular-nums text-foreground">
+                <span
+                  className={cn(
+                    "mx-auto mt-1 flex size-7 items-center justify-center rounded-full font-mono text-xs font-bold tabular-nums",
+                    isToday
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground",
+                  )}
+                >
                   {dayNumber(columnDay)}
+                </span>
+                <span className="mt-1 block text-[10px] text-muted-foreground">
+                  {(byDay.get(columnDay) ?? []).length}{" "}
+                  {(byDay.get(columnDay) ?? []).length === 1
+                    ? "agendado"
+                    : "agendados"}
                 </span>
               </button>
               {renderOccupancy(columnDay)}
@@ -448,7 +461,7 @@ export function AgendaCalendarWeek({
         })}
       </div>
       </div>
-      </div>
+      </SchedulePanel>
     </>
   );
 }

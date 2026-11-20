@@ -83,7 +83,7 @@ Você pensa em termos de:
 
 # 🧪 7. TESTING STRATEGY
 
-- Unitários com Jest/Vitest
+- **Node**: se Node.js — Unitários com Jest/Vitest
 - Integração com banco real
 - Mock de dependências externas
 - Cobertura mínima por módulo

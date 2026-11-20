@@ -1,6 +1,6 @@
 ---
 name: sdd-feedback
-description: "10-Point Summary template for SDD phases. Mandatory after every SDD command (proposal/spec/plan/tasks/verify). Eliminates 'done without proof' anti-pattern."
+description: "10-Point Summary template for SDD phases. Mandatory after every SDD command (spec-from-adr/tasks-from-adr/verify/archive). Eliminates 'done without proof' anti-pattern."
 ---
 
 # SDD Feedback: 10-Point Summary
@@ -11,13 +11,11 @@ Gere resumo estruturado APÓS qualquer comando SDD que gere ou modifique artefat
 
 | Comando SDD | Obrigatório? |
 |-------------|--------------|
-| `generate-proposal` | ✅ SIM |
-| `generate-spec` | ✅ SIM |
-| `generate-plan` | ✅ SIM |
-| `generate-tasks` | ✅ SIM |
-| `generate-integration` | ✅ SIM |
+| `spec-from-adr` | ✅ SIM |
+| `tasks-from-adr` | ✅ SIM |
 | `verify` | ✅ SIM |
 | `archive` | ✅ SIM (resumo final) |
+| legado: `generate-proposal`/`generate-spec`/`generate-plan`/`generate-tasks` | ✅ SIM, só em ciclos `unit: legacy` |
 
 ## Template 10-Point
 
@@ -54,35 +52,30 @@ Gere resumo estruturado APÓS qualquer comando SDD que gere ou modifique artefat
 
 ## Mapeamento Comando → Artefato → Extração
 
-### generate-proposal
-- **Ler:** `.spec/[feature]/PROPOSAL.md`
-- **Extrair:** Problema, solução, escopo, riscos, delta specs
-- **Watch-outs:** Conflitos com arquitetura, multi-tenancy
+### spec-from-adr
+- **Ler:** `.spec/prd/{prd-id}/ADRs/ADR-00N-{slug}/SPEC.md` (+ `ADR.md`/`PRD.md`)
+- **Extrair:** `RF`/`NFR` rastreáveis ao ADR, interface congelada, invariantes, delta specs
+- **Watch-outs:** requisito sem origem no ADR, critério de aceite não executável
 
-### generate-spec
-- **Ler:** `.spec/[feature]/SPEC.md`
-- **Extrair:** Requisitos funcionais, ADRs, invariantes, edge cases
-- **Watch-outs:** Requisitos ambíguos, dependências não mapeadas
-
-### generate-plan
-- **Ler:** `.spec/[feature]/PLAN.md`
-- **Extrair:** Tech stack, fases, dependências, estimativas
-- **Watch-outs:** Pontos de integração, migrações
-
-### generate-tasks
-- **Ler:** `.spec/[feature]/TASKS.md`
-- **Extrair:** Número de tasks, categorias, dependências, complexidade
-- **Watch-outs:** Tasks sem teste, dependências circulares
-
-### generate-integration
-- **Ler:** `.spec/[feature]/INTEGRATION.md`
-- **Extrair:** Pontos de integração, modificações em código existente
-- **Watch-outs:** Breaking changes, migrações
+### tasks-from-adr
+- **Ler:** `.spec/prd/{prd-id}/ADRs/ADR-00N-{slug}/TASKS.md`
+- **Extrair:** número de tasks, dependências, complexidade, cobertura `RF`→task
+- **Watch-outs:** task sem teste, dependência circular, ID fora de `[A-Z]+-\d+`
 
 ### verify
-- **Ler:** `.spec/[feature]/VERIFY.md`
-- **Extrair:** Completeness, correctness, coherence scores
-- **Watch-outs:** Gaps restantes, débitos técnicos
+- **Ler:** `.spec/prd/{prd-id}/ADRs/ADR-00N-{slug}/VERIFY.md`
+- **Extrair:** completeness, correctness, coherence (3 dimensões)
+- **Watch-outs:** gaps restantes, débitos técnicos, `VERIFY.md` ausente com ADR `merged`
+
+### archive
+- **Ler:** `.spec/archive/[YYYYMMDD]-prd-{prd-id}/` (PRD inteiro movido)
+- **Extrair:** ADRs fechados, delta mesclado, lições
+- **Watch-outs:** ADR sem `VERIFY.md`, delta não mesclado
+
+### legado (`generate-proposal`/`generate-spec`/`generate-plan`/`generate-tasks`)
+- **Ler:** `.spec/[backend|frontend]/[feature]/` (ciclo de 4 artefatos congelado)
+- **Extrair:** mesma estrutura da v1
+- **Watch-outs:** não é caminho de feature nova (`workflow.md` §3)
 
 ## Integração com Brain
 

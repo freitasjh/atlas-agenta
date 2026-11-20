@@ -59,7 +59,7 @@ export function DreMensalChart({
           <Bar
             dataKey="resultado_cents"
             name="resultado_cents"
-            fill="hsl(var(--primary))"
+            fill="var(--primary)"
             radius={[4, 4, 0, 0]}
             maxBarSize={48}
             isAnimationActive={false}
@@ -68,7 +68,7 @@ export function DreMensalChart({
             type="monotone"
             dataKey="acumulado_cents"
             name="acumulado_cents"
-            stroke="hsl(var(--foreground))"
+            stroke="var(--foreground)"
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}
@@ -122,7 +122,7 @@ export function FluxoChart({
           <Bar
             dataKey="entradas_cents"
             name="entradas_cents"
-            fill="hsl(var(--primary))"
+            fill="var(--primary)"
             radius={[3, 3, 0, 0]}
             maxBarSize={16}
             isAnimationActive={false}
@@ -130,7 +130,7 @@ export function FluxoChart({
           <Bar
             dataKey="saidas_cents"
             name="saidas_cents"
-            fill="hsl(var(--destructive))"
+            fill="var(--destructive)"
             radius={[3, 3, 0, 0]}
             maxBarSize={16}
             isAnimationActive={false}
@@ -139,7 +139,7 @@ export function FluxoChart({
             type="monotone"
             dataKey="saldo_acumulado_cents"
             name="saldo_acumulado_cents"
-            stroke="hsl(var(--foreground))"
+            stroke="var(--foreground)"
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}

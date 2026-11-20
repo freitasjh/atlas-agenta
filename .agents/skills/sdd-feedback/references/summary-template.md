@@ -77,7 +77,7 @@
 
 | Placeholder | Descrição | Exemplo |
 |-------------|-----------|---------|
-| `{COMMAND_NAME}` | Nome do comando SDD executado | `generate-spec` |
+| `{COMMAND_NAME}` | Nome do comando SDD executado | `spec-from-adr` |
 | `{DECISION_N}` | Decisão tomada | "Flyway para migrations" |
 | `{WHY_N}` | Justificativa da decisão | "Controle versionado" |
 | `{ARTIFACT_N}` | Arquivo gerado | "SPEC.md" |

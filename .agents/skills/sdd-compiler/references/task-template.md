@@ -1,8 +1,9 @@
+<!-- scope: adr/ADR-00N-substitua-pelo-ID-do-ADR -->
 # Execution Backlog: [Feature Name]
 
 ## 1. Traceability Context
-- **Source SPEC**: `./.spec/[feature]/SPEC.md`
-- **Source PLAN**: `./.plan/[feature]/PLAN.md`
+- **Layout vigente (por ADR)**: `Source ADR/SPEC`: `.spec/prd/{prd-id}/ADRs/ADR-00N-{slug}/ADR.md` + `SPEC.md`
+- **Layout legado (congelado)**: `Source SPEC`: `.spec/backend|frontend/{feature}/SPEC.md` · `Source PLAN`: `.plan/{feature}/PLAN.md` — só para ciclos históricos; **não** é destino de feature nova (`workflow.md` §1/§3).
 - **Goal**: Translate atomic tasks into TDD-driven, physically mapped execution tickets with full execution metadata.
 
 ## 2. Sprint Summary

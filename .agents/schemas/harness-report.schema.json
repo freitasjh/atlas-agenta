@@ -50,6 +50,20 @@
       "type": "object",
       "description": "conditional: required when escalateOnRisk fires or e2eGreenfield evidence is declared"
     },
+    "frontend_evidence": {
+      "type": "object",
+      "description": "optional: required by the gate only when harness.config.json targets.frontend is set (Q3=A)",
+      "required": ["stories", "screenshots", "a11y"],
+      "properties": {
+        "stories": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "screenshots": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "a11y": {
+          "type": "object",
+          "required": ["violations"],
+          "properties": { "violations": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    },
     "evaluation": {
       "type": "object",
       "description": "H4: telas/negocio/logica/perf"
