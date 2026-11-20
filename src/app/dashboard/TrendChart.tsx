@@ -25,7 +25,7 @@ import type { DashboardTrend } from "@/hooks/useDashboardSummary";
  * nunca `date_trunc('week')` cru); a exibição converte de volta para o fuso do
  * tenant só na borda, via `formatDateInTenantTz`.
  *
- * Cor da série de agendamentos = `hsl(var(--primary))` (jade). A segunda série
+ * Cor da série de agendamentos = `var(--primary)` (jade). A segunda série
  * (no-show) distingue por **estilo de linha tracejada + legenda textual**, não
  * só por matiz, e usa o token de status `--status-nao-compareceu` (calibrado
  * AA ≥ 4.5:1 nos dois temas). O gráfico não é o único portador do dado — os
@@ -45,10 +45,10 @@ interface TrendPoint {
   naoCompareceu: number;
 }
 
-const AGENDADOS_COLOR = "hsl(var(--primary))";
-const NO_SHOW_COLOR = "hsl(var(--status-nao-compareceu))";
-const GRID_COLOR = "hsl(var(--border))";
-const AXIS_COLOR = "hsl(var(--muted-foreground))";
+const AGENDADOS_COLOR = "var(--primary)";
+const NO_SHOW_COLOR = "var(--status-nao-compareceu)";
+const GRID_COLOR = "var(--border)";
+const AXIS_COLOR = "var(--muted-foreground)";
 
 export function TrendChart({ trend, timeZone }: TrendChartProps) {
   const titleId = useId();
@@ -124,13 +124,13 @@ export function TrendChart({ trend, timeZone }: TrendChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "hsl(var(--popover))",
+                backgroundColor: "var(--popover)",
                 borderColor: GRID_COLOR,
                 borderRadius: "0.5rem",
-                color: "hsl(var(--popover-foreground))",
+                color: "var(--popover-foreground)",
                 fontSize: "0.75rem",
               }}
-              labelStyle={{ color: "hsl(var(--popover-foreground))" }}
+              labelStyle={{ color: "var(--popover-foreground)" }}
               cursor={{ stroke: GRID_COLOR }}
             />
             <Legend

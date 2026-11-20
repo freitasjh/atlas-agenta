@@ -8,6 +8,11 @@ import type { PaymentsMessages } from "@/app/agenda/pagamentos/payments-messages
 import type { AgendaPaymentFlag } from "@/hooks/useAgendaPaymentFlags";
 import { toTenantLocal } from "@/lib/datetime";
 import { useDayDnD } from "@/app/agenda/useDayDnD";
+import {
+  ScheduleNowBadge,
+  SchedulePanel,
+  ScheduleProfessionalHeader,
+} from "@/app/agenda/schedule/ScheduleSurface";
 import type {
   AppointmentWithRelations,
   Professional,
@@ -250,25 +255,37 @@ export function AgendaCalendarDay({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
+    <SchedulePanel>
+      <div className="overflow-x-auto">
       {/* Anúncios de movimento do DnD/teclado (aria-live, só leitor de tela). */}
       <div role="status" aria-live="polite" className="sr-only">
         {dnd.announcement}
       </div>
       {/* Cabeçalho de colunas (só multi-profissional). */}
-      {!singleColumn ? (
-        <div className="flex border-b border-border">
-          <div className="w-14 shrink-0" aria-hidden="true" />
-          {columns.map((column, index) => (
-            <div
-              key={column.professional?.id ?? `outros-${index}`}
-              className="flex-1 border-l border-border px-2 py-2 text-center text-sm font-medium text-foreground"
-            >
-              {column.professional?.name ?? "Outros"}
-            </div>
-          ))}
+      <div className="sticky top-0 z-20 flex border-b border-border/80 bg-background/95 backdrop-blur">
+        <div
+          className="flex w-20 shrink-0 items-center justify-center border-r border-border/70 px-2 py-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+          aria-hidden="true"
+        >
+          Horário
         </div>
-      ) : null}
+        <div className="flex flex-1 divide-x divide-border/60">
+          {columns.map((column, index) => {
+            const name = column.professional?.name ?? "Outros";
+            return (
+              <div
+                key={column.professional?.id ?? `outros-${index}`}
+                className="min-w-0 flex-1 px-3 py-2.5"
+              >
+                <ScheduleProfessionalHeader
+                  name={name}
+                  count={column.appointments.length}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="flex">
         {/* Calha de horas: cada rótulo posicionado na MESMA coordenada da
@@ -276,14 +293,26 @@ export function AgendaCalendarDay({
             centrado na linha via `translateY(-50%)`, para o texto da hora
             encostar no topo do bloco. Itera todas as horas (inclui a última,
             que marca a base da janela). */}
-        <div className="relative w-14 shrink-0" style={{ height: gridHeight }}>
+        <div
+          className="relative w-20 shrink-0 border-r border-border/70 bg-muted/10"
+          style={{ height: gridHeight }}
+        >
           {hours.map((hour) => (
             <span
-              key={hour}
-              className="absolute right-1 -translate-y-1/2 font-mono text-xs tabular-nums text-muted-foreground"
+              key={`hour-${hour}`}
+              className="absolute right-2 -translate-y-1/2 font-mono text-xs font-medium tabular-nums text-foreground"
               style={{ top: (hour - startHour) * HOUR_HEIGHT }}
             >
               {hour.toString().padStart(2, "0")}:00
+            </span>
+          ))}
+          {hours.slice(0, -1).map((hour) => (
+            <span
+              key={`half-${hour}`}
+              className="absolute right-2 -translate-y-1/2 font-mono text-[10px] tabular-nums text-muted-foreground/60"
+              style={{ top: (hour - startHour) * HOUR_HEIGHT + HOUR_HEIGHT / 2 }}
+            >
+              {hour.toString().padStart(2, "0")}:30
             </span>
           ))}
         </div>
@@ -399,7 +428,7 @@ export function AgendaCalendarDay({
                         key={`create-${hour}-${slotOffset}`}
                         type="button"
                         aria-label={`Criar agendamento às ${minutesToHhmm(baseMinutes)}`}
-                        className="absolute inset-x-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        className="absolute inset-x-0 flex cursor-pointer items-center justify-center opacity-0 transition-opacity hover:bg-primary/5 hover:opacity-100 focus-visible:bg-primary/5 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                         style={{
                           top: (hour - startHour) * HOUR_HEIGHT + (slotOffset / 60) * HOUR_HEIGHT,
                           height: slotHeight,
@@ -413,7 +442,11 @@ export function AgendaCalendarDay({
                             timeFromSlotOffset(baseMinutes, offsetY),
                           );
                         }}
-                      />
+                      >
+                        <span className="pointer-events-none font-medium text-primary">
+                          + Agendar {minutesToHhmm(baseMinutes)}
+                        </span>
+                      </button>
                     );
                   }),
                 )
@@ -470,12 +503,13 @@ export function AgendaCalendarDay({
                 <div
                   data-testid="now-line"
                   aria-hidden="true"
-                  className="absolute inset-x-0 z-20 h-0.5 bg-primary"
+                  className="absolute inset-x-0 z-20 flex items-center"
                   style={{
                     top: ((nowMinutes - startMinutes) / 60) * HOUR_HEIGHT,
                   }}
                 >
-                  <span className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-primary" />
+                  <ScheduleNowBadge label={minutesToHhmm(nowMinutes)} />
+                  <span className="h-0.5 flex-1 bg-primary" />
                 </div>
                 <span className="sr-only">
                   Agora: {minutesToHhmm(nowMinutes)}
@@ -485,6 +519,7 @@ export function AgendaCalendarDay({
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </SchedulePanel>
   );
 }

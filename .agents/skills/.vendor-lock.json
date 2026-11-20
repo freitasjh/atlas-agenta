@@ -1,0 +1,100 @@
+{
+  "version": "1",
+  "generatedBy": "scripts/vendor-skills.mjs",
+  "licenses": [
+    {
+      "source": "google-labs-code/stitch-skills",
+      "spdx": "Apache-2.0",
+      "file": "LICENSE-stitch-skills",
+      "sha256": "b4133a55232c0996713349891dc55469d46a16ec027c033c9e4108b2149abb42",
+      "licenseOrigin": "upstream-file"
+    },
+    {
+      "source": "vercel-labs/agent-skills",
+      "spdx": "MIT",
+      "file": "LICENSE-vercel-agent-skills",
+      "sha256": "1cc9611d4fffbd0201696a5a81cc0b1d82743db847654ff4fa57d92ba7669387",
+      "licenseOrigin": "declared-evidence",
+      "evidence": [
+        {
+          "url": "https://github.com/vercel-labs/agent-skills/blob/063bee94c3f4df8453406c830b0a7df0f2860278/skills/react-best-practices/SKILL.md",
+          "section": "frontmatter: license: MIT (metadata.author: vercel)",
+          "commit": "063bee94c3f4df8453406c830b0a7df0f2860278"
+        },
+        {
+          "url": "https://github.com/vercel-labs/agent-skills/blob/063bee94c3f4df8453406c830b0a7df0f2860278/README.md",
+          "section": "## License -> MIT",
+          "commit": "063bee94c3f4df8453406c830b0a7df0f2860278"
+        },
+        {
+          "url": "https://github.com/vercel-labs/agent-skills/blob/063bee94c3f4df8453406c830b0a7df0f2860278/packages/react-best-practices-build/package.json",
+          "section": "\"license\": \"MIT\"",
+          "commit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+          "note": "holder 'Vercel, Inc.' atribuido do author/organization declarados upstream (🟡 processo)"
+        }
+      ]
+    },
+    {
+      "source": "Kadajett/agent-nestjs-skills",
+      "spdx": "MIT",
+      "file": "LICENSE-kadajett-agent-nestjs-skills",
+      "sha256": "264e78cc6fa0d0c6067e947522100c11a7b302617c9b719d7d9f4e9def00177e",
+      "licenseOrigin": "declared-evidence",
+      "evidence": [
+        {
+          "url": "https://github.com/Kadajett/agent-nestjs-skills/blob/3986e0cede33958e000f959031cbee0cd83c2941/skills/nestjs-best-practices/SKILL.md",
+          "section": "frontmatter: license: MIT (metadata.author: Kadajett)",
+          "commit": "3986e0cede33958e000f959031cbee0cd83c2941"
+        }
+      ]
+    }
+  ],
+  "skills": {
+    "react-components": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "sourceCommit": "0337446dadde6f8c94210444e2aa9d546126480f",
+      "skillPath": "plugins/stitch-build/skills/react-components/SKILL.md",
+      "computedHash": "e4f9aaccf174f414274873cbeeee1bb6fa8833ae50457246d670872b0c3e063a",
+      "treeHash": "3e49f53f8d51c9732d4501e6e86711dbd874868b72521297ee478cf76d34fb69",
+      "stacks": [
+        "react"
+      ],
+      "license": "Apache-2.0",
+      "licenseFile": "LICENSE-stitch-skills",
+      "optional": true,
+      "runtimeDeps": [
+        "rede em runtime: scripts/fetch-stitch.sh (curl em URL do Stitch)",
+        "@swc/core (scripts/validate.js faz parse AST)",
+        "Stitch MCP (allowed-tools stitch*:*)"
+      ]
+    },
+    "react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "sourceCommit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "3219a1944e404ffc14d1d9d6aef6dd2e3855b81387ee0a044ccbfe14d34c2357",
+      "treeHash": "dd9d1fda97727eff044b0482735ed8b08adfd31957afc8248ce19ba87732b0be",
+      "stacks": [
+        "react"
+      ],
+      "license": "MIT",
+      "licenseFile": "SKILL.md"
+    },
+    "nestjs-best-practices": {
+      "source": "Kadajett/agent-nestjs-skills",
+      "sourceType": "github",
+      "sourceCommit": "3986e0cede33958e000f959031cbee0cd83c2941",
+      "skillPath": "skills/nestjs-best-practices/SKILL.md",
+      "computedHash": "58f8a630637be3acce1f118c747d68160346ada8a43d76cb52a5b4c4edaa2d37",
+      "treeHash": "385c53af932e652d85f51d01d0a215d2e7bbafa2c336bd668c4063f64c8e9298",
+      "stacks": [
+        "nestjs"
+      ],
+      "license": "MIT",
+      "licenseFile": "LICENSE-kadajett-agent-nestjs-skills",
+      "licenseOrigin": "declared-evidence"
+    }
+  }
+}

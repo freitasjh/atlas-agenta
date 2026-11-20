@@ -1,147 +1,169 @@
 ---
 name: sdd-compiler
-description: "Deterministic Architectural Compiler for the full SDD Lifecycle. Unifies PROPOSAL, SPEC, PLAN, TASK, VERIFY and ARCHIVE with rigorous validation gates (Asserts)."
+description: "Deterministic Architectural Compiler, v2: produces SPEC and TASKS per ADR (spec-from-adr, tasks-from-adr) plus verify and archive. Legacy whole-feature modes are documented but inactive."
 ---
 
-# SDD Compiler: The Unified Engineering Engine
+# SDD Compiler v2 — por ADR (unidade de entrega)
 
-Você é o compilador central da metodologia SDD (Specification-Driven Development). Seu objetivo é transformar requisitos em código executável através de fases determinísticas, garantindo rastreabilidade e integridade arquitetural. O ciclo completo é: **Explore → Proposal → SPEC → PLAN → TASKS → [implementar] → Verify → Archive**.
+O compilador da metodologia SDD. Desde a v2 a **unidade de entrega é o ADR**
+(`workflow.md` §1): não existe SPEC/TASKS de funcionalidade inteira. O ciclo é
+`PRD → RESEARCH → ADR-INDEX → loop por ADR (ADR.md → SPEC.md → TASKS.md →
+implementar → VERIFY.md) → archive`, com 1 ADR = 1 branch = 1 PR.
 
----
-
-## 🛠️ Modos de Operação
-
-### 0. `explore` (Investigação Prévia)
-**Objetivo**: Investigar requisitos incertos ANTES de criar artefatos. Use quando a feature é ambígua ou mal definida.
-- **Entradas**: Descrição vaga da feature, contexto de negócio.
-- **Processo**:
-  1. Levantar perguntas em aberto (O quê exatamente? Quem usa? Quais edge cases?).
-   2. Analisar sistemas existentes que a feature toca (`.agents/rules/`, `AGENTS.md`, código atual).
-  3. Formular hipóteses e alternativas de abordagem.
-  4. Recomendar se avança para `generate-proposal` ou precisa de mais clareza.
-- **Saída**: `.spec/[feature-name]/EXPLORATION.md` (hipóteses, perguntas, alternativas).
-- **NÃO gera SPEC.md** — explore produz apenas o rascunho de entendimento.
+Todo artefato nasce em `.spec/prd/{prd-id}/ADRs/ADR-00N-{slug}/` — o `PRD.md` e o
+`RESEARCH.md` são insumo, não destino. Fluxo e portões: `.agents/rules/workflow.md`;
+contrato da esteira: `.agents/rules/prd-adr-pipeline.md`.
 
 ---
 
-### 1. `generate-proposal` (Alinhamento de Escopo)
-**Objetivo**: Criar `PROPOSAL.md` alinhando problema, solução, escopo e riscos antes do SPEC completo.
-- **Entradas**: Descrição da feature (ou `EXPLORATION.md` se existir).
-- **Processo**:
-  1. Converter descrição em ID kebab-case (ex: `patient-appointment-scheduling`).
-  2. Aplicar template em `references/proposal-template.md`.
-  3. Identificar delta: quais specs/documentos existentes serão afetados (ADDED/MODIFIED/REMOVED).
-  4. Validar viabilidade: conflitos com arquitetura atual, riscos de multi-tenancy.
-- **Saída**: `.spec/[feature-name]/PROPOSAL.md`.
-- **Asserts**: Validar contra `asserts/proposal-gate.md`.
+## 🛠️ Modos ativos
+
+### 1. `spec-from-adr` (SPEC do ADR)
+
+**Entradas**: `ADRs/ADR-00N-{slug}/ADR.md`, `PRD.md` (escopo/§9), `RESEARCH.md`,
+regras vivas (`.agents/rules/**`, `AGENTS.md`) e código afetado.
+
+**Processo**
+1. Ler a decisão, o `depende-de` e a **interface congelada** do ADR — a SPEC é
+   a especificação *daquela* decisão, não do produto inteiro.
+2. Aplicar `references/spec-template.md`.
+3. Numerar requisitos rastreáveis ao ADR: `RF-0N`/`NFR-0N` com o item do ADR que
+   os origina (decisão, interface congelada, consequências).
+4. Critérios de aceite **executáveis** (comando/asserção), não adjetivos.
+5. Delta Specs quando a decisão altera doc vivo (`references/delta-template.md`).
+6. Nunca criar `PLAN.md`: o ADR já é o plano; `TASKS.md` vem do modo 2.
+
+**Saída**: `ADRs/ADR-00N-{slug}/SPEC.md`.
+**Asserts**: `asserts/spec-gate.md` (RF/NFR, invariantes, test strategy, delta).
+**Atomicidade**: o `ADR-INDEX.md` deve ter `unit: adr` na linha deste ADR e o
+`PRD.md` pode declarar `prd_version: 2` (`ADR-02` exige `unit: adr` em
+`in-progress`/`merged` nesse caso).
 
 ---
 
-### 2. `generate-spec` (Discovery & Architecture)
-**Objetivo**: Gerar especificação prescritiva (SPEC) a partir do PROPOSAL aprovado.
-- **Entradas**: `PROPOSAL.md`, `.agents/rules/backend-coding-standards.md`, `.agents/rules/frontend-coding-standards.md`.
-- **Processo**:
-  1. Recuperar contexto tecnológico e padrões do projeto.
-  2. Aplicar template em `references/spec-template.md`.
-  3. Definir ADRs, Invariantes (PBT) e Modelos de Eventos.
-  4. Gerar seção **Delta Specs** (usando `references/delta-template.md`) listando impacto em docs existentes.
-- **Saída**: `.spec/[feature-name]/SPEC.md`.
-- **Asserts**: Validar contra `asserts/spec-gate.md`.
+### 2. `tasks-from-adr` (TASKS do ADR)
+
+**Entradas**: `SPEC.md` do ADR + `ADR.md` (interface congelada). `PLAN.md` não é
+requisito nem destino.
+
+**Processo**
+1. Explodir cada `RF`/`NFR` da SPEC em tickets TDD-ready.
+2. Enriquecer cada ticket: risco, prioridade, tipo, arquivos físicos, cenários
+   BDD (sucesso, falha, borda), teste **antes** da implementação.
+3. Emitir cada tarefa como seção `### <ID> — <título>`, onde `<ID>` casa
+   `[A-Z]+(?:-[A-Z]+)*-\d+` (ex.: `### F3A-01 — Checks de layout`). É o formato
+   que `extractTaskSections` reconhece (`scripts/sdd-checks.mjs`).
+4. Tabela de sprint-summary é **opcional**; se existir, todo ID da tabela precisa
+   de seção 1:1 (sem órfãos).
+
+**Saída**: `ADRs/ADR-00N-{slug}/TASKS.md`.
+**Asserts**: `asserts/tasks-gate.md`.
 
 ---
 
-### 3. `generate-plan` (Strategy & Constraint Mapping)
-**Objetivo**: Compilar SPEC em plano de implementação executável.
-- **Entradas**: `.spec/[feature-name]/SPEC.md`.
-- **Processo**:
-  1. Mapear restrições técnicas e modos de falha.
-  2. Aplicar template em `references/plan-template.md`.
-  3. Garantir bootstrap de infraestrutura e ciclo de vida de eventos (4-tasks per event).
-- **Saída**: `.spec/[feature-name]/PLAN.md`.
-- **Asserts**: Validar contra `asserts/plan-gate.md`.
+### 3. `verify` (pós-implementação, no diretório do ADR)
+
+**Entradas**: `ADR.md`, `SPEC.md`, `TASKS.md` (com checkboxes), código, comando
+canônico de `harness.config.json` (`commands.suiteFull`).
+
+**Processo**
+1. **Completeness**: todos os checkboxes de `TASKS.md` marcados; zero TODO/FIXME
+   novo; nenhuma task "N/A" sem justificativa.
+2. **Correctness**: `commands.suiteFull` verde; cada `RF`/`NFR` da SPEC tem
+   correspondência verificável no código.
+3. **Coherence**: a interface congelada do ADR aparece no código; naming e
+   boundaries respeitados; Delta Specs refletidos nos docs vivos.
+4. Frontend: Chrome DevTools (Network + Console — zero `[ERROR]`/`[WARN]`).
+5. Reportar as 3 dimensões com ✅/❌ e os gaps.
+
+**Saída**: `ADRs/ADR-00N-{slug}/VERIFY.md` (ADR `merged` exige este arquivo —
+`ADR-01` quando `unit: adr`).
+**Asserts**: `asserts/verify-gate.md`. **BLOQUEIA archive** se qualquer dimensão falhar.
 
 ---
 
-### 4. `generate-tasks` (TDD Explosion)
-**Objetivo**: Explodir PLAN em tickets de desenvolvimento TDD-ready.
-- **Entradas**: `SPEC.md` e `PLAN.md`.
-- **Processo**:
-  1. Enriquecer cada tarefa com metadados (Risco, Prioridade).
-  2. Definir cenários BDD (Sucesso, Falha, Borda).
-  3. Mapear caminhos físicos de arquivos e convenções de nomenclatura.
-- **Saída**: `.spec/[feature-name]/TASKS.md`.
-- **Asserts**: Validar contra `asserts/tasks-gate.md`.
+### 4. `archive` (fechamento do PRD)
+
+**Pré-condições**: `VERIFY.md` aprovado em **todos** os ADRs `merged` do PRD;
+`ADR-INDEX.md` 1:1 com o disco.
+
+**Processo**
+1. Mesclar as **Delta Specs** de cada SPEC nos docs alvo (`.agents/rules/**`,
+   `AGENTS.md`): ADDED cria, MODIFIED substitui, REMOVED move para `## Deprecated`
+   com data.
+2. Mover o **PRD inteiro**: `.spec/prd/{prd-id}/` → `.spec/archive/[YYYYMMDD]-prd-{prd-id}/`
+   (ADR-INDEX, PRD, RESEARCH e todos os `ADRs/**` vão juntos; nada fica para trás).
+3. Registrar data, duração e arquivos alterados no `PRD.md` arquivado.
+4. Sugerir o commit (nunca executar sem confirmação):
+   ```
+   feat: archive prd-{prd-id} — SDD per ADR complete
+
+   Spec: .spec/archive/[YYYYMMDD]-prd-{prd-id}/
+   Delta merged into: .agents/rules/[affected-docs]
+   ```
 
 ---
 
-### 5. `verify` (Validação Pós-Implementação)
-**Objetivo**: Verificar se a implementação entregou exatamente o que a SPEC exige. Executar APÓS todas as tasks concluídas.
-- **Entradas**: `SPEC.md`, `TASKS.md` (com checkboxes), código implementado.
-- **Processo**:
-  1. **Completeness**: Todos os checkboxes em TASKS.md marcados? Nenhum TODO pendente?
-  2. **Correctness**: Cada requisito funcional da SPEC tem correspondência no código? Testes passando?
-  3. **Coherence**: Decisões de design (ADRs) refletem no código? Naming conventions corretos? Sem vazamentos de camada?
-  4. Executar build e testes: `mvn clean install` (backend) ou `npm run build && npm test` (frontend).
-  5. Se frontend: checar Chrome DevTools (Network + Console) — zero erros/warnings.
-- **Saída**: `.spec/[feature-name]/VERIFY.md` com resultado das 3 dimensões + lista de gaps (se houver).
-- **Asserts**: Validar contra `asserts/verify-gate.md`.
-- **BLOQUEIA archive** se qualquer dimensão falhar.
+## 🧭 Modo de investigação
+
+### `explore` (pré-PRD)
+Investigar requisitos incertos ANTES de criar artefatos: perguntas em aberto,
+sistemas tocados, hipóteses e alternativas. **Saída**: nenhum artefato próprio —
+é insumo em prosa (o documento de exploração é do `engineer`, autor único).
+**NÃO gera SPEC.md.**
 
 ---
 
-### 6. `archive` (Finalização & Merge de Specs)
-**Objetivo**: Finalizar feature, mesclar delta specs em `.agents/rules/`, mover para arquivo histórico.
-- **Entradas**: `PROPOSAL.md`, `SPEC.md`, `TASKS.md`, `VERIFY.md` (aprovado).
-- **Pré-condição**: `VERIFY.md` deve estar aprovado (todas as 3 dimensões ✅).
-- **Processo**:
-  1. Ler seção **Delta Specs** do `SPEC.md`.
-  2. Para cada entrada delta:
-     - **ADDED**: Criar nova seção no doc alvo em `.agents/rules/` ou `AGENTS.md`.
-     - **MODIFIED**: Substituir seção existente no doc alvo.
-     - **REMOVED**: Mover seção para bloco `## Deprecated` no doc alvo com data de remoção.
-  3. Mover pasta `.spec/[feature-name]/` → `.spec/archive/[YYYYMMDD]-[feature-name]/`.
-  4. Adicionar metadados de conclusão em `PROPOSAL.md` arquivado (data, duração, arquivos alterados).
-  5. Sugerir git commit com mensagem padrão:
-     ```
-     feat: archive [feature-name] — SDD lifecycle complete
-     
-     Spec: .spec/archive/[YYYYMMDD]-[feature-name]/
-     Delta merged into: .agents/rules/[affected-docs]
-     ```
-- **NÃO executa `git commit` automaticamente** — sugere e aguarda confirmação.
+## 🗄️ Modos legados (inativos — só para ciclos de 4 artefatos)
+
+Mantidos para ciclos `unit: legacy`/congelados (`.spec/backend|frontend/**`).
+Não são o caminho de feature nova (`workflow.md` §3).
+
+| Modo | Saída | Assert | Template |
+|---|---|---|---|
+| `generate-proposal` | `PROPOSAL.md` | `proposal-gate.md` | `references/proposal-template.md` |
+| `generate-spec` | `SPEC.md` | `spec-gate.md` | `references/spec-template.md` |
+| `generate-plan` | `PLAN.md` | `plan-gate.md` | `references/plan-template.md` |
+| `generate-tasks` | `TASKS.md` | `tasks-gate.md` | `references/task-template.md` |
+
+Os **templates continuam versionados** para esses ciclos; a lista ativa é a dos
+modos 1–4 acima.
 
 ---
 
 ## 🚦 Portões de Validação (Asserts)
 
-| Fase | Assert File |
+| Fase (v2) | Assert File |
 |------|-------------|
-| PROPOSAL | `.agents/skills/sdd-compiler/asserts/proposal-gate.md` |
-| SPEC | `.agents/skills/sdd-compiler/asserts/spec-gate.md` |
-| PLAN | `.agents/skills/sdd-compiler/asserts/plan-gate.md` |
-| TASKS | `.agents/skills/sdd-compiler/asserts/tasks-gate.md` |
-| VERIFY | `.agents/skills/sdd-compiler/asserts/verify-gate.md` |
+| SPEC do ADR (`spec-from-adr`) | `.agents/skills/sdd-compiler/asserts/spec-gate.md` |
+| TASKS do ADR (`tasks-from-adr`) | `.agents/skills/sdd-compiler/asserts/tasks-gate.md` |
+| VERIFY (`verify`) | `.agents/skills/sdd-compiler/asserts/verify-gate.md` |
+| Traceability (pré-archive) | `.agents/skills/sdd-compiler/asserts/traceability-gate.md` |
+
+Legado: `proposal-gate.md`, `plan-gate.md`.
 
 ---
 
 ## 📚 Referências (Templates)
 
 Pasta `.agents/skills/sdd-compiler/references/`:
-- `proposal-template.md` — template de PROPOSAL
-- `spec-template.md` — template de SPEC
-- `plan-template.md` — template de PLAN
-- `task-template.md` — template de TASKS
-- `delta-template.md` — template de Delta Specs
-- `references/healthcare.md`, `fintech.md`, `saas-multitenant.md` — padrões de domínio
+- `spec-template.md`, `task-template.md`, `delta-template.md`, `trace-template.md`
+- Legado: `proposal-template.md`, `plan-template.md`
+- Domínio: `healthcare.md`, `fintech.md`, `saas-multitenant.md`, `api.md`,
+  `backend.md`, `frontend.md`, `database.md`, `cloud.md`, `security.md`,
+  `ecommerce.md`
 
 ---
 
 ## 🔗 Regras Críticas (MANDATÓRIO)
 
-1. **Rastreabilidade 1:1**: Nunca pule requisito da SPEC no PLAN, nem task do PLAN nas TASKS.
-2. **TDD First**: Teste listado ANTES da implementação em todas as tasks.
-3. **Multi-tenancy**: Isolamento de tenant validado em todas as camadas (Assert-first).
-4. **Event Integrity**: Ciclo completo obrigatório (Producer → Outbox → Broker → Consumer).
-5. **Verify antes de Archive**: NUNCA arquivar sem VERIFY.md aprovado.
-6. **Delta rastreável**: Toda SPEC inclui seção Delta listando impacto em docs existentes.
-7. **Explore antes de Proposal**: Feature ambígua → `explore` primeiro, `generate-proposal` depois.
+1. **Unidade = ADR**: SPEC/TASKS existem dentro de `ADRs/ADR-00N-{slug}/`; nunca
+   na raiz de `.spec/backend|frontend/**` para feature nova.
+2. **Rastreabilidade 1:1**: todo `RF`/`NFR` da SPEC vira task; toda task da tabela
+   (quando houver) tem seção.
+3. **TDD First**: o teste aparece ANTES da implementação em cada task.
+4. **Multi-tenancy / Event Integrity**: isolamento de tenant e ciclo
+   Producer → Outbox → Broker → Consumer validados quando aplicáveis.
+5. **Verify antes de archive**: nunca arquivar sem `VERIFY.md` aprovado.
+6. **Delta rastreável**: toda SPEC que altera doc vivo declara o delta.
+7. **`unit: adr`**: o índice marca o layout; `ADR-02` cobra em PRD `prd_version: 2`.

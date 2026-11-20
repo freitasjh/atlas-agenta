@@ -101,11 +101,13 @@ export const router: RouterProviderProps["router"] = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
-      // Marketing (público)
+      // Landing (público): navbar/footer próprios do template — fora do
+      // MarketingLayout para não duplicar cabeçalho/rodapé.
+      { index: true, element: <LandingPage /> },
+      // Demais páginas de marketing continuam na casca enxuta.
       {
         element: <MarketingLayout />,
         children: [
-          { index: true, element: <LandingPage /> },
           { path: "precos", element: <PrecosPage /> },
           { path: "termos", element: <TermosPage /> },
         ],

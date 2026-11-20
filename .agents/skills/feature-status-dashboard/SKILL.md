@@ -24,28 +24,35 @@ Rastreamento automático de progresso de features com dashboard visual.
 
 ### Schema de Features
 
+> **Modelo de dados por ADR** (`workflow.md` §1/§3): a unidade rastreada é o ADR,
+> não "a feature". Cada linha aponta para o diretório do ADR
+> (`.spec/prd/{prd}/ADRs/ADR-00N-{slug}/`), onde vivem `ADR.md`, `SPEC.md` e
+> `TASKS.md` (+ `VERIFY.md` quando merged). O acompanhamento agregado do PRD usa
+> `prd_adr` (`prd_id`, `prd_status`, `active_adr`, `adr_order[]`, `snapshots[]`).
+
 ```json
 {
   "features": [
     {
-      "name": "feature-name",
+      "name": "ADR-002",
       "status": "specified|planned|tasked|in_progress|complete",
       "progress": 20,
-      "depends_on": ["other-feature"],
-      "blocks": ["blocked-feature"],
+      "depends_on": ["ADR-001"],
+      "blocks": ["ADR-003"],
       "started_at": "2026-09-08T10:00:00Z",
       "completed_at": null,
       "artifacts": {
-        "spec": ".spec/feature-name/SPEC.md",
-        "plan": ".spec/feature-name/PLAN.md",
-        "tasks": ".spec/feature-name/TASKS.md"
+        "adr": ".spec/prd/{prd}/ADRs/ADR-002-{slug}/ADR.md",
+        "spec": ".spec/prd/{prd}/ADRs/ADR-002-{slug}/SPEC.md",
+        "tasks": ".spec/prd/{prd}/ADRs/ADR-002-{slug}/TASKS.md",
+        "verify": ".spec/prd/{prd}/ADRs/ADR-002-{slug}/VERIFY.md"
       }
     }
   ],
   "feature_management": {
     "total": 5,
     "completed": 2,
-    "current": "feature-name"
+    "current": "ADR-002"
   }
 }
 ```
@@ -117,10 +124,14 @@ Progresso manual override: campo `progress` numérico (0-100).
 ```
 1. Detectar: "add feature for notifications"
 2. Perguntar: Priority? Dependencies? Description?
-3. Criar entry no workflow-state.json
-4. Criar pasta .spec/{name}/
-5. Mostrar dashboard atualizado
+3. Criar entry no workflow-state.json apontando para o ADR do ciclo
+   (`.spec/prd/{prd}/ADRs/ADR-00N-{slug}/`) — NÃO criar pasta .spec/{name}/
+4. Mostrar dashboard atualizado
 ```
+
+> A pasta não é criada por este skill: o layout de `.spec/**` é do
+> `workflow.md` §3 (PRD → ADR → SDD no diretório do ADR). Criar
+> `.spec/{name}/` aqui produziria um ciclo fora da esteira.
 
 ### Fluxo: Reorder
 
@@ -180,9 +191,9 @@ print(blockers)
 
 | Evento | Ação |
 |--------|------|
-| `generate-spec` completo | status → `specified` |
-| `generate-plan` completo | status → `planned` |
-| `generate-tasks` completo | status → `tasked` |
+| `spec-from-adr` completo (SPEC do ADR) | status → `specified` |
+| ADR aprovado (`ADR.md` + interface congelada) | status → `planned` |
+| `tasks-from-adr` completo (TASKS do ADR) | status → `tasked` |
 | Primeira task implementada | status → `in_progress` |
 | Todas tasks + verify pass | status → `complete` |
 | Feature movida | reordenar array |

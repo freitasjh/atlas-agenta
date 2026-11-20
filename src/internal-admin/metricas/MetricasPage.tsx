@@ -380,7 +380,7 @@ export function MetricasPage() {
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={points}>
-                      <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                      <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                       <Tooltip />
@@ -389,7 +389,7 @@ export function MetricasPage() {
                         type="monotone"
                         dataKey="appointments"
                         name="Agendamentos"
-                        stroke="hsl(var(--primary))"
+                        stroke="var(--primary)"
                         strokeWidth={2}
                         dot={false}
                       />
@@ -397,7 +397,7 @@ export function MetricasPage() {
                         type="monotone"
                         dataKey="no_show"
                         name="No-show"
-                        stroke="hsl(var(--status-nao-compareceu))"
+                        stroke="var(--status-nao-compareceu)"
                         strokeWidth={2}
                         strokeDasharray="5 4"
                         dot={false}
@@ -406,7 +406,7 @@ export function MetricasPage() {
                         type="monotone"
                         dataKey="confirmed"
                         name="Confirmados"
-                        stroke="hsl(var(--status-confirmado))"
+                        stroke="var(--status-confirmado)"
                         strokeWidth={2}
                         dot={false}
                       />

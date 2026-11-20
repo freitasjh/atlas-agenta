@@ -1,0 +1,22 @@
+{
+  "meta": { "theme": "liquid", "extends": "semantic" },
+  "bg": {
+    "page": { "$value": "{color.slate-950}", "$type": "color" },
+    "soft": { "$value": "#0B0B0D", "$type": "color" },
+    "card": { "$value": "rgba(255,255,255,0.08)", "$type": "color" },
+    "dark": { "$value": "{color.slate-950}", "$type": "color" },
+    "dark-elevated": { "$value": "#131316", "$type": "color" }
+  },
+  "ink": {
+    "primary": { "$value": "#F5F4F0", "$type": "color" },
+    "body": { "$value": "#B8B6B0", "$type": "color" },
+    "muted": { "$value": "#7A7873", "$type": "color" }
+  },
+  "action": {
+    "primary": { "$value": "rgba(255,255,255,0.9)", "$type": "color" },
+    "primary-active": { "$value": "#FFFFFF", "$type": "color" }
+  },
+  "border": {
+    "hairline": { "$value": "rgba(255,255,255,0.12)", "$type": "color" }
+  }
+}

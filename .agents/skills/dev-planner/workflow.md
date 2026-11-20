@@ -17,8 +17,8 @@ DESCUBRA    →   ANALISE     →   DESAFIE    →   PROJETE    →   ESTIME    
 O PROBLEMA      RESTRIÇÕES      A SOLUÇÃO      ARQUITETURA     ESFORÇO        FINAL
     │               │               │               │               │               │
     ▼               ▼               ▼               ▼               ▼               ▼
-EXPLORATION    CONSTRAINTS   DESIGN-DEC    ARCHITECTURE       PLAN        HANDOFF
-   .md            .md         DECISIONS.md     .md              .md      (sdd-compiler)
+EXPLORATION    CONSTRAINTS   DESIGN-DEC    ARCHITECTURE      PARECER     HANDOFF
+   .md            .md         DECISIONS.md     .md           (texto)   (sdd-compiler)
 ```
 
 ---
@@ -30,7 +30,7 @@ Entender profundamente O QUE o usuário precisa resolver, diferenciando sintoma 
 
 ### Entradas
 - Descrição inicial do usuário (pode ser vaga)
-- Contexto do projeto (ler `AGENTS.md`, `.doc/ARCHITECTURE.md`)
+- Contexto do projeto (ler `AGENTS.md`; documentação de arquitetura do destino — dono PRD-4)
 
 ### Processo
 
@@ -98,7 +98,7 @@ Mapear todas as limitações técnicas, dependências e requisitos não-funciona
 
 ### Entradas
 - EXPLORATION.md aprovado
-- Contexto do projeto (`.doc/ARCHITECTURE.md`, `.doc/STACK.md`)
+- Contexto do projeto (documentação de arquitetura e stack do destino — dono PRD-4)
 
 ### Processo
 
@@ -190,39 +190,28 @@ Para cada alternativa, documente:
 | Risco | | | |
 | Esforço | | | |
 
-#### 2.4 — Fundamentar Recomendação
+#### 2.4 — Fundamentar a Recomendação
 Para cada critério, explique tecnicamente:
 - "Solução A é melhor porque [justificativa técnica]"
 - "Solução B tem o problema de [risco específico]"
 - "Considerando que o projeto usa [tecnologia], recomendo [X] porque [razão]"
 
-#### 2.5 — Registrar Decisões (ADRs)
-Crie Architecture Decision Records:
-```
-## ADR-001: [Título da Decisão]
+Registre o resultado em `.spec/[feature]/DESIGN-DECISIONS.md` como **insumo** de
+arquitetura:
+- Alternativas analisadas (mínimo 2) + trade-off da tabela 2.3 + recomendação justificada
+- Riscos de cada alternativa e o critério que decidiu
+- Fontes consultadas
 
-### Status
-Aceito
-
-### Contexto
-[O que está acontecendo]
-
-### Decisão
-[O que foi decidido]
-
-### Consequências
-[O que muda com essa decisão]
-
-### Fontes
-- [Referência websearch 1]
-- [Referência websearch 2]
-```
+Este documento **não** é um ADR. A forma de ADR (status, contexto, decisão,
+consequências, interface congelada) e o índice vivem em
+`.spec/prd/[prd-id]/ADRs/ADR-00N-{slug}/ADR.md` + `ADR-INDEX.md`, cujo autor é o
+`architect` (`.agents/rules/prd-adr-pipeline.md` §1/§2).
 
 ### Saída
 - `.spec/[feature]/DESIGN-DECISIONS.md` com:
   - Alternativas analisadas (mínimo 2)
   - Tabela comparativa
-  - Decisões documentadas (ADRs)
+  - Recomendação justificada (insumo — a ADR é do `architect`)
   - Justificativas técnicas
   - Fontes consultadas
 
@@ -392,7 +381,7 @@ Use MoSCoW:
 - **Won't Have:** Explicitamente fora de escopo
 
 ### Saída
-- `.spec/[feature]/PLAN.md` com:
+- **Parecer** no retorno do subagente (texto, não arquivo) com:
   - Lista de tarefas com estimativas
   - Ordem de execução
   - Dependências mapeadas
@@ -405,7 +394,8 @@ Use MoSCoW:
 Tarefas críticas: [lista].
 Riscos principais: [lista].
 Ordem de execução: [resumo].
-Aprova o plano? Posso gerar as tasks detalhadas?"
+Aprova o parecer? Com a aprovação, este handoff vai ao `sdd-compiler` — dono do
+plano e das tasks detalhadas do ciclo."
 → Aguarde SIM explícito
 ```
 
@@ -417,7 +407,7 @@ Aprova o plano? Posso gerar as tasks detalhadas?"
 Revisar tudo, garantir consistência e preparar handoff para implementação.
 
 ### Entradas
-- Todos os artefatos anteriores (EXPLORATION, CONSTRAINTS, DESIGN-DECISIONS, ARCHITECTURE, PLAN)
+- Todos os artefatos anteriores (EXPLORATION, CONSTRAINTS, DESIGN-DECISIONS, ARCHITECTURE, parecer de estimativa/riscos)
 
 ### Processo
 
@@ -426,12 +416,12 @@ Revisar tudo, garantir consistência e preparar handoff para implementação.
 - [ ] CONSTRAINTS.md mapeia todas as restrições?
 - [ ] DESIGN-DECISIONS.md possui justificativas técnicas?
 - [ ] ARCHITECTURE.md está alinhado com as decisões?
-- [ ] PLAN.md cobre todos os componentes?
+- [ ] O parecer de estimativa cobre todos os componentes?
 - [ ] Não há contradições entre artefatos?
 - [ ] Todas as fontes websearch foram documentadas?
 
 #### 5.2 — Revisão Cruzada
-Para cada tarefa do PLAN, verifique:
+Para cada tarefa proposta no parecer, verifique:
 - [ ] A tarefa está descrita na ARCHITECTURE.md?
 - [ ] A tarefa respeita as CONSTRAINTS.md?
 - [ ] A tarefa está alinhada com DESIGN-DECISIONS.md?
@@ -458,10 +448,10 @@ Gere resumo para o `sdd-compiler`:
 - .spec/[feature]/CONSTRAINTS.md
 - .spec/[feature]/DESIGN-DECISIONS.md
 - .spec/[feature]/ARCHITECTURE.md
-- .spec/[feature]/PLAN.md
+- (parecer de estimativa/riscos no retorno do subagente — texto, não arquivo)
 
 ### Próximo Passo:
-Invocar sdd-compiler modo generate-spec
+Invocar sdd-compiler modo `spec-from-adr` (a SPEC nasce no diretório do ADR, não do pacote)
 ```
 
 ### Saída

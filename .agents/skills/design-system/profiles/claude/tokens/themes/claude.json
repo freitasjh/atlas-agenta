@@ -1,0 +1,10 @@
+{
+  "meta": { "theme": "claude", "extends": "semantic" },
+  "bg": {
+    "page": { "$value": "{color.cream-50}", "$type": "color" },
+    "card": { "$value": "{color.cream-200}", "$type": "color" }
+  },
+  "font": {
+    "display": { "$value": "\"Copernicus\", \"Tiempos Headline\", Georgia, serif", "$type": "fontFamily" }
+  }
+}

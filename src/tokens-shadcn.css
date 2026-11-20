@@ -1,0 +1,151 @@
+/*
+ * Tokens semânticos do Atlas Admin Template (perfil shadcn).
+ *
+ * Fonte: `.agents/skills/design-system/profiles/shadcn/tokens/{semantic,themes/dark,base}.json`
+ * e `DESIGN.md` §2. Valores oklch do template mantidos integralmente.
+ *
+ * Tokens `status-*` (ADR-06) e `service-*` (ADR-01) são preservados: os valores
+ * HSL originais (`git show HEAD:src/index.css`) foram convertidos por
+ * HSL → sRGB (CSS Color 4 §7.1) → sRGB linear → XYZ D65 → OKLab → OKLCH
+ * (CSS Color 4 §19), preservando a cor exata. `--destructive-foreground`
+ * completa a paleta do template (não definida no JSON, necessária ao botão).
+ *
+ * Fonte da conversão: https://www.w3.org/TR/css-color-4/ (consulta 2026-11-20).
+ * Os 14 pares `--status-*` mantêm contraste ≥ 4,5:1 nos dois temas
+ * (verificado em `src/contrast-tokens.test.ts`).
+ */
+
+:root {
+  --neutral-100: oklch(0.985 0 0);
+  --neutral-200: oklch(0.97 0 0);
+  --neutral-300: oklch(0.922 0 0);
+  --neutral-400: oklch(0.708 0 0);
+  --neutral-500: oklch(0.556 0 0);
+  --neutral-800: oklch(0.269 0 0);
+  --neutral-900: oklch(0.205 0 0);
+  --neutral-950: oklch(0.145 0 0);
+
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Status (ADR-06) — HSL→sRGB→OKLab→OKLCH, cor exata preservada. */
+  --status-pendente: oklch(0.7118 0.1517 70.83);
+  --status-pendente-fg: oklch(0.2578 0.0511 77.54);
+  --status-confirmado: oklch(0.5282 0.1016 165.36);
+  --status-confirmado-fg: oklch(0.9874 0.0047 174.45);
+  --status-em-atendimento: oklch(0.5546 0.1629 253.59);
+  --status-em-atendimento-fg: oklch(0.9826 0.0078 247.91);
+  --status-concluido: oklch(0.5369 0.059 170.77);
+  --status-concluido-fg: oklch(0.9735 0.007 174.38);
+  --status-cancelado: oklch(0.5053 0.1884 27.33);
+  --status-cancelado-fg: oklch(1 0 0);
+  --status-nao-compareceu: oklch(0.4732 0.1239 13.08);
+  --status-nao-compareceu-fg: oklch(0.9654 0.0067 5.63);
+  --status-sub-cancelado: oklch(0.5137 0.0363 256.82);
+  --status-sub-cancelado-fg: oklch(0.9679 0.0037 256.67);
+
+  /* Serviços (ADR-01) — mesma conversão, cor exata preservada. */
+  --service-1: oklch(0.5398 0.2018 298.5);
+  --service-2: oklch(0.6435 0.1072 215.4);
+  --service-3: oklch(0.6658 0.159 54.11);
+  --service-4: oklch(0.6125 0.1968 353.84);
+  --service-5: oklch(0.5605 0.1655 271.58);
+  --service-6: oklch(0.6127 0.0949 186.87);
+  --service-7: oklch(0.6303 0.1418 134.33);
+  --service-8: oklch(0.6337 0.1682 35.19);
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  --status-pendente: oklch(0.789 0.1592 74.08);
+  --status-pendente-fg: oklch(0.2578 0.0511 77.54);
+  --status-confirmado: oklch(0.6983 0.1337 165.46);
+  --status-confirmado-fg: oklch(0.2123 0.0248 170.45);
+  --status-em-atendimento: oklch(0.6722 0.1612 251.54);
+  --status-em-atendimento-fg: oklch(0.2345 0.0626 251.32);
+  --status-concluido: oklch(0.6785 0.0545 171.97);
+  --status-concluido-fg: oklch(0.2577 0.027 170.99);
+  --status-cancelado: oklch(0.5202 0.1918 27.14);
+  --status-cancelado-fg: oklch(1 0 0);
+  --status-nao-compareceu: oklch(0.5143 0.1223 12.15);
+  --status-nao-compareceu-fg: oklch(0.9654 0.0067 5.63);
+  --status-sub-cancelado: oklch(0.6276 0.0323 256.79);
+  --status-sub-cancelado-fg: oklch(0.2313 0.0158 256.81);
+
+  --service-1: oklch(0.6569 0.1686 301.13);
+  --service-2: oklch(0.7765 0.1185 213.92);
+  --service-3: oklch(0.7461 0.1458 58.55);
+  --service-4: oklch(0.7077 0.1547 350.5);
+  --service-5: oklch(0.6739 0.1335 273.74);
+  --service-6: oklch(0.7733 0.1216 186.73);
+  --service-7: oklch(0.7713 0.1538 133.85);
+  --service-8: oklch(0.7056 0.1383 35.06);
+}

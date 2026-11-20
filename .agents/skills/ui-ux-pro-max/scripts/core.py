@@ -6,6 +6,7 @@ UI/UX Pro Max Core - BM25 search engine for UI/UX style guides
 
 import csv
 import re
+import sys
 from pathlib import Path
 from math import log
 from collections import defaultdict
@@ -64,31 +65,14 @@ CSV_CONFIG = {
         "file": "app-interface.csv",
         "search_cols": ["Category", "Issue", "Keywords", "Description"],
         "output_cols": ["Category", "Issue", "Platform", "Description", "Do", "Don't", "Code Example Good", "Code Example Bad", "Severity"]
-    },
-    "google-fonts": {
-        "file": "google-fonts.csv",
-        "search_cols": ["Family", "Category", "Stroke", "Classifications", "Keywords", "Subsets", "Designers"],
-        "output_cols": ["Family", "Category", "Stroke", "Classifications", "Styles", "Variable Axes", "Subsets", "Designers", "Popularity Rank", "Google Fonts URL"]
     }
 }
 
+# Escopo v2: apenas stacks React/Vue/shadcn. As demais foram podadas do payload.
 STACK_CONFIG = {
     "react":            {"file": "stacks/react.csv"},
-    "nextjs":           {"file": "stacks/nextjs.csv"},
     "vue":              {"file": "stacks/vue.csv"},
-    "svelte":           {"file": "stacks/svelte.csv"},
-    "astro":            {"file": "stacks/astro.csv"},
-    "swiftui":          {"file": "stacks/swiftui.csv"},
-    "react-native":     {"file": "stacks/react-native.csv"},
-    "flutter":          {"file": "stacks/flutter.csv"},
-    "nuxtjs":           {"file": "stacks/nuxtjs.csv"},
-    "nuxt-ui":          {"file": "stacks/nuxt-ui.csv"},
-    "html-tailwind":    {"file": "stacks/html-tailwind.csv"},
     "shadcn":           {"file": "stacks/shadcn.csv"},
-    "jetpack-compose":  {"file": "stacks/jetpack-compose.csv"},
-    "threejs":          {"file": "stacks/threejs.csv"},
-    "angular":          {"file": "stacks/angular.csv"},
-    "laravel":          {"file": "stacks/laravel.csv"},
 }
 
 # Common columns for all stacks
@@ -207,7 +191,6 @@ def detect_domain(query):
         "style": ["style", "design", "ui", "minimalism", "glassmorphism", "neumorphism", "brutalism", "dark mode", "flat", "aurora", "prompt", "css", "implementation", "variable", "checklist", "tailwind"],
         "ux": ["ux", "usability", "accessibility", "wcag", "touch", "scroll", "animation", "keyboard", "navigation", "mobile"],
         "typography": ["font pairing", "typography pairing", "heading font", "body font"],
-        "google-fonts": ["google font", "font family", "font weight", "font style", "variable font", "noto", "font for", "find font", "font subset", "font language", "monospace font", "serif font", "sans serif font", "display font", "handwriting font", "font", "typography", "serif", "sans"],
         "icons": ["icon", "icons", "lucide", "heroicons", "symbol", "glyph", "pictogram", "svg icon"],
         "react": ["react", "next.js", "nextjs", "suspense", "memo", "usecallback", "useeffect", "rerender", "bundle", "waterfall", "barrel", "dynamic import", "rsc", "server component"],
         "web": ["aria", "focus", "outline", "semantic", "virtualize", "autocomplete", "form", "input type", "preconnect"]
@@ -227,7 +210,10 @@ def search(query, domain=None, max_results=MAX_RESULTS):
     filepath = DATA_DIR / config["file"]
 
     if not filepath.exists():
-        return {"error": f"File not found: {filepath}", "domain": domain}
+        # Graceful degrade: dado ausente => lista vazia + aviso, nunca crash.
+        msg = f"Data file not found: {filepath} (domain '{domain}' unavailable; returning empty results)"
+        print(f"WARNING: {msg}", file=sys.stderr)
+        return {"domain": domain, "query": query, "file": config["file"], "count": 0, "results": [], "warning": msg}
 
     results = _search_csv(filepath, config["search_cols"], config["output_cols"], query, max_results)
 
@@ -248,7 +234,10 @@ def search_stack(query, stack, max_results=MAX_RESULTS):
     filepath = DATA_DIR / STACK_CONFIG[stack]["file"]
 
     if not filepath.exists():
-        return {"error": f"Stack file not found: {filepath}", "stack": stack}
+        # Graceful degrade: dado ausente => lista vazia + aviso, nunca crash.
+        msg = f"Stack data file not found: {filepath} (stack '{stack}' unavailable; returning empty results)"
+        print(f"WARNING: {msg}", file=sys.stderr)
+        return {"domain": "stack", "stack": stack, "query": query, "file": STACK_CONFIG[stack]["file"], "count": 0, "results": [], "warning": msg}
 
     results = _search_csv(filepath, _STACK_COLS["search_cols"], _STACK_COLS["output_cols"], query, max_results)
 

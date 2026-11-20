@@ -167,7 +167,6 @@ Lista de padrões ruins que você DEVE questionar quando o usuário os propor. P
 - Usar variáveis de ambiente
 - Usar arquivos de configuração externos
 - Usar JNDI (WildFly)
-- Seguir `.agents/rules/backend-coding-standards.md`
 
 **Como questionar:**
 > "Colocar credenciais no código fonte é uma vulnerabilidade de segurança crítica — qualquer pessoa com acesso ao repositório vê a senha. Recomendo usar variáveis de ambiente ou JNDI. Posso configurar?"
@@ -451,6 +450,4 @@ Se o usuário insistir:
 | OWASP Top 10 | Padrões de segurança |
 | SOLID Principles | Princípios de design |
 | Clean Architecture | Arquitetura limpa |
-| `.agents/rules/backend-coding-standards.md` | Padrões do projeto |
 | `.agents/rules/frontend-coding-standards.md` | Padrões frontend |
-| `.agents/rules/unit-testing-standards.md` | Regras de testes |

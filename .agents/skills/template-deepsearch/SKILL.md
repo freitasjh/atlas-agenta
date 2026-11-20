@@ -6,11 +6,11 @@ license: MIT
 
 # Template Deepsearch — Estado da Arte em Templates
 
-Skill para pesquisar o estado da arte em templates/arquiteturas de componentes e fundamentar decisões de design system em evidência.
+Skill para pesquisar o estado da arte em templates/arquiteturas de componentes e fundamentar decisões de design system em evidência. **Padrões encontrados são exemplos ilustrativos, nunca prescrição de paleta: cor, fonte e raio vêm de `DESIGN.md`/tokens do destino.**
 
 ## 1. Quando Usar
 
-- Novo componente sem precedente no Pulse.
+- Novo componente sem precedente no design system do destino.
 - Dúvida sobre padrão (controlled vs uncontrolled, compound vs flat).
 - Avaliar bibliotecas (shadcn/ui, Radix, Headless UI, Ariakit, React Aria).
 - Decisão de tokenização (design tokens, CVA, tailwind-variants).
@@ -39,7 +39,7 @@ Não invente resultados. Toda afirmação precisa de fonte verificável.
 - **Fonte**: <URL>
 - **Acessado em**: YYYY-MM-DD
 - **Padrão observado**: <descrição>
-- **Aplicação no Pulse**: <como adaptar>
+- **Aplicação no destino**: <como adaptar, usando só tokens de DESIGN.md/tokens do destino>
 ```
 
 Decisão sem citação = inválida. Se não houver fonte, marcar como "suposição — validar".
@@ -75,6 +75,6 @@ Relatório de pesquisa com:
 ## 8. Anti-Padrões
 
 - Decisão sem citação.
-- Copiar implementação de uma lib sem adaptar ao Pulse.
+- Copiar implementação de uma lib sem adaptar aos tokens do destino (exemplo ilustrativo, nunca prescrição de paleta).
 - Ignorar acessibilidade por "padrão da lib".
 - Usar fonte única para decisão crítica.

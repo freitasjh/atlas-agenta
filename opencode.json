@@ -8,7 +8,10 @@
       "mode": "subagent",
       "permission": {
         "bash": "allow",
-        "edit": "allow"
+        "edit": {
+          "*": "deny",
+          ".spec/**": "allow"
+        }
       },
       "prompt": "{file:./.agents/agents/architect/AGENT.md}"
     },
@@ -53,7 +56,10 @@
       "mode": "primary",
       "permission": {
         "bash": "allow",
-        "edit": "deny"
+        "edit": {
+          "*": "deny",
+          ".spec/**": "allow"
+        }
       },
       "prompt": "{file:./.agents/agents/orchestrator/AGENT.md}"
     },
@@ -62,7 +68,10 @@
       "mode": "subagent",
       "permission": {
         "bash": "allow",
-        "edit": "allow"
+        "edit": {
+          "*": "deny",
+          ".spec/**": "allow"
+        }
       },
       "prompt": "{file:./.agents/agents/product-manager/AGENT.md}"
     },
@@ -92,12 +101,40 @@
         "edit": "deny"
       },
       "prompt": "{file:./.agents/agents/ux-designer/AGENT.md}"
+    },
+    "frontend-engineer": {
+      "mode": "subagent",
+      "prompt": "{file:./.agents/agents/frontend-engineer/AGENT.md}",
+      "description": "Implementa codigo e testes frontend (Vue/React): Composition API/hooks, Storybook-first, i18n, a11y e deepsearch.",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "backend-engineer": {
+      "mode": "subagent",
+      "prompt": "{file:./.agents/agents/backend-engineer/AGENT.md}",
+      "description": "Implementa codigo e testes backend por eixo: DDD/Clean, transacoes, IT com banco real, TDD e deepsearch.",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "engineer": {
+      "mode": "subagent",
+      "prompt": "{file:./.agents/agents/engineer/AGENT.md}",
+      "description": "Analise e insumo de decisao em .spec/prd/: RESEARCH.md e design-decisions; co-assina PRD/ADR, mas nao decide. md-only.",
+      "permission": {
+        "edit": {
+          "*": "deny",
+          ".spec/**": "allow"
+        },
+        "bash": "allow"
+      }
     }
   },
   "instructions": [
-    ".agents/rules/*.md",
-    "../brain/.agents/skills/brain/SKILL.md",
-    "../brain/.agents/rules/BRAIN.MCP.md"
+    ".agents/rules/always-on.md"
   ],
   "mcp": {
     "servers": {

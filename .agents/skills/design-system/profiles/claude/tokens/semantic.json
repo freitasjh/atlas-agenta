@@ -1,0 +1,26 @@
+{
+  "bg": {
+    "page": { "$value": "{color.cream-50}", "$type": "color" },
+    "soft": { "$value": "{color.cream-100}", "$type": "color" },
+    "card": { "$value": "{color.cream-200}", "$type": "color" },
+    "dark": { "$value": "{color.slate-900}", "$type": "color" },
+    "dark-elevated": { "$value": "{color.slate-800}", "$type": "color" }
+  },
+  "ink": {
+    "primary": { "$value": "{color.ink-900}", "$type": "color" },
+    "body": { "$value": "{color.ink-700}", "$type": "color" },
+    "muted": { "$value": "{color.ink-500}", "$type": "color" }
+  },
+  "action": {
+    "primary": { "$value": "{color.coral-500}", "$type": "color" },
+    "primary-active": { "$value": "{color.coral-600}", "$type": "color" }
+  },
+  "border": {
+    "hairline": { "$value": "{color.hairline-light}", "$type": "color" }
+  },
+  "font": {
+    "display": { "$value": "\"Copernicus\", \"Tiempos Headline\", Georgia, serif", "$type": "fontFamily" },
+    "body": { "$value": "\"Plus Jakarta Sans\", \"Satoshi\", system-ui, sans-serif", "$type": "fontFamily" },
+    "code": { "$value": "\"JetBrains Mono\", ui-monospace, monospace", "$type": "fontFamily" }
+  }
+}

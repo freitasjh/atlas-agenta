@@ -1,7 +1,6 @@
 ---
 name: security-review
-description: "Security review skill integrated into the SDD workflow. Validates security at each SDD phase gate against OWASP Top 10, ASVS 4.x, MASVS 2.x, and the TaskFlow security-standard.md (source of truth). Covers web, API, and mobile."
-license: TaskFlow Security Standard
+description: "Security review skill integrated into the SDD workflow. Validates security at each SDD phase gate against OWASP Top 10, ASVS 4.x, MASVS 2.x, and the project's security standard (source of truth). Covers web, API, and mobile."
 ---
 
 # Security Review — SDD Integrated Skill
@@ -13,7 +12,7 @@ Security review as a **phase-integrated gate** in the Spec-Driven Development (S
 ### Must Use
 - **Fase 1 (Analysis):** After SPEC is generated — validate security requirements coverage.
 - **Fase 3 (Review):** After code review — security-focused review of implementation.
-- **Fase 4 (Verify):** Before archive — validate against `security-standard.md` zero-tolerance checklist.
+- **Fase 4 (Verify):** Before archive — validate against this skill's zero-tolerance checklist (OWASP Top 10 / ASVS 4.x / MASVS 2.x).
 - **Bugfix:** When the bug affects auth, authorization, data exposure, or input handling.
 - **Any feature** with authentication, authorization, user data, external integrations, or file uploads.
 
@@ -34,10 +33,8 @@ Security review as a **phase-integrated gate** in the Spec-Driven Development (S
 
 | Document | Purpose |
 |----------|---------|
-| `.agents/rules/security-standard.md` | **Fonte da verdade** — OWASP Top 10, ASVS 4.x, MASVS 2.x, TaskFlow rules |
-| `.agents/rules/backend-coding-standards.md` | Backend coding patterns (injection prevention, DTO projection) |
+| `security-review` (esta skill — SSoT declarada) | **Fonte da verdade** — OWASP Top 10, ASVS 4.x, MASVS 2.x, regras do projeto |
 | `.agents/rules/frontend-coding-standards.md` | Frontend security (XSS, CSP, CSRF, token storage) |
-| `.agents/rules/backend-integration-tests.md` | Security test patterns (401/403, IDOR, injection) |
 | `.agents/agents/security-engineer/AGENT.md` | Deep audit agent (invoke for complex findings) |
 
 ---
@@ -112,7 +109,7 @@ After the `code-reviewer` completes the general review, run the security-specifi
 - [ ] **A03 (Injection):** All JPQL/QueryDSL parameterized. No string concatenation in native queries. `@Valid` on all inputs. RabbitMQ payloads validated.
 - [ ] **A04 (Insecure Design):** Rate limiting on auth endpoints. No sensitive data in URLs. Payload size limits enforced.
 - [ ] **A05 (Security Misconfiguration):** No default credentials. Verbose errors disabled in production. Actuator/Swagger protected. Dependencies audited (no critical CVEs).
-- [ ] **A06 (Vulnerable Components):** `npm audit` clean (no critical/high). OWASP Dependency-Check clean.
+- [ ] **A06 (Vulnerable Components):** auditoria de dependências pelo gerenciador do eixo (`commands.audit` de `harness.config.json`): zero CVE crítica/alta.
 - [ ] **A07 (Auth Failures):** JWT expiração curta + refresh rotativo. Logout invalida token. No credentials in logs/URLs.
 - [ ] **A08 (Integrity):** RabbitMQ publisher confirms. Idempotency in consumers. Dependencies pinned (lockfiles).
 - [ ] **A09 (Logging):** Security events logged (login success/failure, permission denied, data deletion). No secrets in logs. Correlation IDs present.
@@ -123,6 +120,7 @@ After the `code-reviewer` completes the general review, run the security-specifi
 ## Security Code Review — Fase 3
 
 ### OWASP Top 10 Status
+<!-- Dono FR4/ADR-005 registrado na linha A06; ADR §4.4 cita :132. -->
 | Category | Status | Finding |
 |----------|--------|---------|
 | A01 Broken Access Control | ✅ | @HasPermission on all endpoints |
@@ -130,7 +128,7 @@ After the `code-reviewer` completes the general review, run the security-specifi
 | A03 Injection | ✅ | Parameterized queries, @Valid |
 | A04 Insecure Design | 🟡 | Rate limiting missing on /v1/auth/register |
 | A05 Misconfiguration | ✅ | |
-| A06 Vulnerable Components | ✅ | npm audit + Dependency-Check clean |
+| A06 Vulnerable Components | ✅ | dependency scanning (`npm audit` / OWASP Dependency-Check / equivalente do eixo) — dono ADR-005 |
 | A07 Auth Failures | ✅ | |
 | A08 Integrity | ✅ | |
 | A09 Logging | 🟡 | Login failure not logged |
@@ -144,13 +142,13 @@ After the `code-reviewer` completes the general review, run the security-specifi
 - pass | fail | partial
 ```
 
-**If 🔴 Critical findings:** Return to developer-engineer for fix. Re-review after fix. Max 3 iterations.
+**If 🔴 Critical findings:** Return to frontend-engineer/backend-engineer for fix. Re-review after fix. Max 3 iterations.
 
 ---
 
 ### Fase 4 — Verify: Security Validation Gate
 
-Before archive, validate against `security-standard.md` zero-tolerance checklist:
+Before archive, validate against this skill's zero-tolerance checklist (OWASP Top 10 / ASVS 4.x / MASVS 2.x):
 
 #### 4.1 Zero-Tolerance Checklist
 - [ ] Controle de acesso server-side em todos os endpoints (`@HasPermission`)?
@@ -163,7 +161,7 @@ Before archive, validate against `security-standard.md` zero-tolerance checklist
 - [ ] Zero `v-html` com conteúdo não sanitizado no frontend?
 - [ ] Sem segredos em código versionado, logs ou respostas de API?
 - [ ] Rate limiting em autenticação e endpoints sensíveis?
-- [ ] Dependências auditadas (npm audit + OWASP Dependency-Check) — zero CVE alta sem mitigação?
+- [ ] Dependências auditadas (gerenciador de pacotes do eixo) — zero CVE alta sem mitigação?
 - [ ] Actuator/Swagger protegidos em produção?
 - [ ] Mobile (se aplicável): tokens em Keychain/Keystore, TLS obrigatório, sem cleartext?
 

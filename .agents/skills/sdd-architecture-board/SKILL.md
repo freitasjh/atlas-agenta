@@ -15,7 +15,7 @@ Use este modo quando o projeto não possuir documentação arquitetural ou for u
 - **Trigger:** "Analisar arquitetura atual", "Engenharia reversa do projeto", "Preencher architecture.md".
 - **Ações:**
   1. Analisar `pom.xml`, `package.json`, diretórios `backend/` e `frontend/` para mapear a **Tech Stack**.
-  2. Analisar a estrutura de módulos Maven (`api/`, `impl/`, `public/`) para identificar o **Padrão Arquitetural**.
+  2. **Java**: analisar a estrutura de módulos Maven (`api/`, `impl/`, `public/`) para identificar o **Padrão Arquitetural**.
   3. Identificar frameworks de persistência, mensageria e comunicação (REST, RabbitMQ).
   4. Gerar/Atualizar `AGENTS.md` e `.agents/rules/` correspondentes.
 

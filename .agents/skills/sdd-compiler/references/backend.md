@@ -25,7 +25,7 @@ src/
 If the SPEC defines a SaaS Tenant Strategy, the backend MUST implement:
 - **Tenant Context**: A global request-scoped or thread-local context (e.g., `TenantContextHolder`) that stores the extracted `tenant_id` from the HTTP Header/JWT.
 - **ORM Isolation**: 
-  - *Row-Level Security*: The ORM (Hibernate, Prisma, TypeORM) MUST automatically append `WHERE tenant_id = ?` to ALL queries via filters or interceptors. Developers MUST NOT manually write tenant filters to avoid accidental data leakage.
+  - **Java/Node.js**: *Row-Level Security* — the ORM (Hibernate, Prisma, TypeORM) MUST automatically append `WHERE tenant_id = ?` to ALL queries via filters or interceptors. Developers MUST NOT manually write tenant filters to avoid accidental data leakage.
   - *Database/Schema-per-tenant*: The framework MUST dynamically route the connection pool based on the `TenantContext`.
 
 ## 4. Resiliency & Event-Driven Patterns

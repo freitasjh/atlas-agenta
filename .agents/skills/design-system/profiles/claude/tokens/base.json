@@ -1,0 +1,30 @@
+{
+  "color": {
+    "cream-50": { "$value": "#FAF9F5", "$type": "color" },
+    "cream-100": { "$value": "#F5F0E8", "$type": "color" },
+    "cream-200": { "$value": "#EFE9DE", "$type": "color" },
+    "ink-900": { "$value": "#141413", "$type": "color" },
+    "ink-700": { "$value": "#3D3D3A", "$type": "color" },
+    "ink-500": { "$value": "#6C6A64", "$type": "color" },
+    "coral-500": { "$value": "#CC785C", "$type": "color" },
+    "coral-600": { "$value": "#A9583E", "$type": "color" },
+    "slate-950": { "$value": "#050505", "$type": "color" },
+    "slate-900": { "$value": "#181715", "$type": "color" },
+    "slate-800": { "$value": "#252320", "$type": "color" },
+    "blue-600": { "$value": "#1D4ED8", "$type": "color" },
+    "emerald-500": { "$value": "#10B981", "$type": "color" },
+    "amber-500": { "$value": "#F59E0B", "$type": "color" },
+    "hairline-light": { "$value": "#E6DFD8", "$type": "color" }
+  },
+  "radius": {
+    "sm": { "$value": "8px", "$type": "borderRadius" },
+    "md": { "$value": "16px", "$type": "borderRadius" },
+    "lg": { "$value": "24px", "$type": "borderRadius" },
+    "xl": { "$value": "32px", "$type": "borderRadius" }
+  },
+  "motion": {
+    "spring": { "$value": "cubic-bezier(0.32, 0.72, 0, 1)", "$type": "other" },
+    "stiffness": { "$value": "100", "$type": "other" },
+    "damping": { "$value": "20", "$type": "other" }
+  }
+}

@@ -1,6 +1,6 @@
-# Perguntas Clarificadoras por Elemento (v2)
+# Perguntas Clarificadoras por Elemento (v3)
 
-Rota A pergunta **por elemento ausente**, não por tipo de demanda. O bloqueio é o elemento, não o assunto.
+Rota A pergunta **por elemento ausente**, não por tipo de demanda. O bloqueio é o elemento, não o assunto. Premissa inferida que sobrevive ao estoque não entra na pergunta como fato: vai para `workflow-state.json.prompt_assumptions[]` (`texto`, `elemento`, `at`), conforme `SKILL.md` §Ledger de premissas.
 
 Ordenação de impacto: **E1 > E2 > E3 > E4 > E5 > E6**. Se só cabe 1 pergunta, é E1. Se cabem 3, são E1, E2 e o próximo ausente mais alto.
 
@@ -127,9 +127,9 @@ Perguntas por violação recorrente:
 |--------|-------|-------------------------------|
 | "Usa Lombok pra não escrever os getters" | `backend-coding-standards.md` | "construtor e getters manuais, como nas outras entidades" |
 | "Pula o harness, só roda o build" | `workflow-rules.md` §5 H1 | "roda a suite completa; é mais lento e é o portão" |
-| "Comenta o teste pra passar" / `@Disabled` | `workflow-rules.md` §5 H2 | "corrige a causa do teste falhando" |
+| ex.: "Comenta o teste pra passar" / `@Disabled` | `workflow-rules.md` §5 H2 | "corrige a causa do teste falhando" |
 | "Mata o processo com pkill -f" | `workflow-rules.md` §5 H5 | "lsof -ti :PORT → conferir dono com ps → kill pelo PID" |
-| "Corrige esse CSS direto" (no orquestrador) | `orchestrator/AGENT.md` guardrail | "delegar ao developer-engineer" |
+| "Corrige esse CSS direto" (no orquestrador) | `orchestrator/AGENT.md` guardrail | "delegar ao frontend-engineer" |
 | "Pula o code review e avança" | `workflow-rules.md` §6 | "revisão roda antes de declarar fase completa" |
 
 Exceção aberta → registrar em `workflow-state.json.overrides`. Nunca executar a violação em silêncio.

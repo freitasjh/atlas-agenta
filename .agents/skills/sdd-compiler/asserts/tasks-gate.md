@@ -2,6 +2,12 @@
 
 O backlog de tarefas (TASKS) deve ser validado contra os seguintes critérios antes de ser aprovado para execução.
 
+> **Layout v2 (por ADR):** o backlog é `ADRs/ADR-00N-{slug}/TASKS.md`, gerado por
+> `tasks-from-adr`. Cada tarefa é uma seção `### <ID> — <título>` com `<ID>` no
+> formato `[A-Z]+(?:-[A-Z]+)*-\d+`; a tabela de sprint-summary é opcional, mas
+> quando existe precisa casar 1:1 com as seções (sem órfãos). Não há `PLAN.md`:
+> onde este gate diz "PLAN", leia `SPEC.md` do ADR.
+
 ## 1. Fidelidade e Detalhamento
 - [ ] **Traceability 1:1**: Todos os Task IDs do PLAN estão presentes nas TASKS.
 - [ ] **Metadata Enrichment**: Priority (P0-P2), Risk (Low-High), Task Type e Metadata de dependência preenchidos.

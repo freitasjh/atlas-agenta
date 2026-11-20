@@ -27,14 +27,14 @@ export function Logo({ iconOnly = false, className }: LogoProps) {
         {/* Anel de confirmação: arco aberto em jade. */}
         <path
           d="M26 16a10 10 0 1 0-4.2 8.14"
-          stroke="hsl(var(--primary))"
+          stroke="var(--primary)"
           strokeWidth="2.5"
           strokeLinecap="round"
         />
         {/* Marca de confirmação no centro. */}
         <path
           d="M11.5 16.5l3 3 6-6.5"
-          stroke="hsl(var(--primary))"
+          stroke="var(--primary)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"

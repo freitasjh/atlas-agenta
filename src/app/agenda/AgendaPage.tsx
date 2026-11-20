@@ -89,7 +89,11 @@ import { hasValidPackageCredit } from "@/hooks/useValidPackageCredit";
 import {
   useWorkingHoursMany,
 } from "@/hooks/useWorkingHours";
-import { formatTimeInTenantTz, weekRangeOf } from "@/lib/datetime";
+import {
+  formatTimeInTenantTz,
+  toTenantLocal,
+  weekRangeOf,
+} from "@/lib/datetime";
 import { formatCentsToBRL } from "@/lib/money";
 import { serviceColorDotClass } from "@/lib/service-color";
 import { cn } from "@/lib/utils";
@@ -135,15 +139,15 @@ function isValidIsoDate(value: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-/** Borda-lateral de status na timeline (reforço redundante do `StatusBadge`). */
-const STATUS_BORDER: Record<AppointmentStatus, string> = {
-  pendente: "border-status-pendente",
-  aguardando_deposito: "border-status-pendente",
-  confirmado: "border-status-confirmado",
-  em_atendimento: "border-status-em-atendimento",
-  concluido: "border-status-concluido",
-  cancelado: "border-status-cancelado",
-  nao_compareceu: "border-status-nao-compareceu",
+/** Faixa vertical de status na lista (reforço textual do `StatusBadge`). */
+const STATUS_STRIPE: Record<AppointmentStatus, string> = {
+  pendente: "bg-status-pendente",
+  aguardando_deposito: "bg-status-pendente",
+  confirmado: "bg-status-confirmado",
+  em_atendimento: "bg-status-em-atendimento",
+  concluido: "bg-status-concluido",
+  cancelado: "bg-status-cancelado",
+  nao_compareceu: "bg-status-nao-compareceu",
 };
 
 /** Um item da timeline do dia. */
@@ -203,8 +207,15 @@ function AgendaItem({
 
   return (
     <li
-      className={`rounded-lg border border-border border-l-2 ${STATUS_BORDER[appointment.status]} bg-card p-4`}
+      className="relative overflow-hidden rounded-xl border border-border/70 bg-card p-4 shadow-xs"
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-y-0 left-0 w-1",
+          STATUS_STRIPE[appointment.status],
+        )}
+      />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 gap-3">
           {selection ? (
@@ -216,13 +227,12 @@ function AgendaItem({
             />
           ) : null}
           <div className="flex min-w-0 gap-4">
-            <div className="shrink-0 font-display text-sm font-semibold tabular-nums text-foreground">
-            {formatTimeInTenantTz(appointment.starts_at, timeZone)}
-            <span className="text-muted-foreground">
-              {"–"}
-              {formatTimeInTenantTz(appointment.ends_at, timeZone)}
-            </span>
-          </div>
+            <div className="flex shrink-0 flex-col items-center rounded-lg border border-border/70 bg-muted/40 px-2.5 py-1.5 font-mono text-xs font-semibold tabular-nums text-foreground">
+              <span>{formatTimeInTenantTz(appointment.starts_at, timeZone)}</span>
+              <span className="text-[10px] font-normal text-muted-foreground">
+                {formatTimeInTenantTz(appointment.ends_at, timeZone)}
+              </span>
+            </div>
           <div className="min-w-0 space-y-1">
             <p className="break-words font-medium text-foreground">
               {appointment.customers?.name ??
@@ -847,6 +857,26 @@ export function AgendaPage() {
     );
   });
 
+  /** Agrupamento da visão Lista por turno (manhã/tarde/noite) no fuso do tenant. */
+  const appointmentsByPeriod = useMemo(() => {
+    const groups = {
+      manha: [] as typeof visibleAppointments,
+      tarde: [] as typeof visibleAppointments,
+      noite: [] as typeof visibleAppointments,
+    };
+    for (const appointment of visibleAppointments) {
+      const hour = toTenantLocal(appointment.starts_at, timeZone).hour;
+      if (hour < 12) groups.manha.push(appointment);
+      else if (hour < 18) groups.tarde.push(appointment);
+      else groups.noite.push(appointment);
+    }
+    return [
+      { id: "manha", label: "Período da manhã", items: groups.manha },
+      { id: "tarde", label: "Período da tarde", items: groups.tarde },
+      { id: "noite", label: "Período da noite", items: groups.noite },
+    ].filter((group) => group.items.length > 0);
+  }, [visibleAppointments, timeZone]);
+
   // Resumo do dia (ADR-02) sobre a base cheia do dia — para `professional`, o
   // RLS já recortou a própria agenda. Capacidade `null`: o denominador de
   // ocupação ainda não tem fonte (follow-up ADR-05), então degrada para
@@ -1022,7 +1052,7 @@ export function AgendaPage() {
               fluidas evitam overflow horizontal em 1280 px e 375 px. */}
           <div
             data-testid="agenda-filter-bar"
-            className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end"
+            className="sticky top-0 z-20 -mx-4 flex min-w-0 flex-col gap-3 bg-background/95 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:flex-row lg:flex-wrap lg:items-end lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
           >
             <div className="flex min-w-0 flex-wrap items-end gap-2">
               <div className="min-w-0 space-y-1">
@@ -1265,37 +1295,55 @@ export function AgendaPage() {
                   ) : null}
                 </div>
               ) : null}
-              <ul className="space-y-3">
-                {visibleAppointments.map((appointment) => (
-                  <AgendaItem
-                    key={appointment.id}
-                    appointment={appointment}
-                    timeZone={timeZone}
-                    canManage={canManageAppointments}
-                    canSendMessage={canSendWhatsAppMessage}
-                    showCommission={showCommission}
-                    paymentsState={checkoutState}
-                    paymentFlag={agendaPaymentFlags.statusById.get(appointment.id)}
-                    canRegisterPayments={canRegisterPayments}
-                    onOpenPayment={(target) =>
-                      setSettlementAppointmentId(target.id)
-                    }
-                    onEdit={openEdit}
-                    onChangeStatus={handleChangeStatus}
-                    onSendMessage={setMessageTarget}
-                    selection={
-                      canManageAppointments &&
-                      !isFinalStatus(appointment.status)
-                        ? {
-                            checked: bulkSelection.isSelected(appointment.id),
-                            onToggle: () =>
-                              bulkSelection.toggle(appointment.id),
+              <div className="flex flex-col gap-5">
+                {appointmentsByPeriod.map((group) => (
+                  <section
+                    key={group.id}
+                    aria-labelledby={`agenda-periodo-${group.id}`}
+                    className="flex flex-col gap-2"
+                  >
+                    <div className="flex items-center gap-2 border-b border-border/70 pb-1.5">
+                      <h2
+                        id={`agenda-periodo-${group.id}`}
+                        className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                      >
+                        {group.label} ({group.items.length})
+                      </h2>
+                    </div>
+                    <ul className="flex flex-col gap-2.5">
+                      {group.items.map((appointment) => (
+                        <AgendaItem
+                          key={appointment.id}
+                          appointment={appointment}
+                          timeZone={timeZone}
+                          canManage={canManageAppointments}
+                          canSendMessage={canSendWhatsAppMessage}
+                          showCommission={showCommission}
+                          paymentsState={checkoutState}
+                          paymentFlag={agendaPaymentFlags.statusById.get(appointment.id)}
+                          canRegisterPayments={canRegisterPayments}
+                          onOpenPayment={(target) =>
+                            setSettlementAppointmentId(target.id)
                           }
-                        : undefined
-                    }
-                  />
+                          onEdit={openEdit}
+                          onChangeStatus={handleChangeStatus}
+                          onSendMessage={setMessageTarget}
+                          selection={
+                            canManageAppointments &&
+                            !isFinalStatus(appointment.status)
+                              ? {
+                                  checked: bulkSelection.isSelected(appointment.id),
+                                  onToggle: () =>
+                                    bulkSelection.toggle(appointment.id),
+                                }
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             </>
           )}
         </>

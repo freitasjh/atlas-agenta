@@ -18,7 +18,7 @@ No momento do `archive`, o `sdd-compiler` usa este delta para atualizar os docum
 
 ---
 
-## Delta: `.agents/rules/backend-coding-standards.md`
+## Delta: <documento-alvo>
 
 ### ADDED
 ```
@@ -65,5 +65,4 @@ No momento do `archive`, o `sdd-compiler` usa este delta para atualizar os docum
 
 | Documento | ADDED | MODIFIED | REMOVED |
 |-----------|-------|----------|---------|
-| `.agents/rules/backend-coding-standards.md` | [n seções] | [n seções] | [n seções] |
 | `AGENTS.md` | [n seções] | [n seções] | [n seções] |

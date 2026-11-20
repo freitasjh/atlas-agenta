@@ -1,12 +1,12 @@
 ---
 name: template-structure
-description: Estrutura de templates de componentes reutilizáveis: anatomia, props/slots, estados, variantes, tamanhos, composição, i18n e a11y. Contrato framework-agnostic com exemplos Vue 3 e React 18.
+description: Estrutura de templates de componentes reutilizáveis: anatomia, props/slots, estados, variantes, tamanhos, composição, i18n e a11y. Contrato framework-agnostic com exemplos (ex.: Vue 3 e React 18).
 license: MIT
 ---
 
 # Template Structure — Estrutura de Templates de Componentes
 
-Skill para definir a **estrutura** de um componente reutilizável do design system. O contrato é framework-agnostic; exemplos em Vue 3 e React 18 são ilustrativos.
+Skill para definir a **estrutura** de um componente reutilizável do design system. O contrato é framework-agnostic; exemplos (ex.: Vue 3 e React 18) são ilustrativos. **Exemplo ilustrativo, nunca prescrição de paleta: cor, fonte e raio vêm de `DESIGN.md`/tokens do destino.**
 
 ## 1. Anatomia de um Template
 
@@ -91,7 +91,7 @@ Todo componente interativo DEVE cobrir:
 |--------|-----------|
 | default | aparência base |
 | hover | feedback visual (cursor, elevação) |
-| focus | ring de foco visível (Pulse: âmbar 3px a 12%) |
+| focus | ring de foco visível, cor e espessura vindas do token `--ring` do destino |
 | active | pressed |
 | disabled | não-interativo, contraste reduzido, `aria-disabled` |
 | loading | spinner/skeleton, `aria-busy` |
@@ -135,7 +135,7 @@ Estados são **parte do contrato** — não opcionais.
 - [ ] Events documentados
 - [ ] Estados completos
 - [ ] Variantes + tamanhos
-- [ ] Tokens Pulse mapeados
+- [ ] Tokens semânticos do destino mapeados (nenhum valor cru no contrato)
 - [ ] A11y (role, aria, keyboard)
 - [ ] i18n (sem literais)
 - [ ] Notas de adapter Vue/React

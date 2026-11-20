@@ -1,0 +1,159 @@
+/* Fontes auto-hospedadas (@fontsource) — sem request externo em runtime (RNF01). */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Tema claro de cortesia (a app inicia em dark — ver ThemeProvider). */
+  :root {
+    --background: 210 30% 99%;
+    --foreground: 222 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+
+    --primary: 160 64% 31%;
+    --primary-foreground: 160 40% 98%;
+
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 222 30% 18%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 210 24% 92%;
+    --accent-foreground: 222 30% 18%;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 86%;
+    --input: 215 16% 56%;
+    --ring: 160 64% 36%;
+
+    /* Tokens de status dedicados (ADR-06) — pílula de 12px, contraste próprio
+       calibrado para AA ≥ 4.5:1, nunca reusar --primary/--destructive. */
+    --status-pendente: 38 92% 45%;
+    --status-pendente-fg: 38 92% 10%;
+    --status-confirmado: 160 64% 30%;
+    --status-confirmado-fg: 160 40% 98%;
+    --status-em-atendimento: 210 80% 45%;
+    --status-em-atendimento-fg: 210 90% 98%;
+    --status-concluido: 160 25% 38%;
+    --status-concluido-fg: 160 30% 96%;
+    --status-cancelado: 0 72% 42%;
+    --status-cancelado-fg: 0 0% 100%;
+    --status-nao-compareceu: 350 45% 40%;
+    --status-nao-compareceu-fg: 350 30% 96%;
+    --status-sub-cancelado: 215 16% 42%;
+    --status-sub-cancelado-fg: 215 20% 96%;
+
+    /* Paleta de cor por serviço (ADR-01) — dot pequeno (componente gráfico),
+       contraste-alvo ≥ 3:1 vs --card (WCAG 1.4.11); cor nunca é o único sinal
+       (nome do serviço acompanha em texto). Matizes espaçadas, sem colidir com
+       --primary (160° jade) nem com as cores de status. */
+    --service-1: 265 60% 55%;
+    --service-2: 190 70% 42%;
+    --service-3: 28 80% 48%;
+    --service-4: 330 65% 55%;
+    --service-5: 230 60% 58%;
+    --service-6: 175 55% 38%;
+    --service-7: 95 45% 42%;
+    --service-8: 12 70% 55%;
+
+    --radius: 0.75rem;
+  }
+
+  /* Tema padrão: "painel de operação calmo" — ardósia/azul-noite + acento jade. */
+  .dark {
+    --background: 222 24% 9%;
+    --foreground: 210 20% 96%;
+
+    --card: 222 20% 13%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 222 20% 13%;
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 160 64% 45%;
+    --primary-foreground: 160 40% 8%;
+
+    --secondary: 222 18% 18%;
+    --secondary-foreground: 210 20% 96%;
+
+    --muted: 222 18% 18%;
+    --muted-foreground: 215 14% 66%;
+
+    --accent: 222 18% 18%;
+    --accent-foreground: 210 20% 96%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 15% 22%;
+    --input: 222 15% 46%;
+    --ring: 160 64% 55%;
+
+    /* Tokens de status dedicados (ADR-06) — valores do tema escuro. */
+    --status-pendente: 38 92% 55%;
+    --status-pendente-fg: 38 92% 10%;
+    --status-confirmado: 160 60% 45%;
+    --status-confirmado-fg: 160 40% 8%;
+    --status-em-atendimento: 210 90% 60%;
+    --status-em-atendimento-fg: 210 90% 12%;
+    --status-concluido: 160 20% 55%;
+    --status-concluido-fg: 160 30% 12%;
+    --status-cancelado: 0 70% 44%;
+    --status-cancelado-fg: 0 0% 100%;
+    --status-nao-compareceu: 350 40% 45%;
+    --status-nao-compareceu-fg: 350 30% 96%;
+    --status-sub-cancelado: 215 14% 55%;
+    --status-sub-cancelado-fg: 215 20% 12%;
+
+    /* Paleta de cor por serviço (ADR-01) — valores do tema escuro. */
+    --service-1: 265 70% 68%;
+    --service-2: 190 75% 58%;
+    --service-3: 28 85% 60%;
+    --service-4: 330 70% 68%;
+    --service-5: 230 70% 70%;
+    --service-6: 175 60% 52%;
+    --service-7: 95 50% 58%;
+    --service-8: 12 75% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    /* Horários e valores R$ alinhados. */
+    font-feature-settings: "tnum" 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Respeitar quem prefere menos movimento. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

@@ -1,11 +1,11 @@
 ---
 name: ui-ux-pro-max
-description: "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui, and HTML/CSS). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples."
+description: "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 3 stacks (React, Vue, shadcn/ui). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples."
 ---
 
 # UI/UX Pro Max - Design Intelligence
 
-Comprehensive design guide for web and mobile applications. Contains 50+ styles, 161 color palettes, 57 font pairings, 161 product types with reasoning rules, 99 UX guidelines, and 25 chart types across 10 technology stacks. Searchable database with priority-based recommendations.
+Comprehensive design guide for web and mobile applications. Contains 50+ styles, 161 color palettes, 57 font pairings, 161 product types with reasoning rules, 99 UX guidelines, and 25 chart types across 3 technology stacks (React, Vue, shadcn/ui). Searchable database with priority-based recommendations.
 
 ## When to Apply
 
@@ -348,7 +348,7 @@ Use this skill when the user requests any of the following:
 | **Improve / optimize** | "Make this faster", "Improve mobile experience" | Step 3 (domain search: ux, react) |
 | **Implement dark mode** | "Add dark mode support" | Step 3 (domain: style "dark mode") |
 | **Add charts / data viz** | "Add an analytics dashboard chart" | Step 3 (domain: chart) |
-| **Stack best practices** | "React performance tips"、"SwiftUI navigation" | Step 4 (stack search) |
+| **Stack best practices** | "React performance tips"、"Vue navigation" | Step 4 (stack search) |
 
 Follow this workflow:
 
@@ -358,7 +358,7 @@ Extract key information from user request:
 - **Product type**: Entertainment (social, video, music, gaming), Tool (scanner, editor, converter), Productivity (task manager, notes, calendar), or hybrid
 - **Target audience**: C-end consumer users; consider age group, usage context (commute, leisure, work)
 - **Style keywords**: playful, vibrant, minimal, dark mode, content-first, immersive, etc.
-- **Stack**: React Native (this project's only tech stack)
+- **Stack**: React / Vue / shadcn-ui (supported stacks)
 
 ### Step 2: Generate Design System (REQUIRED)
 
@@ -432,18 +432,17 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n
 | Chart recommendations | `chart` | `--domain chart "real-time dashboard"` |
 | UX best practices | `ux` | `--domain ux "animation accessibility"` |
 | Alternative fonts | `typography` | `--domain typography "elegant luxury"` |
-| Individual Google Fonts | `google-fonts` | `--domain google-fonts "sans serif popular variable"` |
 | Landing structure | `landing` | `--domain landing "hero social-proof"` |
 | React Native perf | `react` | `--domain react "rerender memo list"` |
 | App interface a11y | `web` | `--domain web "accessibilityLabel touch safe-areas"` |
 | AI prompt / CSS keywords | `prompt` | `--domain prompt "minimalism"` |
 
-### Step 4: Stack Guidelines (React Native)
+### Step 4: Stack Guidelines (React / Vue / shadcn-ui)
 
-Get React Native implementation-specific best practices:
+Get React/Vue/shadcn implementation-specific best practices:
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
+python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react
 ```
 
 ---
@@ -461,7 +460,6 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
 | `landing` | Page structure, CTA strategies | hero, hero-centric, testimonial, pricing, social-proof |
 | `chart` | Chart types, library recommendations | trend, comparison, timeline, funnel, pie |
 | `ux` | Best practices, anti-patterns | animation, accessibility, z-index, loading |
-| `google-fonts` | Individual Google Fonts lookup | sans serif, monospace, japanese, variable font, popular |
 | `react` | React/Next.js performance | waterfall, bundle, suspense, memo, rerender, cache |
 | `web` | App interface guidelines (iOS/Android/React Native) | accessibilityLabel, touch targets, safe areas, Dynamic Type |
 | `prompt` | AI prompts, CSS keywords | (style name) |
@@ -470,7 +468,9 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
 
 | Stack | Focus |
 |-------|-------|
-| `react-native` | Components, Navigation, Lists |
+| `react` | Components, Performance, Hooks |
+| `vue` | Composition API, Reactivity, Components |
+| `shadcn` | Component composition, Variants, Theming |
 
 ---
 
@@ -482,7 +482,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
 - Product type: Tool (AI search engine)
 - Target audience: C-end users looking for fast, intelligent search
 - Style keywords: modern, minimal, content-first, dark mode
-- Stack: React Native
+- Stack: React
 
 ### Step 2: Generate Design System (REQUIRED)
 
@@ -505,7 +505,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "search loading animation" --doma
 ### Step 4: Stack Guidelines
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "list performance navigation" --stack react-native
+python3 skills/ui-ux-pro-max/scripts/search.py "list performance navigation" --stack react
 ```
 
 **Then:** Synthesize design system + detailed searches and implement the design.
@@ -533,7 +533,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system 
 - Use **multi-dimensional keywords** — combine product + industry + tone + density: `"entertainment social vibrant content-dense"` not just `"app"`
 - Try different keywords for the same need: `"playful neon"` → `"vibrant dark"` → `"content-first minimal"`
 - Use `--design-system` first for full recommendations, then `--domain` to deep-dive any dimension you're unsure about
-- Always add `--stack react-native` for implementation-specific guidance
+- Always add `--stack react` (or `vue` / `shadcn`) for implementation-specific guidance
 
 ### Common Sticking Points
 
