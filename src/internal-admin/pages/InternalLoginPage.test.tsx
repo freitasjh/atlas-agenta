@@ -38,8 +38,10 @@ describe("InternalLoginPage", () => {
     fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "alguem@x.com" } });
     fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "errada" } });
     fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain(GENERIC_LOGIN_ERROR);
+    // A live region role=alert fica montada desde o início (aria-atomic);
+    // esperar pelo texto evita capturá-la vazia antes da mutation assíncrona.
+    const message = await screen.findByText(GENERIC_LOGIN_ERROR);
+    expect(message.closest('[role="alert"]')?.textContent).toContain(GENERIC_LOGIN_ERROR);
   });
 
   it("tem 1 primário e CTA com altura mínima", () => {

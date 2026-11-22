@@ -1,4 +1,10 @@
-import { useState, useEffect } from "react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react"
 import {
   ShieldCheck,
   Smartphone,
@@ -12,6 +18,9 @@ import { Button } from "@/components/shadcn/ui/button"
 import { Checkbox } from "@/components/shadcn/ui/checkbox"
 import { InputOtp } from "@/components/shadcn/ui/input-otp"
 import { Input } from "@/components/shadcn/ui/input"
+// Variante single-input precisa de ref real para foco/select no erro; o Input
+// primitivo do template não encaminha ref (ver auth-padronizacao no Brain).
+import { Input as ForwardedInput } from "@/components/ui/input"
 import { cn } from "@/lib/cn"
 import type { MfaMethod, MfaUserContext, MfaVerificationResult } from "./mfa-types"
 
@@ -26,6 +35,46 @@ export interface MfaChallengeCardProps {
   onCancel?: () => void
   onSuccess?: () => void
   className?: string
+  /** Variante single-input (área interna): mantém o contrato de input real. */
+  inputMode?: "otp" | "single"
+  codeLabel?: string
+  codeMaxLength?: number
+  title?: string
+  /** Título da página interna deve ser `h1`; default do card é `h2`. */
+  titleAs?: "h1" | "h2"
+  description?: ReactNode
+  submitLabel?: string
+  submitPendingLabel?: string
+  submitClassName?: string
+  /** Backend interno não oferece "lembrar dispositivo" — desliga o checkbox. */
+  showTrustDevice?: boolean
+  /** Lockout/estado externo: bloqueia input e submit sem mexer no card. */
+  disabled?: boolean
+  /** Slot para CTA de enroll e status de lockout (página controla). */
+  footer?: ReactNode
+}
+
+/**
+ * Moldura estável da visão principal. Declarada fora do componente para que o
+ * tipo do elemento não mude a cada render (senão React remonta o input e o
+ * foco/select são perdidos a cada dígito digitado).
+ */
+function ChallengeFrame({
+  single,
+  onSubmit,
+  children,
+}: {
+  single: boolean
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  children: ReactNode
+}) {
+  return single ? (
+    <form noValidate onSubmit={onSubmit} className="space-y-6">
+      {children}
+    </form>
+  ) : (
+    <div className="space-y-6">{children}</div>
+  )
 }
 
 export function MfaChallengeCard({
@@ -35,7 +84,22 @@ export function MfaChallengeCard({
   onCancel,
   onSuccess,
   className,
+  inputMode = "otp",
+  codeLabel,
+  codeMaxLength = 8,
+  title,
+  titleAs = "h2",
+  description,
+  submitLabel = "Verificar Código",
+  submitPendingLabel = "Validando autenticação...",
+  submitClassName,
+  showTrustDevice = true,
+  disabled = false,
+  footer,
 }: MfaChallengeCardProps) {
+  const isSingleInput = inputMode === "single"
+  const Heading = titleAs
+  const singleInputRef = useRef<HTMLInputElement>(null)
   const [currentMethod, setCurrentMethod] = useState<MfaMethod>(userContext.preferredMethod)
   const [otpCode, setOtpCode] = useState("")
   const [backupCodeInput, setBackupCodeInput] = useState("")
@@ -44,6 +108,7 @@ export function MfaChallengeCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [resendCooldown, setResendCooldown] = useState(0)
   const [showMethodSelector, setShowMethodSelector] = useState(false)
+  const blocked = isLoading || disabled
 
   // Timer de resend cooldown
   useEffect(() => {
@@ -54,8 +119,36 @@ export function MfaChallengeCard({
     return () => clearInterval(timer)
   }, [resendCooldown])
 
+  // Foco inicial no campo — espelha o contrato da página interna sem exigir
+  // ref externa (o card passa a ser dono do input). A retomada no erro é feita
+  // por `fail()`: um `setState` com a MESMA mensagem não dispara efeito, então
+  // o foco precisava de um agendamento explícito a cada tentativa.
+  useEffect(() => {
+    if (!isSingleInput) return
+    singleInputRef.current?.focus()
+  }, [isSingleInput])
+
+  const focusSingleInput = () => {
+    const focus = () => {
+      singleInputRef.current?.focus()
+      singleInputRef.current?.select()
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(focus)
+      return
+    }
+    focus()
+  }
+
+  /** Erro de verificação: publica na live region e devolve o foco ao campo. */
+  const fail = (message: string) => {
+    setErrorMessage(message)
+    setOtpCode("")
+    focusSingleInput()
+  }
+
   const handleVerify = async (codeToVerify: string) => {
-    if (!codeToVerify.trim() || isLoading) return
+    if (!codeToVerify.trim() || blocked) return
     setIsLoading(true)
     setErrorMessage(null)
 
@@ -69,17 +162,18 @@ export function MfaChallengeCard({
       if (res.success) {
         if (onSuccess) onSuccess()
       } else {
-        setErrorMessage(
-          res.message || "Código incorreto ou expirado. Verifique e tente novamente."
-        )
-        setOtpCode("")
+        fail(res.message || "Código incorreto ou expirado. Verifique e tente novamente.")
       }
     } catch {
-      setErrorMessage("Erro ao verificar o código. Tente novamente em instantes.")
-      setOtpCode("")
+      fail("Erro ao verificar o código. Tente novamente em instantes.")
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void handleVerify(otpCode)
   }
 
   const handleResend = async () => {
@@ -90,6 +184,7 @@ export function MfaChallengeCard({
       await onResendCode(currentMethod)
     } catch {
       setErrorMessage("Não foi possível reenviar o código agora.")
+      focusSingleInput()
     }
   }
 
@@ -198,8 +293,9 @@ export function MfaChallengeCard({
           </div>
         </div>
       ) : (
-        /* Visão Principal do Desafio de Código */
-        <div className="space-y-6">
+        /* Visão Principal do Desafio de Código. No input único, Enter submete
+           sem reload (form noValidate); otp/backup mantêm o botão com onClick. */
+        <ChallengeFrame single={isSingleInput} onSubmit={handleFormSubmit}>
           {/* Cabeçalho */}
           <div className="text-center space-y-2">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xs">
@@ -209,34 +305,41 @@ export function MfaChallengeCard({
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-xl font-extrabold tracking-tight text-foreground">
-                {currentMethod === "backup_code"
-                  ? "Código de Recuperação"
-                  : "Verificação em Duas Etapas"}
-              </h2>
-              <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
-                {currentMethod === "totp" && (
-                  <>
-                    Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador
-                    (Google Authenticator, Authy ou 1Password).
-                  </>
-                )}
-                {currentMethod === "sms" && (
-                  <>
-                    Enviamos um SMS com código de segurança para{" "}
-                    <strong className="text-foreground">
-                      {userContext.phoneNumberMasked || "seu telefone cadastrado"}
-                    </strong>
-                    .
-                  </>
-                )}
-                {currentMethod === "backup_code" && (
-                  <>
-                    Insira um dos seus códigos reservas de emergência gerados durante a
-                    configuração da conta.
-                  </>
-                )}
-              </p>
+              <Heading className="text-xl font-extrabold tracking-tight text-foreground">
+                {title ??
+                  (currentMethod === "backup_code"
+                    ? "Código de Recuperação"
+                    : "Verificação em Duas Etapas")}
+              </Heading>
+              {description !== undefined ? (
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                  {description}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto leading-relaxed">
+                  {currentMethod === "totp" && (
+                    <>
+                      Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador
+                      (Google Authenticator, Authy ou 1Password).
+                    </>
+                  )}
+                  {currentMethod === "sms" && (
+                    <>
+                      Enviamos um SMS com código de segurança para{" "}
+                      <strong className="text-foreground">
+                        {userContext.phoneNumberMasked || "seu telefone cadastrado"}
+                      </strong>
+                      .
+                    </>
+                  )}
+                  {currentMethod === "backup_code" && (
+                    <>
+                      Insira um dos seus códigos reservas de emergência gerados durante a
+                      configuração da conta.
+                    </>
+                  )}
+                </p>
+              )}
             </div>
           </div>
 
@@ -256,6 +359,35 @@ export function MfaChallengeCard({
                   Cada código reserva só pode ser utilizado uma única vez.
                 </span>
               </div>
+            ) : isSingleInput ? (
+              <div className="space-y-2">
+                {codeLabel ? (
+                  <label
+                    htmlFor="mfa-single-code"
+                    className="block text-sm font-medium text-foreground"
+                  >
+                    {codeLabel}
+                  </label>
+                ) : null}
+                <ForwardedInput
+                  id="mfa-single-code"
+                  ref={singleInputRef}
+                  value={otpCode}
+                  onChange={(event) => {
+                    setOtpCode(
+                      event.target.value.replace(/\D/g, "").slice(0, codeMaxLength),
+                    )
+                    if (errorMessage) setErrorMessage(null)
+                  }}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  aria-invalid={Boolean(errorMessage)}
+                  aria-describedby={errorMessage ? "mfa-challenge-error" : undefined}
+                  disabled={blocked}
+                  className="h-11 w-full text-center font-mono text-lg tracking-widest tabular-nums"
+                />
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
                 <InputOtp
@@ -267,18 +399,32 @@ export function MfaChallengeCard({
                   }}
                   onComplete={(val) => handleVerify(val)}
                   isInvalid={Boolean(errorMessage)}
-                  disabled={isLoading}
+                  disabled={blocked}
                 />
               </div>
             )}
 
-            {/* Mensagem de Erro com Ícone */}
-            {errorMessage && (
-              <div className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
+            {/* Live region persistente: montada antes do erro para que a
+                inserção do texto seja anunciada; só o conteúdo muda. */}
+            <div
+              id="mfa-challenge-error"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+              tabIndex={-1}
+              className={cn(
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                errorMessage &&
+                  "flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive",
+              )}
+            >
+              {errorMessage ? (
+                <>
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{errorMessage}</span>
+                </>
+              ) : null}
+            </div>
           </div>
 
           {/* Opção Reenviar Código (para SMS) */}
@@ -301,35 +447,42 @@ export function MfaChallengeCard({
             </div>
           )}
 
-          {/* Lembrar deste dispositivo (Trust this browser) */}
-          <div className="flex items-center space-x-2 pt-1 border-t border-border/60">
-            <Checkbox
-              id="trust-device"
-              checked={trustDevice}
-              onCheckedChange={(checked) => setTrustDevice(Boolean(checked))}
-            />
-            <label
-              htmlFor="trust-device"
-              className="text-xs text-muted-foreground font-medium cursor-pointer select-none leading-none"
-            >
-              Não solicitar neste dispositivo pelos próximos 30 dias
-            </label>
-          </div>
+          {/* Lembrar deste dispositivo (desligado quando backend não suporta) */}
+          {showTrustDevice ? (
+            <div className="flex items-center space-x-2 pt-1 border-t border-border/60">
+              <Checkbox
+                id="trust-device"
+                checked={trustDevice}
+                onCheckedChange={(checked) => setTrustDevice(Boolean(checked))}
+              />
+              <label
+                htmlFor="trust-device"
+                className="text-xs text-muted-foreground font-medium cursor-pointer select-none leading-none"
+              >
+                Não solicitar neste dispositivo pelos próximos 30 dias
+              </label>
+            </div>
+          ) : null}
 
           {/* Botão de Verificação */}
           <Button
-            type="button"
-            onClick={() =>
-              handleVerify(currentMethod === "backup_code" ? backupCodeInput : otpCode)
+            type={isSingleInput ? "submit" : "button"}
+            onClick={
+              isSingleInput
+                ? undefined
+                : () =>
+                    handleVerify(
+                      currentMethod === "backup_code" ? backupCodeInput : otpCode,
+                    )
             }
             disabled={
-              isLoading ||
+              blocked ||
               (currentMethod === "backup_code" ? !backupCodeInput.trim() : otpCode.length < 6)
             }
-            className="w-full text-xs font-semibold h-10 shadow-xs gap-1.5"
+            className={cn("w-full text-xs font-semibold h-10 shadow-xs gap-1.5", submitClassName)}
           >
             <ShieldCheck className="h-4 w-4" />
-            {isLoading ? "Validando autenticação..." : "Verificar Código"}
+            {isLoading ? submitPendingLabel : submitLabel}
           </Button>
 
           {/* Rodapé / Alternar método */}
@@ -344,7 +497,10 @@ export function MfaChallengeCard({
               </button>
             </div>
           )}
-        </div>
+
+          {/* Slot controlado pela página (CTA de enroll / status de lockout) */}
+          {footer ? <div className="space-y-2 pt-2">{footer}</div> : null}
+        </ChallengeFrame>
       )}
     </div>
   )

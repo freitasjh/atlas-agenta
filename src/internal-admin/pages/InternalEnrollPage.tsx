@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Copy, Loader2 } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { AuthCard } from "@/components/shadcn/auth/auth-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -104,10 +105,12 @@ export function InternalEnrollPage() {
   }
 
   return (
-    <Card>
+    <AuthCard>
       <CardHeader>
-        <CardTitle className="font-display text-2xl">Ativar verificação em 2 etapas</CardTitle>
-        <CardDescription>
+        <h1 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+          Ativar verificação em 2 etapas
+        </h1>
+        <CardDescription className="text-xs text-muted-foreground">
           Passo {step + 1} de {STEPS.length}: {STEPS[step]}.
         </CardDescription>
       </CardHeader>
@@ -210,6 +213,6 @@ export function InternalEnrollPage() {
           </div>
         ) : null}
       </CardContent>
-    </Card>
+    </AuthCard>
   );
 }

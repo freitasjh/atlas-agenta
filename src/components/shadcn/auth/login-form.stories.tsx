@@ -40,3 +40,14 @@ export const Notice: Story = {
   args: { notice: "Conta criada. Entre com seu e-mail e senha." },
 }
 export const Disabled: Story = { args: { disabled: true } }
+
+/** Variante isolada usada por `/internal-admin/login` (sem cadastro/recuperação). */
+export const InternalVariant: Story = {
+  args: {
+    title: "Área interna",
+    description: "Entrada exclusiva de operadores.",
+    showForgotPassword: false,
+    showSignupLink: false,
+    submitClassName: "min-h-[44px]",
+  },
+}

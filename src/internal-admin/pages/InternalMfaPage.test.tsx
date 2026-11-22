@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,6 +70,18 @@ describe("InternalMfaPage", () => {
     expect(input.getAttribute("inputmode")).toBe("numeric");
     expect(input.getAttribute("autocomplete")).toBe("one-time-code");
     expect(input.className).toContain("tabular-nums");
+  });
+
+  it("código é limitado a 6 dígitos: colar 8 não consome tentativa extra", async () => {
+    mockMfaFlow();
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Código de 6 dígitos"), {
+      target: { value: "12345678" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verificar código" }));
+
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(1));
+    expect(verify).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
   });
 
   it("código inválido mostra restantes com role=alert", async () => {

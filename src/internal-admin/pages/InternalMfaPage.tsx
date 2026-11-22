@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/shadcn/ui/button";
+import { MfaChallengeCard } from "@/components/shadcn/mfa/mfa-challenge-card";
+import type {
+  MfaMethod,
+  MfaUserContext,
+  MfaVerificationResult,
+} from "@/components/shadcn/mfa/mfa-types";
 import { supabase } from "@/lib/supabase";
 import {
   MFA_MAX_ATTEMPTS,
@@ -14,29 +17,36 @@ import {
   remainingAttempts,
 } from "@/internal-admin/internalOperator";
 
+const LOCKOUT_MS = 5 * 60 * 1000;
+
+/** Contexto estável enquanto o factor real não é resolvido (backend só tem TOTP). */
+const INITIAL_CONTEXT: MfaUserContext = {
+  userId: "",
+  userEmail: "",
+  preferredMethod: "totp",
+  availableMethods: ["totp"],
+};
+
 /**
- * MFA interno (ux: OTP single-input numérico com `autocomplete="one-time-code"`,
- * tabular-nums; 5 tentativas + lockout com timer; erro com restantes + foco no
- * campo; 1 primário; CTA ≥44px).
+ * MFA interno: apresentação em `MfaChallengeCard` (Atlas Admin) com a variação
+ * single-input. A página continua dona da prova real — `listFactors` →
+ * `challenge` → `verify` —, do lockout (5 tentativas/5min), da janela
+ * `mfa_pending` (≤10min) e dos redirects. SMS/backup/trust-device ficam
+ * desligados porque o backend de operadores só suporta TOTP.
  */
 export function InternalMfaPage() {
   const navigate = useNavigate();
-  const [code, setCode] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [noAuthenticator, setNoAuthenticator] = useState(false);
   const [pending, setPending] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const alertRef = useRef<HTMLParagraphElement>(null);
+  const [userContext, setUserContext] = useState<MfaUserContext>(INITIAL_CONTEXT);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const locked = lockedUntil !== null && Date.now() < lockedUntil;
 
   // Janela `mfa_pending` (≤10min): sem carimbo válido não há MFA — limpa e
-  // volta ao login sem revelar dado (TTL imposto no cliente; a prova real é
-  // a Edge `verify-operator`, AAL2 server-side por request).
+  // volta ao login sem revelar dado (TTL no cliente; prova real é a Edge
+  // `verify-operator`, AAL2 server-side por request).
   useEffect(() => {
     const stored = readMfaPending(sessionStorage);
     if (!isMfaPendingValid(Date.now(), stored)) {
@@ -45,119 +55,111 @@ export function InternalMfaPage() {
     }
   }, [navigate]);
 
+  // Libera o lockout após 5 minutos sem exigir nova interação do operador.
   useEffect(() => {
-    if (error) alertRef.current?.focus();
-  }, [error]);
+    if (lockedUntil === null) return;
+    const delay = Math.max(0, lockedUntil - Date.now());
+    const timer = window.setTimeout(() => {
+      setLockedUntil(null);
+      setAttempts(0);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [lockedUntil]);
 
-  const locked = lockedUntil !== null && Date.now() < lockedUntil;
-
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (locked || pending) return;
-    setError(null);
+  async function handleVerify({
+    code,
+  }: {
+    code: string;
+    method: MfaMethod;
+    trustDevice: boolean;
+  }): Promise<MfaVerificationResult> {
+    if (locked || pending) {
+      return { success: false, message: "Aguarde o fim do bloqueio e tente de novo." };
+    }
     setNoAuthenticator(false);
     setPending(true);
     try {
       const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
       const totp = factors?.totp?.find((f) => f.status === "verified") ?? factors?.totp?.[0];
       if (factorsError || !totp) {
-        setError("Nenhum autenticador ativo. Passe pela ativação primeiro.");
-        // Rede de segurança enroll-rota: operador fresco (zero factors) caía
-        // aqui em dead-end; o CTA leva ao enroll sem digitar URL manual.
         setNoAuthenticator(true);
-        return;
+        return {
+          success: false,
+          message: "Nenhum autenticador ativo. Passe pela ativação primeiro.",
+        };
       }
+      // Contexto do card derivado do factor real; nunca expõe dado de tenant.
+      setUserContext({
+        userId: totp.id,
+        userEmail: "",
+        preferredMethod: "totp",
+        availableMethods: ["totp"],
+      });
+
       const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
         factorId: totp.id,
       });
       if (challengeError || !challenge) {
-        setError("Não foi possível verificar o código. Tente de novo.");
-        inputRef.current?.focus();
-        return;
+        return {
+          success: false,
+          message: "Não foi possível verificar o código. Tente de novo.",
+        };
       }
+
       const { error: verifyError } = await supabase.auth.mfa.verify({
         factorId: totp.id,
         challengeId: challenge.id,
-        code: code.trim(),
+        code,
       });
       if (verifyError) {
         const next = attempts + 1;
         setAttempts(next);
         if (next >= MFA_MAX_ATTEMPTS) {
-          setLockedUntil(Date.now() + 5 * 60 * 1000);
-          setError("Muitas tentativas. Aguarde 5 minutos e tente de novo.");
-        } else {
-          setError(`Código inválido. Restam ${remainingAttempts(next)} tentativas.`);
+          setLockedUntil(Date.now() + LOCKOUT_MS);
+          return {
+            success: false,
+            message: "Muitas tentativas. Aguarde 5 minutos e tente de novo.",
+          };
         }
-        inputRef.current?.focus();
-        inputRef.current?.select();
-        return;
+        const restantes = remainingAttempts(next);
+        return {
+          success: false,
+          message: `Código inválido. Restam ${restantes} tentativas.`,
+          remainingAttempts: restantes,
+        };
       }
+
       clearMfaPending(sessionStorage);
-      navigate("/internal-admin", { replace: true });
+      return { success: true };
     } catch {
-      setError("Não foi possível verificar o código. Tente de novo.");
-      inputRef.current?.focus();
+      return {
+        success: false,
+        message: "Não foi possível verificar o código. Tente de novo.",
+      };
     } finally {
       setPending(false);
     }
   }
 
-  function handlePaste(event: React.ClipboardEvent<HTMLInputElement>) {
-    const text = event.clipboardData.getData("text").trim();
-    if (/^\d{6,8}$/.test(text)) {
-      event.preventDefault();
-      setCode(text);
-    }
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-display text-2xl">Verificação em 2 etapas</CardTitle>
-        <CardDescription>Digite o código do seu autenticador.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {error ? (
-          <p
-            ref={alertRef}
-            role="alert"
-            tabIndex={-1}
-            aria-live="assertive"
-            className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {error}
-          </p>
-        ) : null}
-        <form onSubmit={onSubmit} className="space-y-4" noValidate>
-          <div className="space-y-2">
-            <label htmlFor="internal-mfa-code" className="text-sm font-medium">
-              Código de 6 dígitos
-            </label>
-            <Input
-              id="internal-mfa-code"
-              ref={inputRef}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
-              onPaste={handlePaste}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="123456"
-              aria-describedby={error ? "internal-mfa-error" : undefined}
-              className="text-center text-lg tracking-widest tabular-nums"
-              disabled={locked || pending}
-            />
-          </div>
-          <Button type="submit" className="min-h-[44px] w-full" disabled={locked || pending || code.trim().length < 6}>
-            {pending ? (
-              <>
-                <Loader2 className="animate-spin" aria-hidden="true" />
-                Verificando…
-              </>
-            ) : (
-              "Verificar código"
-            )}
-          </Button>
+    <MfaChallengeCard
+      userContext={userContext}
+      onVerify={handleVerify}
+      onCancel={() => navigate("/internal-admin/login", { replace: true })}
+      onSuccess={() => navigate("/internal-admin", { replace: true })}
+      inputMode="single"
+      codeLabel="Código de 6 dígitos"
+      codeMaxLength={6}
+      title="Verificação em 2 etapas"
+      titleAs="h1"
+      description="Digite o código do seu autenticador."
+      submitLabel="Verificar código"
+      submitPendingLabel="Verificando…"
+      submitClassName="min-h-[44px]"
+      showTrustDevice={false}
+      disabled={locked || pending}
+      footer={
+        <>
           {noAuthenticator ? (
             <Button
               type="button"
@@ -173,8 +175,8 @@ export function InternalMfaPage() {
               Bloqueado temporariamente após 5 tentativas.
             </p>
           ) : null}
-        </form>
-      </CardContent>
-    </Card>
+        </>
+      }
+    />
   );
 }

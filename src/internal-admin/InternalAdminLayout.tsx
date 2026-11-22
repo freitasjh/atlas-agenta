@@ -1,24 +1,12 @@
-import { Outlet } from "react-router-dom";
-
-import { Logo } from "@/components/Logo";
+import { AuthShell } from "@/components/shadcn/auth/auth-shell";
 
 /**
- * Shell bloqueado da área interna (ux-designer, vinculante): sem navegação de
- * tenant, sem dado operacional. Só o logo + o conteúdo da etapa (login, MFA ou
- * enroll). Rota isolada: nunca monta `AppLayout`/`AdminLayout`.
+ * Casca bloqueada das etapas de autenticação interna (login, MFA, enroll).
+ * Usa `AuthShell internal`: mesmo `<Outlet />` e mesma largura `max-w-md`, mas
+ * sem link público, sem seletor de tema e sem a coluna de marketing — nenhuma
+ * saída para o fluxo público (SPEC internal-operators-mfa §3, UX vinculante).
+ * A rota isolada continua fora de `RequireInternalOperator` (ver `router.tsx`).
  */
 export function InternalAdminLayout() {
-  return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center justify-center border-b px-4 py-3 sm:justify-start sm:px-6">
-        <Logo />
-        <span className="sr-only">Área interna</span>
-      </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6">
-        <div className="w-full max-w-md">
-          <Outlet />
-        </div>
-      </main>
-    </div>
-  );
+  return <AuthShell internal />;
 }
