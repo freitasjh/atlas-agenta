@@ -105,6 +105,60 @@ export const ChallengeWithError: Story = {
   },
 }
 
+/** Variante interna: só TOTP, input único, sem trust-device (backend AAL2). */
+export const InternalTotpSingle: Story = {
+  args: {
+    userContext: { ...mockUserContext, userId: "factor-1", userEmail: "", availableMethods: ["totp"] },
+    inputMode: "single",
+    codeLabel: "Código de 6 dígitos",
+    title: "Verificação em 2 etapas",
+    titleAs: "h1",
+    description: "Digite o código do seu autenticador.",
+    submitLabel: "Verificar código",
+    submitPendingLabel: "Verificando…",
+    submitClassName: "min-h-[44px]",
+    showTrustDevice: false,
+    onVerify: async ({ code }) => {
+      await new Promise((r) => setTimeout(r, 400))
+      return { success: code === "123456" }
+    },
+    onCancel: () => {},
+    onSuccess: () => {},
+  },
+}
+
+/** Estado de erro interno com tentativas restantes (contrato da página). */
+export const InternalTotpError: Story = {
+  ...InternalTotpSingle,
+  args: {
+    ...InternalTotpSingle.args,
+    onVerify: async () => ({
+      success: false,
+      message: "Código inválido. Restam 4 tentativas.",
+      remainingAttempts: 4,
+    }),
+  },
+}
+
+/** Lockout interno após 5 tentativas, com status e CTA de enroll. */
+export const InternalTotpLocked: Story = {
+  ...InternalTotpSingle,
+  args: {
+    ...InternalTotpSingle.args,
+    disabled: true,
+    footer: (
+      <>
+        <button type="button" className="min-h-[44px] w-full rounded-md border border-border/70">
+          Ativar autenticador
+        </button>
+        <p role="status" className="text-center text-sm text-muted-foreground">
+          Bloqueado temporariamente após 5 tentativas.
+        </p>
+      </>
+    ),
+  },
+}
+
 function SetupDialogDemo() {
   const [open, setOpen] = useState(true)
   return (

@@ -57,12 +57,12 @@ export function InternalShell() {
     <div className="min-h-screen bg-background text-foreground md:grid md:grid-cols-[16rem_1fr]">
       <a
         href="#conteudo-interno"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         Pular para o conteúdo
       </a>
       {/* Sidebar fixa (≥md) */}
-      <aside aria-label="Administração interna" className="hidden border-r border-border bg-card md:block">
+      <aside aria-label="Administração interna" className="hidden border-r border-border/70 bg-card md:block">
         <div className="sticky top-0 flex h-screen flex-col gap-6 overflow-y-auto p-4">
           <div className="px-3">
             <Logo />
@@ -74,7 +74,7 @@ export function InternalShell() {
 
       <div className="flex min-w-0 flex-col">
         {/* Topbar: botão de menu só no mobile */}
-        <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <header className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
           <div className="flex items-center gap-2">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>

@@ -30,6 +30,16 @@ export interface LoginFormProps {
   error?: string | null
   errorRef?: React.Ref<HTMLParagraphElement>
   className?: string
+  /** Cabeçalho configurável (páginas internas usam "Área interna"). */
+  title?: string
+  description?: string
+  /** Links de recuperação/cadastro — desligados em áreas isoladas. */
+  showForgotPassword?: boolean
+  showSignupLink?: boolean
+  /** Rótulos do submit e classe extra do botão (alvo de toque ≥44px). */
+  submitLabel?: string
+  submitPendingLabel?: string
+  submitClassName?: string
 }
 
 /**
@@ -48,6 +58,13 @@ export function LoginForm({
   error,
   errorRef,
   className,
+  title = "Entrar na sua conta",
+  description = "Acesse o painel da sua empresa.",
+  showForgotPassword = true,
+  showSignupLink = true,
+  submitLabel = "Entrar",
+  submitPendingLabel = "Entrando…",
+  submitClassName,
 }: LoginFormProps) {
   const { errors } = form.formState
   const blocked = isPending || disabled
@@ -61,12 +78,10 @@ export function LoginForm({
     >
       <FieldGroup className="gap-6">
         <div className="flex flex-col items-center gap-1 text-center">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Entrar na sua conta
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            {title}
           </h1>
-          <p className="text-sm text-balance text-muted-foreground">
-            Acesse o painel da sua empresa.
-          </p>
+          <p className="text-sm text-balance text-muted-foreground">{description}</p>
         </div>
 
         {notice ? (
@@ -78,16 +93,22 @@ export function LoginForm({
           </p>
         ) : null}
 
-        {error ? (
-          <p
-            ref={errorRef}
-            role="alert"
-            tabIndex={-1}
-            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            {error}
-          </p>
-        ) : null}
+        {/* Live region persistente: o nó existe antes do erro para que o
+            leitor de tela anuncie a inserção do texto (`aria-atomic`). */}
+        <p
+          ref={errorRef}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+          tabIndex={-1}
+          className={cn(
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            error &&
+              "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive",
+          )}
+        >
+          {error}
+        </p>
 
         <Field data-invalid={Boolean(errors.email)}>
           <FieldLabel htmlFor="email">E-mail</FieldLabel>
@@ -107,12 +128,14 @@ export function LoginForm({
         <Field data-invalid={Boolean(errors.password)}>
           <div className="flex items-center">
             <FieldLabel htmlFor="password">Senha</FieldLabel>
-            <Link
-              to="/recuperar-senha"
-              className="ml-auto rounded-sm text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              Esqueceu a senha?
-            </Link>
+            {showForgotPassword ? (
+              <Link
+                to="/recuperar-senha"
+                className="ml-auto rounded-sm text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                Esqueceu a senha?
+              </Link>
+            ) : null}
           </div>
           <Input
             id="password"
@@ -127,27 +150,33 @@ export function LoginForm({
         </Field>
 
         <Field>
-          <Button type="submit" className="w-full" disabled={blocked}>
+          <Button
+            type="submit"
+            className={cn("w-full", submitClassName)}
+            disabled={blocked}
+          >
             {isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Entrando…
+                {submitPendingLabel}
               </>
             ) : (
-              "Entrar"
+              submitLabel
             )}
           </Button>
         </Field>
 
-        <FieldDescription className="text-center">
-          Ainda não tem conta?{" "}
-          <Link
-            to="/cadastro"
-            className="rounded-sm font-medium text-foreground underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            Criar conta
-          </Link>
-        </FieldDescription>
+        {showSignupLink ? (
+          <FieldDescription className="text-center">
+            Ainda não tem conta?{" "}
+            <Link
+              to="/cadastro"
+              className="rounded-sm font-medium text-foreground underline underline-offset-4 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              Criar conta
+            </Link>
+          </FieldDescription>
+        ) : null}
       </FieldGroup>
     </form>
   )

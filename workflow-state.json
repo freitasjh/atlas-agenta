@@ -5,11 +5,11 @@
   "next_phase": "Execution",
   "type": "feature",
   "code_review": {
-    "last_invoked_at": "2026-11-20T10:30:00Z",
+    "last_invoked_at": "2026-11-20T10:50:00Z",
     "last_status": "passed",
     "critical_issues": 0,
-    "attention_issues": 3,
-    "reviewer_notes": "Auth: RHF/zod/redirects preservados, mocks/hashes removidos, AuthShell/AuthCard no padrao do template; 3 melhorias aplicadas."
+    "attention_issues": 2,
+    "reviewer_notes": "Internal-admin: shell bloqueado (AuthShell internal), Enter no OTP, refoco/live region OK; melhorias aplicadas."
   },
   "harness_status": "passed",
   "last_update": "2026-11-20",
@@ -425,6 +425,14 @@
     },
     {
       "name": "auth-padronizacao",
+      "stage": "Completed",
+      "progress": 100,
+      "done": 7,
+      "total": 7,
+      "status": "completed"
+    },
+    {
+      "name": "internal-admin-auth",
       "stage": "Completed",
       "progress": 100,
       "done": 7,

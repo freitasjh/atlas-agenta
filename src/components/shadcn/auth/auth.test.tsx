@@ -9,15 +9,28 @@ import {
 import { createElement, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthCard } from "@/components/shadcn/auth/auth-card";
+import { AuthShell } from "@/components/shadcn/auth/auth-shell";
 import { LoginForm, type LoginFormProps } from "@/components/shadcn/auth/login-form";
 import { SignupForm } from "@/components/shadcn/auth/signup-form";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 
 afterEach(cleanup);
+
+// happy-dom deste repo não expõe localStorage; ThemeProvider (default do
+// AuthShell) precisa dele para ler/escrever o tema nos testes.
+beforeEach(() => {
+  if (!window.localStorage) {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    });
+  }
+});
 
 function renderInRouter(ui: React.ReactNode) {
   return render(createElement(MemoryRouter, null, ui));
@@ -46,6 +59,59 @@ describe("AuthCard", () => {
     expect(rim).not.toBeNull();
     expect(rim?.className).toContain("bg-gradient-to-r");
     expect(container.firstElementChild?.className).toContain("rounded-2xl");
+  });
+});
+
+describe("AuthShell", () => {
+  function renderShell(internal: boolean) {
+    return render(
+      createElement(
+        ThemeProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(
+            Routes,
+            null,
+            createElement(
+              Route,
+              {
+                path: "/",
+                element: createElement(AuthShell, { internal }),
+              },
+              createElement(Route, {
+                index: true,
+                element: createElement("p", null, "CONTEUDO_DA_ROTA"),
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  it("variante internal: só logo + Outlet, sem link público, toggle e capa", () => {
+    const { container } = renderShell(true);
+
+    expect(screen.getByText("CONTEUDO_DA_ROTA")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /atlas agenda/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /tema/i })).toBeNull();
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.firstElementChild?.className).not.toContain("lg:grid-cols-2");
+    expect(screen.getByText("CONTEUDO_DA_ROTA").parentElement?.className).toContain(
+      "max-w-md",
+    );
+  });
+
+  it("variante default preserva link público, toggle de tema e capa", () => {
+    const { container } = renderShell(false);
+
+    expect(
+      screen.getByRole("link", { name: /atlas agenda/i }).getAttribute("href"),
+    ).toBe("/");
+    expect(screen.getByRole("button", { name: /tema/i })).toBeTruthy();
+    expect(container.querySelector("aside")).not.toBeNull();
   });
 });
 
@@ -124,6 +190,50 @@ describe("LoginForm", () => {
       expect(screen.getByLabelText("E-mail").getAttribute("aria-invalid")).toBe("true"),
     );
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+  });
+
+  it("variante interna: título/descrição configuráveis, sem links de cadastro e CTA ≥44px", () => {
+    renderInRouter(
+      createElement(LoginHarness, {
+        title: "Área interna",
+        description: "Entrada exclusiva de operadores.",
+        showForgotPassword: false,
+        showSignupLink: false,
+        submitClassName: "min-h-[44px]",
+      }),
+    );
+
+    expect(screen.getByRole("heading", { name: "Área interna" }).textContent).toBe(
+      "Área interna",
+    );
+    expect(screen.getByText("Entrada exclusiva de operadores.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /esqueceu a senha/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /criar conta/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Entrar" }).className).toContain(
+      "min-h-[44px]",
+    );
+  });
+
+  it("erro expõe aria-live=assertive para leitores de tela", () => {
+    renderInRouter(createElement(LoginHarness, { error: "E-mail ou senha inválidos." }));
+
+    expect(screen.getByRole("alert").getAttribute("aria-live")).toBe("assertive");
+  });
+
+  it("mantém a live region role=alert sempre montada, vazia quando sem erro", () => {
+    const { rerender } = renderInRouter(createElement(LoginHarness));
+
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    expect(alert.getAttribute("aria-atomic")).toBe("true");
+
+    // A mesma região atualiza só o texto — sem remontar o container.
+    rerender(
+      createElement(MemoryRouter, null, createElement(LoginHarness, { error: "E-mail ou senha inválidos." })),
+    );
+    expect(screen.getByRole("alert").textContent).toBe("E-mail ou senha inválidos.");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 });
 
